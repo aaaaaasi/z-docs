@@ -15,7 +15,7 @@ import { FONT_FAMILIES, FONT_SIZES, TEXT_COLOR_PALETTE } from "@/lib/doc-utils"
 import {
   Undo2, Redo2, Printer, Bold, Italic, Underline, Strikethrough, Link, ImagePlus,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Indent,
-  Outdent, RemoveFormatting, Sparkles, Text, Highlighter, ChevronDown, Baseline
+  Outdent, RemoveFormatting, Sparkles, Text, Highlighter, ChevronDown, Baseline, MessageSquarePlus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -126,7 +126,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
       <Select value={blockValue} onValueChange={(v) => api.exec("formatBlock", v)}>
         <SelectTrigger
           aria-label="Paragraph style"
-          className="mx-1 h-9 w-[118px] shrink-0 rounded-md border-transparent bg-muted/60 text-sm focus-visible:ring-1"
+          className="mx-1 h-9 w-[132px] shrink-0 rounded-md border-transparent bg-muted/60 text-sm focus-visible:ring-1"
         >
           <SelectValue />
         </SelectTrigger>
@@ -248,6 +248,26 @@ export function Toolbar({ api }: { api: EditorApi }) {
 
       <TB icon={Link} label="Insert link (Ctrl+K)" active={api.fmt.link} onClick={() => api.openDialog("link")} />
       <TB icon={ImagePlus} label="Insert image" onClick={() => api.openDialog("image")} />
+
+      <div className="mx-1 h-6 w-px shrink-0 bg-border" />
+
+      {/* Comments */}
+      <div className="relative shrink-0">
+        <TB
+          icon={MessageSquarePlus}
+          label="Add comment (Ctrl+Alt+M)"
+          onClick={api.openCommentComposer}
+          className={cn(api.unresolvedCommentCount > 0 && "text-primary")}
+        />
+        {api.unresolvedCommentCount > 0 && (
+          <span
+            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground shadow"
+            aria-label={`${api.unresolvedCommentCount} unresolved comments`}
+          >
+            {api.unresolvedCommentCount > 9 ? "9+" : api.unresolvedCommentCount}
+          </span>
+        )}
+      </div>
 
       <div className="mx-1 h-6 w-px shrink-0 bg-border" />
 

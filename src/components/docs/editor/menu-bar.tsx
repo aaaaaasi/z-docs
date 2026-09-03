@@ -12,7 +12,7 @@ import {
   ClipboardCopy, ClipboardPaste, Replace, Moon, Maximize, ZoomIn, Link, ImagePlus,
   Minus, CalendarDays, Sparkles, Bold, Italic, Underline, Strikethrough, Superscript,
   Subscript, RemoveFormatting, AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  List, ListOrdered, TextQuote, Calculator, Keyboard, Info
+  List, ListOrdered, TextQuote, Calculator, Keyboard, Info, MessageSquarePlus, Table
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -95,6 +95,13 @@ export function MenuBar({ api }: { api: EditorApi }) {
           }
         >
           <CalendarDays className="h-4 w-4" /> Today&apos;s date
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => api.openDialog("table")}>
+          <Table className="h-4 w-4" /> Table
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={api.openCommentComposer}>
+          <MessageSquarePlus className="h-4 w-4" /> Comment <DropdownMenuShortcut>⌘⌥M</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("helpwrite")}>

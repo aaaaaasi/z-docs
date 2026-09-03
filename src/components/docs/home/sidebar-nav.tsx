@@ -103,11 +103,13 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
               <Button
                 variant="ghost"
                 disabled
-                className="w-full justify-start gap-3 rounded-full px-4 py-2.5 text-sm font-normal text-muted-foreground/60"
+                className="w-full justify-start gap-3 rounded-full px-4 py-2.5 text-sm font-normal text-muted-foreground/70"
               >
                 {item.icon}
                 <span className="flex-1 text-left">{item.label}</span>
-                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/50">soon</span>
+                <span className="rounded-full border bg-muted px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  soon
+                </span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right" className="text-xs">Coming soon</TooltipContent>

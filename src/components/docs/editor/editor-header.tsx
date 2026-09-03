@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/docs/theme-toggle"
 import { UserMenu } from "@/components/docs/user-menu"
 import { DocsLogo } from "@/components/docs/home/home-header"
 import type { EditorApi } from "./editor-types"
-import { Star, CloudCheck, CloudOff, CloudUpload, Users, ArrowLeft, Share2 } from "lucide-react"
+import { Star, CloudCheck, CloudOff, CloudUpload, Users, ArrowLeft, Share2, MessageSquare } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { relativeTime } from "@/lib/doc-utils"
 
@@ -111,6 +111,33 @@ export function EditorHeader({ api }: { api: EditorApi }) {
             </span>
           </div>
         )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => api.toggleComments()}
+              aria-label={api.commentsOpen ? "Hide comments" : "Show comments"}
+              aria-pressed={api.commentsOpen}
+              className={cn(
+                "relative rounded-md p-2 transition-colors hover:bg-muted",
+                api.commentsOpen ? "bg-muted text-foreground" : "text-muted-foreground"
+              )}
+            >
+              <MessageSquare className="h-4.5 w-4.5" />
+              {api.unresolvedCommentCount > 0 && (
+                <span
+                  className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground shadow"
+                  aria-label={`${api.unresolvedCommentCount} unresolved comments`}
+                >
+                  {api.unresolvedCommentCount > 9 ? "9+" : api.unresolvedCommentCount}
+                </span>
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            {api.commentsOpen ? "Hide comments" : "Show comments"}
+            {api.unresolvedCommentCount > 0 ? ` (${api.unresolvedCommentCount})` : ""}
+          </TooltipContent>
+        </Tooltip>
         <Button
           size="sm"
           className="gap-2 rounded-full px-4 max-sm:px-3"

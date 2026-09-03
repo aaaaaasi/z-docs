@@ -6,17 +6,18 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { useDocsStore } from "@/store/docs-store"
 import { useLocalUser } from "@/lib/identity"
-import { useCollab, type DocChangePayload } from "@/hooks/use-collab"
+import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@/hooks/use-collab"
 import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
-import { selectionOffsets, selectedBlocks, escapeRegex } from "@/lib/editor-dom"
-import type { DocumentDTO } from "@/lib/docs-types"
+import { selectionOffsets, selectedBlocks, escapeRegex, findQuoteRange } from "@/lib/editor-dom"
+import type { DocumentDTO, CommentDTO } from "@/lib/docs-types"
 import { EditorCanvas } from "./editor-canvas"
 import { EditorHeader } from "./editor-header"
 import { MenuBar } from "./menu-bar"
 import { Toolbar } from "./toolbar"
 import { StatusPill } from "./status-pill"
+import { CommentsSidebar, CommentBubble, type PendingQuote } from "./comments-sidebar"
 import { DEFAULT_FORMAT, type EditorApi, type FormatState } from "./editor-types"
-import { LinkDialog, ImageDialog, FindReplaceDialog } from "./dialogs-basic"
+import { LinkDialog, ImageDialog, FindReplaceDialog, TableDialog } from "./dialogs-basic"
 import { ShareDialog } from "./share-dialog"
 import { VersionHistorySheet } from "./version-history"
 import { HelpWriteDialog } from "./help-write-dialog"
@@ -47,6 +48,17 @@ export function EditorView() {
   const [remoteContent, setRemoteContent] = React.useState<string | null>(null)
   const [dialog, setDialog] = React.useState<string | null>(null)
   const [linkHasSelection, setLinkHasSelection] = React.useState(false)
+
+  /* ---------------- comments state ---------------- */
+  const [comments, setComments] = React.useState<CommentDTO[]>([])
+  const [commentsLoading, setCommentsLoading] = React.useState(false)
+  const [commentsOpen, setCommentsOpen] = React.useState(false)
+  const [activeCommentId, setActiveCommentId] = React.useState<string | null>(null)
+  const [commentBusy, setCommentBusy] = React.useState(false)
+  const [contentTick, setContentTick] = React.useState(0)
+  const [bubble, setBubble] = React.useState<{ x: number; y: number } | null>(null)
+  const [pendingQuote, setPendingQuoteState] = React.useState<PendingQuote | null>(null)
+  const pendingQuoteRef = React.useRef<PendingQuote | null>(null)
 
   /* ---------------- refs ---------------- */
   const pageRef = React.useRef<HTMLDivElement | null>(null)
@@ -104,6 +116,46 @@ export function EditorView() {
     }
   }, [openAiOnEditor, doc, setOpenAiOnEditor])
 
+  /* ---------------- comments: load & helpers ---------------- */
+  React.useEffect(() => {
+    if (!docId) return
+    let cancelled = false
+    setComments([])
+    setCommentsLoading(true)
+    setActiveCommentId(null)
+    fetch(`/api/documents/${docId}/comments`)
+      .then((r) => (r.ok ? (r.json() as Promise<{ comments: CommentDTO[] }>) : Promise.reject(new Error("failed"))))
+      .then((data) => {
+        if (!cancelled) setComments(data.comments ?? [])
+      })
+      .catch(() => {
+        // non-fatal: the sidebar shows an empty state
+      })
+      .finally(() => {
+        if (!cancelled) setCommentsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [docId])
+
+  const setPendingQuote = React.useCallback((pq: PendingQuote | null) => {
+    pendingQuoteRef.current = pq
+    setPendingQuoteState(pq)
+  }, [])
+
+  const refreshComments = React.useCallback(async () => {
+    if (!docId) return
+    try {
+      const res = await fetch(`/api/documents/${docId}/comments`)
+      if (!res.ok) return
+      const data = (await res.json()) as { comments: CommentDTO[] }
+      setComments(data.comments ?? [])
+    } catch {
+      // ignore — next mutation will retry
+    }
+  }, [docId])
+
   /* ---------------- collaboration ---------------- */
   const onDocChange = React.useCallback((p: DocChangePayload) => {
     if (myIdRef.current && p.by === myIdRef.current) return
@@ -124,10 +176,21 @@ export function EditorView() {
     }
   }, [])
 
-  const { connected, myId, presence, remoteCursors, emitDocChange, emitCursor } = useCollab(
+  const onCommentsChanged = React.useCallback(
+    (p: CommentsChangedPayload) => {
+      void refreshComments()
+      if (p.action === "add" || p.action === "reply") {
+        toast({ title: "New comment activity", description: "A collaborator updated the discussion." })
+      }
+    },
+    [refreshComments, toast]
+  )
+
+  const { connected, myId, presence, remoteCursors, emitDocChange, emitCursor, emitCommentsChanged } = useCollab(
     docId || null,
     user,
-    onDocChange
+    onDocChange,
+    onCommentsChanged
   )
   React.useEffect(() => {
     myIdRef.current = myId
@@ -210,6 +273,8 @@ export function EditorView() {
     if (statsTimerRef.current) clearTimeout(statsTimerRef.current)
     statsTimerRef.current = setTimeout(() => {
       setStats(docStats(contentRef.current))
+      // bump so the comment highlight overlays re-align after local edits
+      setContentTick((t) => t + 1)
     }, 400)
   }, [])
 
@@ -291,10 +356,31 @@ export function EditorView() {
         const off = selectionOffsets(el)
         if (off) emitCursor(off.start, off.end)
       }
+
+      // comment bubble: show above a non-collapsed selection with text
+      const inside = sel.rangeCount > 0 && el.contains(sel.focusNode)
+      if (inside && !sel.isCollapsed && !pendingQuoteRef.current) {
+        const text = sel.toString().replace(/\s+/g, " ").trim()
+        if (text) {
+          const rect = sel.getRangeAt(0).getBoundingClientRect()
+          setBubble({ x: rect.left + rect.width / 2, y: rect.top - 38 })
+        } else {
+          setBubble(null)
+        }
+      } else {
+        setBubble(null)
+      }
     }
     document.addEventListener("selectionchange", onSel)
     return () => document.removeEventListener("selectionchange", onSel)
   }, [refreshFmt, emitCursor])
+
+  // hide the comment bubble whenever any scroll happens (position would drift)
+  React.useEffect(() => {
+    const onScroll = () => setBubble(null)
+    window.addEventListener("scroll", onScroll, true)
+    return () => window.removeEventListener("scroll", onScroll, true)
+  }, [])
 
   /* ---------------- editing commands ---------------- */
   /** Focus the editor and make sure the last valid selection is active — so
@@ -449,6 +535,189 @@ export function EditorView() {
     },
     [handleInput, ensureSelection]
   )
+
+  /* ---------------- insert table ---------------- */
+  const insertTable = React.useCallback(
+    (rows: number, cols: number) => {
+      const r = Math.min(20, Math.max(1, Math.floor(rows)))
+      const c = Math.min(10, Math.max(1, Math.floor(cols)))
+      let html = '<table class="zdocs-table"><tbody>'
+      for (let i = 0; i < r; i++) {
+        html += "<tr>"
+        for (let j = 0; j < c; j++) html += "<td>&nbsp;</td>"
+        html += "</tr>"
+      }
+      html += "</tbody></table><p><br></p>"
+      insertHtmlAtCursor(html)
+      toast({ title: `Inserted ${r}×${c} table` })
+    },
+    [insertHtmlAtCursor, toast]
+  )
+
+  /* ---------------- comments: actions ---------------- */
+  const submitComment = React.useCallback(
+    async (text: string) => {
+      const pq = pendingQuoteRef.current
+      if (!docId || !user || !pq) return
+      setCommentBusy(true)
+      try {
+        const res = await fetch(`/api/documents/${docId}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: text,
+            quote: pq.quote,
+            anchorOffset: pq.offset,
+            authorId: user.id,
+            authorName: user.name,
+            authorColor: user.color,
+          }),
+        })
+        if (!res.ok) throw new Error("failed")
+        const data = (await res.json()) as { comment: CommentDTO }
+        setComments((prev) => [...prev, { ...data.comment, replies: data.comment.replies ?? [] }])
+        setActiveCommentId(data.comment.id)
+        setPendingQuote(null)
+        emitCommentsChanged("add", data.comment.id)
+        toast({ title: "Comment added" })
+      } catch {
+        toast({ title: "Couldn’t add the comment", variant: "destructive" })
+      } finally {
+        setCommentBusy(false)
+      }
+    },
+    [docId, user, setPendingQuote, emitCommentsChanged, toast]
+  )
+
+  const submitReply = React.useCallback(
+    async (parentId: string, text: string) => {
+      if (!docId || !user) return
+      setCommentBusy(true)
+      try {
+        const res = await fetch(`/api/documents/${docId}/comments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: text,
+            parentId,
+            authorId: user.id,
+            authorName: user.name,
+            authorColor: user.color,
+          }),
+        })
+        if (!res.ok) throw new Error("failed")
+        const data = (await res.json()) as { comment: CommentDTO }
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === parentId ? { ...c, replies: [...(c.replies ?? []), data.comment] } : c
+          )
+        )
+        emitCommentsChanged("reply", data.comment.id)
+      } catch {
+        toast({ title: "Couldn’t post the reply", variant: "destructive" })
+      } finally {
+        setCommentBusy(false)
+      }
+    },
+    [docId, user, emitCommentsChanged, toast]
+  )
+
+  const toggleResolveComment = React.useCallback(
+    async (c: CommentDTO) => {
+      setCommentBusy(true)
+      try {
+        const res = await fetch(`/api/comments/${c.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resolved: !c.resolved }),
+        })
+        if (!res.ok) throw new Error("failed")
+        setComments((prev) =>
+          prev.map((t) => (t.id === c.id ? { ...t, resolved: !c.resolved } : t))
+        )
+        emitCommentsChanged(c.resolved ? "unresolve" : "resolve", c.id)
+      } catch {
+        toast({ title: "Couldn’t update the comment", variant: "destructive" })
+      } finally {
+        setCommentBusy(false)
+      }
+    },
+    [emitCommentsChanged, toast]
+  )
+
+  const deleteComment = React.useCallback(
+    async (c: CommentDTO) => {
+      setCommentBusy(true)
+      try {
+        const res = await fetch(`/api/comments/${c.id}`, { method: "DELETE" })
+        if (!res.ok) throw new Error("failed")
+        setComments((prev) => prev.filter((t) => t.id !== c.id))
+        if (activeCommentId === c.id) setActiveCommentId(null)
+        emitCommentsChanged("delete", c.id)
+        toast({ title: "Comment deleted" })
+      } catch {
+        toast({ title: "Couldn’t delete the comment", variant: "destructive" })
+      } finally {
+        setCommentBusy(false)
+      }
+    },
+    [activeCommentId, emitCommentsChanged, toast]
+  )
+
+  /** Scroll the quoted text of a comment into view and flash its highlight. */
+  const focusComment = React.useCallback(
+    (c: CommentDTO) => {
+      setActiveCommentId(c.id)
+      if (c.quote) {
+        const el = pageRef.current
+        if (el) {
+          const found = findQuoteRange(el, c.quote, c.anchorOffset)
+          if (found) {
+            const canvas = el.closest(".doc-canvas-bg") as HTMLElement | null
+            const rect = found.range.getBoundingClientRect()
+            if (canvas) {
+              const canvasRect = canvas.getBoundingClientRect()
+              const target =
+                canvas.scrollTop + (rect.top - canvasRect.top) / zoom - canvasRect.height / 3 / zoom
+              canvas.scrollTo({ top: Math.max(0, target), behavior: "smooth" })
+            }
+          }
+        }
+      }
+      window.setTimeout(() => {
+        setActiveCommentId((cur) => (cur === c.id ? null : cur))
+      }, 5000)
+    },
+    [zoom]
+  )
+
+  const toggleComments = React.useCallback(
+    (open?: boolean) => {
+      setCommentsOpen((prev) => {
+        const next = open ?? !prev
+        if (!next) setPendingQuote(null)
+        return next
+      })
+    },
+    [setPendingQuote]
+  )
+
+  /** Capture the current selection as a quote and open the comment composer. */
+  const openCommentComposer = React.useCallback(() => {
+    const el = pageRef.current
+    const sel = window.getSelection()
+    const hasSelection =
+      !!el && !!sel && sel.rangeCount > 0 && !sel.isCollapsed && el.contains(sel.anchorNode)
+    if (hasSelection && el) {
+      const off = selectionOffsets(el)
+      const quote = (sel?.toString() ?? "").replace(/\s+/g, " ").trim().slice(0, 400)
+      setPendingQuote({ quote, offset: off?.start ?? 0 })
+    } else {
+      setPendingQuote({ quote: "", offset: 0 })
+    }
+    setCommentsOpen(true)
+    setBubble(null)
+  }, [setPendingQuote])
 
   const replaceDocumentHtml = React.useCallback(
     (html: string) => {
@@ -645,11 +914,16 @@ img { max-width: 100%; }
       } else if (k === "\\") {
         e.preventDefault()
         clearFormatting()
+      } else if (k === "m" && e.altKey) {
+        e.preventDefault()
+        openCommentComposer()
+      } else if (k === "escape") {
+        setBubble(null)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [performSave, printDoc, clearFormatting])
+  }, [performSave, printDoc, clearFormatting, openCommentComposer])
 
   /* ---------------- editor api for children ---------------- */
   const others = React.useMemo(() => presence.filter((u) => u.id !== user?.id), [presence, user?.id])
@@ -694,6 +968,13 @@ img { max-width: 100%; }
     },
     presence: others,
     connected,
+    /* comments */
+    commentsOpen,
+    toggleComments,
+    openCommentComposer,
+    unresolvedCommentCount: comments.filter((c) => !c.resolved).length,
+    /* insert table */
+    insertTable,
   }
 
   const openDialog = (d: string | null) => setDialog(d)
@@ -722,17 +1003,45 @@ img { max-width: 100%; }
       <Toolbar api={api} />
 
       {doc ? (
-        <EditorCanvas
-          key={docId}
-          pageRef={pageRef}
-          initialContent={doc.content}
-          remoteContent={remoteContent}
-          onRemoteApplied={() => setRemoteContent(null)}
-          onInput={handleInput}
-          spellCheck={spellCheck}
-          zoom={zoom}
-          remoteCursors={remoteCursors}
-        />
+        <div className="relative flex min-h-0 flex-1">
+          <EditorCanvas
+            key={docId}
+            pageRef={pageRef}
+            initialContent={doc.content}
+            remoteContent={remoteContent}
+            onRemoteApplied={() => setRemoteContent(null)}
+            onInput={handleInput}
+            spellCheck={spellCheck}
+            zoom={zoom}
+            remoteCursors={remoteCursors}
+            comments={comments}
+            activeCommentId={activeCommentId}
+            contentTick={contentTick}
+            onCommentClick={(id) => {
+              const c = comments.find((t) => t.id === id)
+              if (c) {
+                focusComment(c)
+                setCommentsOpen(true)
+              }
+            }}
+          />
+          <CommentsSidebar
+            open={commentsOpen}
+            onClose={() => toggleComments(false)}
+            comments={comments}
+            loading={commentsLoading}
+            activeCommentId={activeCommentId}
+            pendingQuote={pendingQuote}
+            busy={commentBusy}
+            meId={user?.id ?? null}
+            onSubmitComment={(text) => void submitComment(text)}
+            onCancelComposer={() => setPendingQuote(null)}
+            onReply={(parentId, text) => void submitReply(parentId, text)}
+            onToggleResolve={(c) => void toggleResolveComment(c)}
+            onDelete={(c) => void deleteComment(c)}
+            onFocusComment={focusComment}
+          />
+        </div>
       ) : (
         <div className="doc-canvas-bg flex flex-1 items-start justify-center overflow-hidden p-10">
           <div className="w-full max-w-[816px] space-y-4 rounded-sm bg-white p-24 shadow-lg">
@@ -750,6 +1059,11 @@ img { max-width: 100%; }
 
       <StatusPill api={api} />
 
+      {/* Selection comment bubble */}
+      {bubble && !pendingQuote && (
+        <CommentBubble x={bubble.x} y={bubble.y} onAdd={openCommentComposer} />
+      )}
+
       {/* Dialogs */}
       <LinkDialog
         open={dialog === "link"}
@@ -758,6 +1072,7 @@ img { max-width: 100%; }
         hasSelection={linkHasSelection}
       />
       <ImageDialog open={dialog === "image"} onOpenChange={onDialogChange} onInsert={insertImage} />
+      <TableDialog open={dialog === "table"} onOpenChange={onDialogChange} onInsert={insertTable} />
       <FindReplaceDialog
         open={dialog === "find"}
         onOpenChange={onDialogChange}

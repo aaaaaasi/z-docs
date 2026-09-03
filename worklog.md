@@ -122,3 +122,29 @@ Work Log:
 Stage Summary:
 - Z-Docs is complete and verified: home (templates, grid/list, search, stars, trash, context menus) + editor (full toolbar, autosave, versions, share, print/export, dark mode) + realtime collab (presence, live sync, remote cursors) + AI writing assistant. A "Welcome to Z-Docs" seed doc is included.
 - Next-phase ideas for the scheduled reviewer: comments/annotations, OAuth identities, richer version diffs, offline support, mobile drawing/annotations, doc folders.
+
+---
+Task ID: 7
+Agent: main (Z.ai Code) — scheduled webDevReview round
+Task: Assess project status, QA via agent-browser, fix bugs, add comments feature + insert table + styling polish
+
+Work Log:
+- Health check: dev server :3000 (200), collab-service :3003 via gateway (200), lint clean, dev.log clean, perf DCL 129ms.
+- QA round 1 findings (agent-browser + VLM): no functional bugs (autosave, bold, dark mode 9/10, no console errors). Styling issues: "Normal text" truncated in style dropdown (w-118px), mobile template gallery cut-off look, aggressive title truncation, low-contrast "soon" badges, template hover states static.
+- NEW FEATURE — threaded comments system (full stack):
+  - Prisma: Comment model (parentId self-relation for threads, author snapshot id/name/color, quote + anchorOffset, resolved, cascade delete, index docId+createdAt). db:push OK.
+  - API: GET/POST /api/documents/[id]/comments (threaded list, create + reply), PATCH/DELETE /api/comments/[id] (resolve/reopen, edit, delete). curl smoke-tested all operations incl. cascade.
+  - collab-service: new `comments-changed` relay (client→server action add/reply/resolve/unresolve/delete/edit + commentId; server broadcasts to room except sender). Hot-reloaded, verified via gateway.
+  - use-collab.ts: onCommentsChanged handler + emitCommentsChanged; comments live-sync verified with 2 sessions (guest comment appeared in main session + live text sync still works).
+  - Frontend: comments-sidebar.tsx (right panel with open/resolved sections, thread cards with avatars, quoted-text chips, reply forms, resolve/reopen, delete; full-width overlay on mobile; 340px slide on desktop narrowing the canvas), CommentBubble (fixed-position pill above text selection), comment highlights overlay + clickable count markers in editor-canvas (yellow highlight rects + author-colored marker chips), quote anchoring via new findQuoteRange (offset hint + full-text fallback, re-aligns after edits via contentTick).
+  - Entry points: toolbar comment button with unresolved-count badge, header comments toggle with badge, Insert menu → Comment, Ctrl+Alt+M shortcut, shortcuts dialog updated.
+- BUG FOUND & FIXED (pre-existing!): overlay geometry in editor-canvas used hardcoded padY=40 but .doc-page has margin: 40px auto 80px → real offset (40,80). All overlays (remote cursors AND comment highlights) were rendered 40px too high. Fixed by using el.offsetLeft/offsetTop dynamically; also wrapper bottomPad 100→120. Verified pixel-perfect alignment (highlight rect == text rect).
+- BUG FIXED: db.comment undefined after schema push — running dev server had stale Prisma client in memory; restarted dev server (kill 5200, relaunch orphaned `( nohup bun run dev & )` pattern). NOTE for future schema changes: always restart the dev server after db:push.
+- NEW FEATURE — Insert Table: TableDialog with 8×8 hover grid picker (dialogs-basic.tsx), insertTable API (HTML table.zdocs-table + trailing <p>), Insert menu item, CSS for tables. Initial attempt with Popover-in-DropdownMenu failed (dropdown closes → popover unmounts); refactored to Dialog pattern like link/image. Verified: 3×3 inserted, cells editable.
+- Styling polish: paragraph-style select widened 118→132px, template gallery mobile scroll-snap + tighter gap + "Use template" hover overlay + stronger hover lift, AI card icon rotate on hover, docs-grid card hover lift + star scale, SOON badges as bordered pills with better contrast, view-switch fade animation (docs-app keyed div + .animate-view-in), prefers-reduced-motion support, fade-in animation for comment cards/bubbles/composer.
+
+Stage Summary:
+- Comments verified end-to-end: bubble → composer → submit → thread card + highlight + marker → reply (marker count 2) → resolve (highlight cleared, "1 resolved thread" section) → reopen → marker click focuses/scrolls/flashes → 2-session live sync. VLM: comment UI 9/10, mobile comments 9/10, table+aligned highlight 9/10.
+- Table insert verified (3×3, editable cells). Home page final VLM 8/10 (only remaining nit: carousel shows partially-cut 6th card — intentional Google-Docs-style affordance).
+- State: dev server restarted (fresh pid tree), collab-service hot-reloaded with comments-changed, lint clean, all API routes 200, QA test docs deleted, "Welcome to Z-Docs" seed intact.
+- Known limitations / next-phase ideas: comments anchor by quote-text search (rich anchors with persistent marks could survive edits better), reply notifications only via toast, no comment editing inline (PATCH /api/comments/:id content ready but no UI), table column/row insert UI, folders for docs home, OAuth identities.

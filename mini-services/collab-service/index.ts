@@ -9,8 +9,8 @@
  * /home/z/my-project/examples/websocket/server.ts for the same pattern).
  *
  * Event contract (matches src/hooks/use-collab.ts in the Next.js app):
- *   client -> server: join-doc, leave-doc, doc-change, cursor
- *   server -> client: presence, doc-change, cursor
+ *   client -> server: join-doc, leave-doc, doc-change, cursor, comments-changed
+ *   server -> client: presence, doc-change, cursor, comments-changed
  */
 
 import { createServer } from 'http'
@@ -40,6 +40,13 @@ interface CursorPayload {
   docId: string
   start: number
   end: number
+}
+
+interface CommentsChangedPayload {
+  docId: string
+  action: 'add' | 'reply' | 'resolve' | 'unresolve' | 'delete' | 'edit'
+  commentId?: string
+  by?: string
 }
 
 interface PresencePayload {
@@ -173,6 +180,23 @@ io.on('connection', (socket: Socket) => {
       user: session.user,
     }
     socket.to(roomName(docId)).emit('cursor', broadcast)
+  })
+
+  // ---------------------------------------------------------- comments-changed
+  // A client mutated a comment (add/reply/resolve/delete) through the REST
+  // API; relay a lightweight notification so other editors refetch the
+  // comment list for this document. No payload data — the source of truth
+  // is always the database.
+  socket.on('comments-changed', (payload: CommentsChangedPayload) => {
+    const { docId, action, commentId } = payload ?? ({} as CommentsChangedPayload)
+    if (!docId) return
+
+    socket.to(roomName(docId)).emit('comments-changed', {
+      docId,
+      action,
+      commentId,
+      by: socket.id,
+    })
   })
 
   // ---------------------------------------------------------- disconnect

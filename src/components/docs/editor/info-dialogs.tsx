@@ -46,12 +46,14 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl / ⌘ + U", "Underline"],
   ["Ctrl / ⌘ + K", "Insert link"],
   ["Ctrl / ⌘ + F", "Find and replace"],
+  ["Ctrl / ⌘ + Alt / ⌥ + M", "Add comment on selection"],
   ["Ctrl / ⌘ + S", "Save now"],
   ["Ctrl / ⌘ + P", "Print"],
   ["Ctrl / ⌘ + Z", "Undo"],
   ["Ctrl / ⌘ + Y", "Redo"],
   ["Ctrl / ⌘ + \\", "Clear formatting"],
   ["Ctrl / ⌘ + Enter", "Generate AI draft (in Help me write)"],
+  ["Ctrl / ⌘ + Enter", "Post comment / reply (in comment forms)"],
   ["Esc", "Close dialogs"],
 ]
 

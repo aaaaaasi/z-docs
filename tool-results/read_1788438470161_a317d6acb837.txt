@@ -1,0 +1,794 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { Button } from "@/components/ui/button"
+     5→import { Skeleton } from "@/components/ui/skeleton"
+     6→import { useToast } from "@/hooks/use-toast"
+     7→import { useDocsStore } from "@/store/docs-store"
+     8→import { useLocalUser } from "@/lib/identity"
+     9→import { useCollab, type DocChangePayload } from "@/hooks/use-collab"
+    10→import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
+    11→import { selectionOffsets, selectedBlocks, escapeRegex } from "@/lib/editor-dom"
+    12→import type { DocumentDTO } from "@/lib/docs-types"
+    13→import { EditorCanvas } from "./editor-canvas"
+    14→import { EditorHeader } from "./editor-header"
+    15→import { MenuBar } from "./menu-bar"
+    16→import { Toolbar } from "./toolbar"
+    17→import { StatusPill } from "./status-pill"
+    18→import { DEFAULT_FORMAT, type EditorApi, type FormatState } from "./editor-types"
+    19→import { LinkDialog, ImageDialog, FindReplaceDialog } from "./dialogs-basic"
+    20→import { ShareDialog } from "./share-dialog"
+    21→import { VersionHistorySheet } from "./version-history"
+    22→import { HelpWriteDialog } from "./help-write-dialog"
+    23→import { WordCountDialog, ShortcutsDialog, AboutDialog } from "./info-dialogs"
+    24→import { FileWarning, Loader2 } from "lucide-react"
+    25→
+    26→export function EditorView() {
+    27→  const docId = useDocsStore((s) => s.currentDocId) ?? ""
+    28→  const goHomeStore = useDocsStore((s) => s.goHome)
+    29→  const openDoc = useDocsStore((s) => s.openDoc)
+    30→  const patchDocMeta = useDocsStore((s) => s.patchDocMeta)
+    31→  const openAiOnEditor = useDocsStore((s) => s.openAiOnEditor)
+    32→  const setOpenAiOnEditor = useDocsStore((s) => s.setOpenAiOnEditor)
+    33→  const { toast } = useToast()
+    34→  const user = useLocalUser()
+    35→
+    36→  /* ---------------- document state ---------------- */
+    37→  const [doc, setDoc] = React.useState<DocumentDTO | null>(null)
+    38→  const [loadError, setLoadError] = React.useState<string | null>(null)
+    39→  const [title, setTitle] = React.useState("")
+    40→  const [starred, setStarred] = React.useState(false)
+    41→  const [saveStatus, setSaveStatus] = React.useState<"saved" | "saving" | "unsaved" | "error">("saved")
+    42→  const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
+    43→  const [stats, setStats] = React.useState({ words: 0, chars: 0, paragraphs: 0, pages: 1, readingMinutes: 1 })
+    44→  const [zoom, setZoomState] = React.useState(1)
+    45→  const [spellCheck, setSpellCheck] = React.useState(true)
+    46→  const [fmt, setFmt] = React.useState<FormatState>(DEFAULT_FORMAT)
+    47→  const [remoteContent, setRemoteContent] = React.useState<string | null>(null)
+    48→  const [dialog, setDialog] = React.useState<string | null>(null)
+    49→  const [linkHasSelection, setLinkHasSelection] = React.useState(false)
+    50→
+    51→  /* ---------------- refs ---------------- */
+    52→  const pageRef = React.useRef<HTMLDivElement | null>(null)
+    53→  const titleInputRef = React.useRef<HTMLInputElement | null>(null)
+    54→  const savedRangeRef = React.useRef<Range | null>(null)
+    55→  const contentRef = React.useRef("")
+    56→  const latestTitleRef = React.useRef("")
+    57→  const dirtyRef = React.useRef(false)
+    58→  const lastInputAtRef = React.useRef(0)
+    59→  const lastCursorEmitRef = React.useRef(0)
+    60→  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+    61→  const statsTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+    62→  const broadcastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+    63→  const versionCounterRef = React.useRef(0)
+    64→  const myIdRef = React.useRef<string | null>(null)
+    65→
+    66→  /* ---------------- load document ---------------- */
+    67→  React.useEffect(() => {
+    68→    let cancelled = false
+    69→    setDoc(null)
+    70→    setLoadError(null)
+    71→    setSaveStatus("saved")
+    72→    setRemoteContent(null)
+    73→    fetch(`/api/documents/${docId}`)
+    74→      .then((r) => {
+    75→        if (r.status === 404) throw new Error("not-found")
+    76→        if (!r.ok) throw new Error("load-failed")
+    77→        return r.json() as Promise<{ document: DocumentDTO }>
+    78→      })
+    79→      .then((data) => {
+    80→        if (cancelled) return
+    81→        const d = data.document
+    82→        setDoc(d)
+    83→        setTitle(d.title)
+    84→        latestTitleRef.current = d.title
+    85→        contentRef.current = d.content
+    86→        setStarred(d.starred)
+    87→        setStats(docStats(d.content))
+    88→        setLastSavedAt(new Date(d.updatedAt))
+    89→      })
+    90→      .catch((e: Error) => {
+    91→        if (cancelled) return
+    92→        setLoadError(e.message === "not-found" ? "This document doesn't exist anymore." : "Couldn't load this document.")
+    93→      })
+    94→    return () => {
+    95→      cancelled = true
+    96→    }
+    97→  }, [docId])
+    98→
+    99→  // auto-open the AI writer when requested from the template gallery
+   100→  React.useEffect(() => {
+   101→    if (openAiOnEditor && doc) {
+   102→      setDialog("helpwrite")
+   103→      setOpenAiOnEditor(false)
+   104→    }
+   105→  }, [openAiOnEditor, doc, setOpenAiOnEditor])
+   106→
+   107→  /* ---------------- collaboration ---------------- */
+   108→  const onDocChange = React.useCallback((p: DocChangePayload) => {
+   109→    if (myIdRef.current && p.by === myIdRef.current) return
+   110→    // last-write-wins: skip remote updates while actively typing
+   111→    if (Date.now() - lastInputAtRef.current < 1600) return
+   112→    if (p.content != null) {
+   113→      if (p.content !== contentRef.current) {
+   114→        contentRef.current = p.content
+   115→        setRemoteContent(p.content)
+   116→        setStats(docStats(p.content))
+   117→      }
+   118→      setSaveStatus("saved")
+   119→      setLastSavedAt(new Date())
+   120→    }
+   121→    if (p.title != null && document.activeElement !== titleInputRef.current && p.title !== latestTitleRef.current) {
+   122→      latestTitleRef.current = p.title
+   123→      setTitle(p.title)
+   124→    }
+   125→  }, [])
+   126→
+   127→  const { connected, myId, presence, remoteCursors, emitDocChange, emitCursor } = useCollab(
+   128→    docId || null,
+   129→    user,
+   130→    onDocChange
+   131→  )
+   132→  React.useEffect(() => {
+   133→    myIdRef.current = myId
+   134→  }, [myId])
+   135→
+   136→  /* ---------------- autosave ---------------- */
+   137→  const performSave = React.useCallback(
+   138→    async (manual = false) => {
+   139→      if (!docId) return
+   140→      const content = contentRef.current
+   141→      const t = latestTitleRef.current
+   142→      setSaveStatus("saving")
+   143→      try {
+   144→        const res = await fetch(`/api/documents/${docId}`, {
+   145→          method: "PATCH",
+   146→          headers: { "Content-Type": "application/json" },
+   147→          body: JSON.stringify({ content, title: t }),
+   148→        })
+   149→        if (!res.ok) throw new Error("save failed")
+   150→        const data = (await res.json()) as { document: DocumentDTO }
+   151→        dirtyRef.current = false
+   152→        setSaveStatus("saved")
+   153→        setLastSavedAt(new Date())
+   154→        patchDocMeta(docId, {
+   155→          title: t,
+   156→          snippet: getSnippet(content),
+   157→          wordCount: countWords(htmlToText(content)),
+   158→          updatedAt: data.document.updatedAt,
+   159→        })
+   160→        if (manual) toast({ title: "Saved", description: "All changes are safe." })
+   161→      } catch {
+   162→        setSaveStatus("error")
+   163→        // retry shortly
+   164→        if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+   165→        saveTimerRef.current = setTimeout(() => void performSave(), 5000)
+   166→      }
+   167→    },
+   168→    [docId, patchDocMeta, toast]
+   169→  )
+   170→
+   171→  const scheduleSave = React.useCallback(() => {
+   172→    dirtyRef.current = true
+   173→    setSaveStatus("unsaved")
+   174→    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+   175→    saveTimerRef.current = setTimeout(() => void performSave(), 900)
+   176→  }, [performSave])
+   177→
+   178→  // flush unsaved changes when leaving the doc
+   179→  React.useEffect(() => {
+   180→    const id = docId
+   181→    return () => {
+   182→      if (!dirtyRef.current || !id) return
+   183→      try {
+   184→        fetch(`/api/documents/${id}`, {
+   185→          method: "PATCH",
+   186→          keepalive: true,
+   187→          headers: { "Content-Type": "application/json" },
+   188→          body: JSON.stringify({ content: contentRef.current, title: latestTitleRef.current }),
+   189→        }).catch(() => {})
+   190→      } catch {
+   191→        // ignore
+   192→      }
+   193→    }
+   194→  }, [docId])
+   195→
+   196→  // warn before leaving with unsaved changes
+   197→  React.useEffect(() => {
+   198→    const onBefore = (e: BeforeUnloadEvent) => {
+   199→      if (dirtyRef.current) {
+   200→        e.preventDefault()
+   201→        e.returnValue = ""
+   202→      }
+   203→    }
+   204→    window.addEventListener("beforeunload", onBefore)
+   205→    return () => window.removeEventListener("beforeunload", onBefore)
+   206→  }, [])
+   207→
+   208→  /* ---------------- content input pipeline ---------------- */
+   209→  const scheduleStats = React.useCallback(() => {
+   210→    if (statsTimerRef.current) clearTimeout(statsTimerRef.current)
+   211→    statsTimerRef.current = setTimeout(() => {
+   212→      setStats(docStats(contentRef.current))
+   213→    }, 400)
+   214→  }, [])
+   215→
+   216→  const scheduleBroadcast = React.useCallback(() => {
+   217→    if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
+   218→    broadcastTimerRef.current = setTimeout(() => {
+   219→      versionCounterRef.current += 1
+   220→      emitDocChange(contentRef.current, latestTitleRef.current, versionCounterRef.current)
+   221→    }, 300)
+   222→  }, [emitDocChange])
+   223→
+   224→  const handleInput = React.useCallback(() => {
+   225→    const el = pageRef.current
+   226→    if (!el) return
+   227→    contentRef.current = el.innerHTML
+   228→    lastInputAtRef.current = Date.now()
+   229→    scheduleSave()
+   230→    scheduleBroadcast()
+   231→    scheduleStats()
+   232→  }, [scheduleSave, scheduleBroadcast, scheduleStats])
+   233→
+   234→  /* ---------------- format state ---------------- */
+   235→  const refreshFmt = React.useCallback(() => {
+   236→    const q = (c: string) => {
+   237→      try {
+   238→        return document.queryCommandState(c)
+   239→      } catch {
+   240→        return false
+   241→      }
+   242→    }
+   243→    let block = "p"
+   244→    try {
+   245→      block = (document.queryCommandValue("formatBlock") || "p").toLowerCase()
+   246→    } catch {
+   247→      // ignore
+   248→    }
+   249→    const sel = window.getSelection()
+   250→    const node = sel?.anchorNode
+   251→    const elem =
+   252→      node && node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement | null)
+   253→    const computed = elem ? window.getComputedStyle(elem) : null
+   254→    const fontName = (computed?.fontFamily ?? "Arial").split(",")[0].replace(/["']/g, "").trim()
+   255→    const fontSizePt = computed ? Math.max(6, Math.round(parseFloat(computed.fontSize) / 1.3333)) : 11
+   256→
+   257→    setFmt({
+   258→      bold: q("bold"),
+   259→      italic: q("italic"),
+   260→      underline: q("underline"),
+   261→      strike: q("strikeThrough"),
+   262→      superscript: q("superscript"),
+   263→      subscript: q("subscript"),
+   264→      ul: q("insertUnorderedList"),
+   265→      ol: q("insertOrderedList"),
+   266→      block,
+   267→      align: q("justifyCenter")
+   268→        ? "center"
+   269→        : q("justifyRight")
+   270→          ? "right"
+   271→          : q("justifyFull")
+   272→            ? "full"
+   273→            : "left",
+   274→      fontName,
+   275→      fontSize: fontSizePt,
+   276→      link: !!elem?.closest("a"),
+   277→    })
+   278→  }, [])
+   279→
+   280→  React.useEffect(() => {
+   281→    const onSel = () => {
+   282→      const el = pageRef.current
+   283→      if (!el) return
+   284→      const sel = window.getSelection()
+   285→      if (!sel || !sel.anchorNode || !el.contains(sel.anchorNode)) return
+   286→      if (sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange()
+   287→      refreshFmt()
+   288→      const now = Date.now()
+   289→      if (now - lastCursorEmitRef.current > 140) {
+   290→        lastCursorEmitRef.current = now
+   291→        const off = selectionOffsets(el)
+   292→        if (off) emitCursor(off.start, off.end)
+   293→      }
+   294→    }
+   295→    document.addEventListener("selectionchange", onSel)
+   296→    return () => document.removeEventListener("selectionchange", onSel)
+   297→  }, [refreshFmt, emitCursor])
+   298→
+   299→  /* ---------------- editing commands ---------------- */
+   300→  /** Focus the editor and make sure the last valid selection is active — so
+   301→   *  toolbar clicks (which blur the editor) never lose the user's selection. */
+   302→  const ensureSelection = React.useCallback(() => {
+   303→    const el = pageRef.current
+   304→    if (!el) return
+   305→    el.focus()
+   306→    const sel = window.getSelection()
+   307→    const inside = !!sel && sel.rangeCount > 0 && !!sel.anchorNode && el.contains(sel.anchorNode)
+   308→    if (!inside && savedRangeRef.current) {
+   309→      try {
+   310→        sel?.removeAllRanges()
+   311→        sel?.addRange(savedRangeRef.current.cloneRange())
+   312→      } catch {
+   313→        // saved range no longer valid
+   314→      }
+   315→    }
+   316→  }, [])
+   317→
+   318→  const exec = React.useCallback(
+   319→    (cmd: string, val?: string) => {
+   320→      const el = pageRef.current
+   321→      if (!el) return
+   322→      ensureSelection()
+   323→      try {
+   324→        document.execCommand(cmd, false, val)
+   325→      } catch {
+   326→        // command unsupported — ignore
+   327→      }
+   328→      handleInput()
+   329→      refreshFmt()
+   330→    },
+   331→    [handleInput, refreshFmt, ensureSelection]
+   332→  )
+   333→
+   334→  const applyFontSize = React.useCallback(
+   335→    (pt: number) => {
+   336→      const el = pageRef.current
+   337→      if (!el) return
+   338→      ensureSelection()
+   339→      document.execCommand("fontSize", false, "7")
+   340→      el.querySelectorAll('font[size="7"]').forEach((f) => {
+   341→        const span = document.createElement("span")
+   342→        span.style.fontSize = `${pt}pt`
+   343→        span.innerHTML = f.innerHTML
+   344→        f.replaceWith(span)
+   345→      })
+   346→      handleInput()
+   347→      refreshFmt()
+   348→    },
+   349→    [handleInput, refreshFmt]
+   350→  )
+   351→
+   352→  const applyLineSpacing = React.useCallback(
+   353→    (lh: number) => {
+   354→      const el = pageRef.current
+   355→      if (!el) return
+   356→      el.focus()
+   357→      const blocks = selectedBlocks(el)
+   358→      blocks.forEach((b) => {
+   359→        b.style.lineHeight = String(lh)
+   360→      })
+   361→      handleInput()
+   362→    },
+   363→    [handleInput]
+   364→  )
+   365→
+   366→  const applyAlignment = React.useCallback(
+   367→    (a: "left" | "center" | "right" | "full") => {
+   368→      const cmd =
+   369→        a === "center" ? "justifyCenter" : a === "right" ? "justifyRight" : a === "full" ? "justifyFull" : "justifyLeft"
+   370→      exec(cmd)
+   371→    },
+   372→    [exec]
+   373→  )
+   374→
+   375→  const clearFormatting = React.useCallback(() => {
+   376→    exec("removeFormat")
+   377→    exec("formatBlock", "p")
+   378→  }, [exec])
+   379→
+   380→  const focusEditor = React.useCallback(() => {
+   381→    const el = pageRef.current
+   382→    if (!el) return
+   383→    el.focus()
+   384→    const sel = window.getSelection()
+   385→    const range = document.createRange()
+   386→    range.selectNodeContents(el)
+   387→    range.collapse(false)
+   388→    sel?.removeAllRanges()
+   389→    sel?.addRange(range)
+   390→  }, [])
+   391→
+   392→  const onTitleChange = React.useCallback(
+   393→    (t: string) => {
+   394→      setTitle(t)
+   395→      latestTitleRef.current = t
+   396→      scheduleSave()
+   397→      scheduleBroadcast()
+   398→    },
+   399→    [scheduleSave, scheduleBroadcast]
+   400→  )
+   401→
+   402→  /* ---------------- insert helpers ---------------- */
+   403→  const insertLink = React.useCallback(
+   404→    (url: string, text: string) => {
+   405→      const el = pageRef.current
+   406→      if (!el) return
+   407→      ensureSelection()
+   408→      const sel = window.getSelection()
+   409→      const collapsed = !sel || sel.isCollapsed || !el.contains(sel.anchorNode)
+   410→      if (collapsed) {
+   411→        const safeUrl = url.replace(/"/g, "%22")
+   412→        document.execCommand(
+   413→          "insertHTML",
+   414→          false,
+   415→          `<a href="${safeUrl}">${escapeHtml(text || url)}</a>`
+   416→        )
+   417→      } else {
+   418→        document.execCommand("createLink", false, url)
+   419→      }
+   420→      handleInput()
+   421→      refreshFmt()
+   422→    },
+   423→    [handleInput, refreshFmt, ensureSelection]
+   424→  )
+   425→
+   426→  const insertImage = React.useCallback(
+   427→    (src: string, alt: string) => {
+   428→      const el = pageRef.current
+   429→      if (!el) return
+   430→      ensureSelection()
+   431→      const safeSrc = src.replace(/"/g, "%22")
+   432→      document.execCommand(
+   433→        "insertHTML",
+   434→        false,
+   435→        `<img src="${safeSrc}" alt="${escapeHtml(alt)}" style="max-width:100%">`
+   436→      )
+   437→      handleInput()
+   438→    },
+   439→    [handleInput]
+   440→  )
+   441→
+   442→  const insertHtmlAtCursor = React.useCallback(
+   443→    (html: string) => {
+   444→      const el = pageRef.current
+   445→      if (!el) return
+   446→      ensureSelection()
+   447→      document.execCommand("insertHTML", false, html)
+   448→      handleInput()
+   449→    },
+   450→    [handleInput, ensureSelection]
+   451→  )
+   452→
+   453→  const replaceDocumentHtml = React.useCallback(
+   454→    (html: string) => {
+   455→      const el = pageRef.current
+   456→      if (!el) return
+   457→      el.innerHTML = html
+   458→      handleInput()
+   459→    },
+   460→    [handleInput]
+   461→  )
+   462→
+   463→  /* ---------------- find & replace ---------------- */
+   464→  const countMatches = React.useCallback((find: string, caseSensitive: boolean) => {
+   465→    const el = pageRef.current
+   466→    if (!el || !find) return 0
+   467→    const re = new RegExp(escapeRegex(find), caseSensitive ? "g" : "gi")
+   468→    let count = 0
+   469→    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+   470→    while (walker.nextNode()) {
+   471→      const t = walker.currentNode.textContent ?? ""
+   472→      const m = t.match(re)
+   473→      if (m) count += m.length
+   474→    }
+   475→    return count
+   476→  }, [])
+   477→
+   478→  const replaceAllMatches = React.useCallback(
+   479→    (find: string, replace: string, caseSensitive: boolean) => {
+   480→      const el = pageRef.current
+   481→      if (!el || !find) return 0
+   482→      const re = new RegExp(escapeRegex(find), caseSensitive ? "g" : "gi")
+   483→      let count = 0
+   484→      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+   485→      const nodes: Text[] = []
+   486→      while (walker.nextNode()) nodes.push(walker.currentNode as Text)
+   487→      for (const n of nodes) {
+   488→        const t = n.textContent ?? ""
+   489→        const m = t.match(re)
+   490→        if (m) {
+   491→          count += m.length
+   492→          n.textContent = t.replace(re, replace)
+   493→        }
+   494→      }
+   495→      if (count > 0) {
+   496→        handleInput()
+   497→        toast({ title: `Replaced ${count} ${count === 1 ? "match" : "matches"}` })
+   498→      }
+   499→      return count
+   500→    },
+   501→    [handleInput, toast]
+   502→  )
+   503→
+   504→  /* ---------------- export & print ---------------- */
+   505→  const buildExportHtml = React.useCallback(() => {
+   506→    const t = escapeHtml(latestTitleRef.current || "Untitled document")
+   507→    return `<!DOCTYPE html>
+   508→<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+   509→<head><meta charset="utf-8"><title>${t}</title>
+   510→<style>
+   511→@page { margin: 1in; }
+   512→body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.15; color: #202124; }
+   513→h1 { font-size: 20pt; font-weight: 400; color: #3c4043; margin: 16pt 0 6.5pt; }
+   514→h2 { font-size: 16pt; font-weight: 400; color: #3c4043; margin: 14pt 0 5pt; }
+   515→h3 { font-size: 14pt; font-weight: 400; color: #434343; margin: 12pt 0 4pt; }
+   516→p { margin: 0 0 7.5pt; }
+   517→ul { list-style: disc outside; padding-left: 40px; margin: 8pt 0; }
+   518→ol { list-style: decimal outside; padding-left: 40px; margin: 8pt 0; }
+   519→blockquote { border-left: 3px solid #dadce0; margin: 8pt 0; padding: 4pt 0 4pt 16pt; color: #5f6368; }
+   520→a { color: #0b6b62; }
+   521→img { max-width: 100%; }
+   522→</style></head>
+   523→<body>${contentRef.current}</body></html>`
+   524→  }, [])
+   525→
+   526→  const printDoc = React.useCallback(() => {
+   527→    const html = buildExportHtml()
+   528→    const iframe = document.createElement("iframe")
+   529→    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;"
+   530→    document.body.appendChild(iframe)
+   531→    const idoc = iframe.contentDocument
+   532→    if (!idoc) return
+   533→    idoc.open()
+   534→    idoc.write(html)
+   535→    idoc.close()
+   536→    setTimeout(() => {
+   537→      iframe.contentWindow?.focus()
+   538→      iframe.contentWindow?.print()
+   539→      setTimeout(() => iframe.remove(), 800)
+   540→    }, 300)
+   541→  }, [buildExportHtml])
+   542→
+   543→  const downloadDoc = React.useCallback(
+   544→    (format: "doc" | "html" | "txt") => {
+   545→      const name = (latestTitleRef.current || "Untitled document").replace(/[^\w\d\-. ]+/g, "_").trim() || "document"
+   546→      let blob: Blob
+   547→      if (format === "txt") {
+   548→        blob = new Blob([htmlToText(contentRef.current)], { type: "text/plain;charset=utf-8" })
+   549→      } else if (format === "html") {
+   550→        blob = new Blob([buildExportHtml()], { type: "text/html;charset=utf-8" })
+   551→      } else {
+   552→        blob = new Blob(["\ufeff" + buildExportHtml()], { type: "application/msword" })
+   553→      }
+   554→      const url = URL.createObjectURL(blob)
+   555→      const a = document.createElement("a")
+   556→      a.href = url
+   557→      a.download = `${name}.${format}`
+   558→      document.body.appendChild(a)
+   559→      a.click()
+   560→      a.remove()
+   561→      URL.revokeObjectURL(url)
+   562→      toast({ title: "Download started", description: a.download })
+   563→    },
+   564→    [buildExportHtml, toast]
+   565→  )
+   566→
+   567→  /* ---------------- document actions ---------------- */
+   568→  const goHome = React.useCallback(() => {
+   569→    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+   570→    if (dirtyRef.current) void performSave()
+   571→    goHomeStore()
+   572→  }, [performSave, goHomeStore])
+   573→
+   574→  const toggleStar = React.useCallback(async () => {
+   575→    const next = !starred
+   576→    setStarred(next)
+   577→    patchDocMeta(docId, { starred: next })
+   578→    try {
+   579→      await fetch(`/api/documents/${docId}`, {
+   580→        method: "PATCH",
+   581→        headers: { "Content-Type": "application/json" },
+   582→        body: JSON.stringify({ starred: next }),
+   583→      })
+   584→    } catch {
+   585→      setStarred(!next)
+   586→    }
+   587→  }, [starred, docId, patchDocMeta])
+   588→
+   589→  const moveToTrash = React.useCallback(async () => {
+   590→    if (dirtyRef.current) await performSave()
+   591→    await fetch(`/api/documents/${docId}`, {
+   592→      method: "PATCH",
+   593→      headers: { "Content-Type": "application/json" },
+   594→      body: JSON.stringify({ trashed: true }),
+   595→    })
+   596→    toast({ title: "Moved to trash", description: latestTitleRef.current })
+   597→    goHomeStore()
+   598→  }, [docId, performSave, goHomeStore, toast])
+   599→
+   600→  const duplicate = React.useCallback(async () => {
+   601→    if (dirtyRef.current) await performSave()
+   602→    try {
+   603→      const res = await fetch(`/api/documents/${docId}/duplicate`, { method: "POST" })
+   604→      if (!res.ok) throw new Error()
+   605→      const data = (await res.json()) as { document: DocumentDTO }
+   606→      toast({ title: "Copy created", description: data.document.title })
+   607→      openDoc(data.document.id)
+   608→    } catch {
+   609→      toast({ title: "Couldn't duplicate this document", variant: "destructive" })
+   610→    }
+   611→  }, [docId, performSave, openDoc, toast])
+   612→
+   613→  const restoreVersion = React.useCallback(
+   614→    (content: string) => {
+   615→      const el = pageRef.current
+   616→      if (el) el.innerHTML = content
+   617→      contentRef.current = content
+   618→      handleInput()
+   619→      setStats(docStats(content))
+   620→    },
+   621→    [handleInput]
+   622→  )
+   623→
+   624→  /* ---------------- keyboard shortcuts ---------------- */
+   625→  React.useEffect(() => {
+   626→    const onKey = (e: KeyboardEvent) => {
+   627→      if (!(e.ctrlKey || e.metaKey)) return
+   628→      const k = e.key.toLowerCase()
+   629→      if (k === "s") {
+   630→        e.preventDefault()
+   631→        if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+   632→        void performSave(true)
+   633→      } else if (k === "f" || k === "h") {
+   634→        e.preventDefault()
+   635→        setDialog("find")
+   636→      } else if (k === "k") {
+   637→        e.preventDefault()
+   638→        const el = pageRef.current
+   639→        const sel = window.getSelection()
+   640→        setLinkHasSelection(!!el && !!sel && !sel.isCollapsed && el.contains(sel.anchorNode))
+   641→        setDialog("link")
+   642→      } else if (k === "p") {
+   643→        e.preventDefault()
+   644→        printDoc()
+   645→      } else if (k === "\\") {
+   646→        e.preventDefault()
+   647→        clearFormatting()
+   648→      }
+   649→    }
+   650→    window.addEventListener("keydown", onKey)
+   651→    return () => window.removeEventListener("keydown", onKey)
+   652→  }, [performSave, printDoc, clearFormatting])
+   653→
+   654→  /* ---------------- editor api for children ---------------- */
+   655→  const others = React.useMemo(() => presence.filter((u) => u.id !== user?.id), [presence, user?.id])
+   656→
+   657→  const api: EditorApi = {
+   658→    docId,
+   659→    title,
+   660→    starred,
+   661→    saveStatus,
+   662→    lastSavedAt,
+   663→    stats,
+   664→    zoom,
+   665→    setZoom: (z: number) => setZoomState(Math.min(2, Math.max(0.5, z))),
+   666→    spellCheck,
+   667→    setSpellCheck,
+   668→    fmt,
+   669→    exec,
+   670→    applyFontSize,
+   671→    applyLineSpacing,
+   672→    applyAlignment,
+   673→    clearFormatting,
+   674→    focusEditor,
+   675→    onTitleChange,
+   676→    focusTitle: () => titleInputRef.current?.focus(),
+   677→    toggleStar,
+   678→    saveNow: () => {
+   679→      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+   680→      void performSave(true)
+   681→    },
+   682→    printDoc,
+   683→    downloadDoc,
+   684→    goHome,
+   685→    moveToTrash,
+   686→    duplicate,
+   687→    openDialog: (d) => {
+   688→      if (d === "link") {
+   689→        const el = pageRef.current
+   690→        const sel = window.getSelection()
+   691→        setLinkHasSelection(!!el && !!sel && !sel.isCollapsed && el.contains(sel.anchorNode))
+   692→      }
+   693→      setDialog(d)
+   694→    },
+   695→    presence: others,
+   696→    connected,
+   697→  }
+   698→
+   699→  const openDialog = (d: string | null) => setDialog(d)
+   700→  const onDialogChange = (o: boolean) => {
+   701→    if (!o) setDialog(null)
+   702→  }
+   703→
+   704→  /* ---------------- render ---------------- */
+   705→  if (loadError) {
+   706→    return (
+   707→      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-background px-4 text-center">
+   708→        <FileWarning className="h-12 w-12 text-muted-foreground/40" />
+   709→        <div>
+   710→          <p className="text-lg font-semibold">{loadError}</p>
+   711→          <p className="mt-1 text-sm text-muted-foreground">It may have been deleted by someone else.</p>
+   712→        </div>
+   713→        <Button onClick={goHomeStore} className="rounded-full px-6">Back to documents</Button>
+   714→      </div>
+   715→    )
+   716→  }
+   717→
+   718→  return (
+   719→    <div className="flex h-dvh flex-col overflow-hidden bg-background">
+   720→      <EditorHeader api={api} />
+   721→      <MenuBar api={api} />
+   722→      <Toolbar api={api} />
+   723→
+   724→      {doc ? (
+   725→        <EditorCanvas
+   726→          key={docId}
+   727→          pageRef={pageRef}
+   728→          initialContent={doc.content}
+   729→          remoteContent={remoteContent}
+   730→          onRemoteApplied={() => setRemoteContent(null)}
+   731→          onInput={handleInput}
+   732→          spellCheck={spellCheck}
+   733→          zoom={zoom}
+   734→          remoteCursors={remoteCursors}
+   735→        />
+   736→      ) : (
+   737→        <div className="doc-canvas-bg flex flex-1 items-start justify-center overflow-hidden p-10">
+   738→          <div className="w-full max-w-[816px] space-y-4 rounded-sm bg-white p-24 shadow-lg">
+   739→            <div className="flex items-center gap-3 text-muted-foreground">
+   740→              <Loader2 className="h-5 w-5 animate-spin" />
+   741→              <span className="text-sm">Loading document…</span>
+   742→            </div>
+   743→            <Skeleton className="h-6 w-2/3" />
+   744→            <Skeleton className="h-4 w-full" />
+   745→            <Skeleton className="h-4 w-5/6" />
+   746→            <Skeleton className="h-4 w-4/6" />
+   747→          </div>
+   748→        </div>
+   749→      )}
+   750→
+   751→      <StatusPill api={api} />
+   752→
+   753→      {/* Dialogs */}
+   754→      <LinkDialog
+   755→        open={dialog === "link"}
+   756→        onOpenChange={onDialogChange}
+   757→        onInsert={insertLink}
+   758→        hasSelection={linkHasSelection}
+   759→      />
+   760→      <ImageDialog open={dialog === "image"} onOpenChange={onDialogChange} onInsert={insertImage} />
+   761→      <FindReplaceDialog
+   762→        open={dialog === "find"}
+   763→        onOpenChange={onDialogChange}
+   764→        onCountMatches={countMatches}
+   765→        onReplaceAll={replaceAllMatches}
+   766→      />
+   767→      <ShareDialog
+   768→        open={dialog === "share"}
+   769→        onOpenChange={onDialogChange}
+   770→        docId={docId}
+   771→        title={title}
+   772→        presence={presence}
+   773→        me={{ name: user?.name ?? "You", color: user?.color ?? "#129c58" }}
+   774→      />
+   775→      <HelpWriteDialog
+   776→        open={dialog === "helpwrite"}
+   777→        onOpenChange={onDialogChange}
+   778→        onInsert={insertHtmlAtCursor}
+   779→        onReplace={replaceDocumentHtml}
+   780→        docTitle={title}
+   781→      />
+   782→      <WordCountDialog open={dialog === "wordcount"} onOpenChange={onDialogChange} stats={stats} />
+   783→      <ShortcutsDialog open={dialog === "shortcuts"} onOpenChange={onDialogChange} />
+   784→      <AboutDialog open={dialog === "about"} onOpenChange={onDialogChange} />
+   785→      <VersionHistorySheet
+   786→        open={dialog === "versions"}
+   787→        onOpenChange={onDialogChange}
+   788→        docId={docId}
+   789→        onRestore={restoreVersion}
+   790→      />
+   791→    </div>
+   792→  )
+   793→}
+   794→

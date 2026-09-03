@@ -138,3 +138,31 @@ export function selectedBlocks(root: HTMLElement): HTMLElement[] {
 export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
+
+/**
+ * Locate the DOM range for a comment's quoted text. First tries the stored
+ * creation-time offset hint; when the document has shifted (text added or
+ * removed before the quote), falls back to a full-text search. Returns null
+ * when the quote no longer exists in the document.
+ */
+export function findQuoteRange(
+  root: HTMLElement,
+  quote: string,
+  hintOffset: number
+): { range: Range; start: number } | null {
+  if (!quote) return null
+  try {
+    const hinted = rangeFromOffsets(root, hintOffset, hintOffset + quote.length)
+    if (hinted && hinted.toString() === quote) {
+      return { range: hinted, start: hintOffset }
+    }
+    const text = root.textContent ?? ""
+    const idx = text.indexOf(quote)
+    if (idx === -1) return null
+    const found = rangeFromOffsets(root, idx, idx + quote.length)
+    if (!found || found.toString() !== quote) return null
+    return { range: found, start: idx }
+  } catch {
+    return null
+  }
+}

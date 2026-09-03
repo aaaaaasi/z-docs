@@ -1,8 +1,10 @@
 "use client"
 
 import * as React from "react"
-import type { RemoteCursor } from "@/lib/docs-types"
-import { rangeFromOffsets, selectionOffsets, setSelectionFromOffsets } from "@/lib/editor-dom"
+import { MessageSquareMore } from "lucide-react"
+import type { RemoteCursor, CommentDTO } from "@/lib/docs-types"
+import { rangeFromOffsets, selectionOffsets, setSelectionFromOffsets, findQuoteRange } from "@/lib/editor-dom"
+import { cn } from "@/lib/utils"
 
 interface CaretView {
   key: string
@@ -12,6 +14,17 @@ interface CaretView {
   top: number
   width: number
   height: number
+}
+
+interface CommentHighlightView {
+  key: string
+  id: string
+  rects: { left: number; top: number; width: number; height: number }[]
+  marker: { left: number; top: number; height: number }
+  color: string
+  count: number
+  active: boolean
+  anchored: boolean
 }
 
 interface EditorCanvasProps {
@@ -24,6 +37,10 @@ interface EditorCanvasProps {
   zoom: number
   remoteCursors: Record<string, RemoteCursor>
   emptyPlaceholder?: string
+  comments?: CommentDTO[]
+  activeCommentId?: string | null
+  contentTick?: number
+  onCommentClick?: (id: string) => void
 }
 
 export function EditorCanvas({
@@ -36,9 +53,14 @@ export function EditorCanvas({
   zoom,
   remoteCursors,
   emptyPlaceholder = "Start writing…",
+  comments = [],
+  activeCommentId = null,
+  contentTick = 0,
+  onCommentClick,
 }: EditorCanvasProps) {
   const [dims, setDims] = React.useState({ w: 816, h: 1056 })
   const [caretViews, setCaretViews] = React.useState<CaretView[]>([])
+  const [highlightViews, setHighlightViews] = React.useState<CommentHighlightView[]>([])
 
   // Mount: set initial content & editor defaults
   React.useEffect(() => {
@@ -88,6 +110,9 @@ export function EditorCanvas({
     }
     const views: CaretView[] = []
     const pageRect = el.getBoundingClientRect()
+    // the page's real offset inside the (transformed) wrapper — margins included
+    const offX = el.offsetLeft
+    const offY = el.offsetTop
     for (const c of Object.values(remoteCursors)) {
       try {
         const range = rangeFromOffsets(el, c.start, c.end)
@@ -99,8 +124,8 @@ export function EditorCanvas({
               key: `${c.user.id}-sel-${i}`,
               user: c.user,
               type: "sel",
-              left: (r.left - pageRect.left) / zoom,
-              top: (r.top - pageRect.top) / zoom,
+              left: (r.left - pageRect.left + offX) / zoom,
+              top: (r.top - pageRect.top + offY) / zoom,
               width: Math.max(r.width / zoom, 2),
               height: r.height / zoom,
             })
@@ -115,8 +140,8 @@ export function EditorCanvas({
           key: `${c.user.id}-caret`,
           user: c.user,
           type: "caret",
-          left: (caretRect.left - pageRect.left) / zoom,
-          top: (caretRect.top - pageRect.top) / zoom,
+          left: (caretRect.left - pageRect.left + offX) / zoom,
+          top: (caretRect.top - pageRect.top + offY) / zoom,
           width: 2,
           height: Math.max(caretRect.height / zoom, 14),
         })
@@ -127,9 +152,53 @@ export function EditorCanvas({
     setCaretViews(views)
   }, [remoteCursors, zoom])
 
+  // Render comment highlight overlays for unresolved threads anchored to
+  // text that still exists in the document.
+  React.useEffect(() => {
+    const el = pageRef.current
+    if (!el || comments.length === 0) {
+      setHighlightViews([])
+      return
+    }
+    const pageRect = el.getBoundingClientRect()
+    const offX = el.offsetLeft
+    const offY = el.offsetTop
+    const views: CommentHighlightView[] = []
+    for (const c of comments) {
+      if (c.resolved || !c.quote) continue
+      const found = findQuoteRange(el, c.quote, c.anchorOffset)
+      if (!found) continue
+      try {
+        const rects = Array.from(found.range.getClientRects())
+        if (rects.length === 0) continue
+        const views2 = rects.map((r) => ({
+          left: (r.left - pageRect.left + offX) / zoom,
+          top: (r.top - pageRect.top + offY) / zoom,
+          width: Math.max(r.width / zoom, 2),
+          height: r.height / zoom,
+        }))
+        const last = views2[views2.length - 1]
+        views.push({
+          key: c.id,
+          id: c.id,
+          rects: views2,
+          marker: { left: last.left + last.width, top: last.top, height: last.height },
+          color: c.authorColor,
+          count: 1 + (c.replies?.length ?? 0),
+          active: activeCommentId === c.id,
+          anchored: true,
+        })
+      } catch {
+        // quote range invalid — skip
+      }
+    }
+    setHighlightViews(views)
+  }, [comments, activeCommentId, zoom, contentTick, remoteContent])
+
   const padX = 40
   const padY = 40
-  const bottomPad = 100
+  // .doc-page also contributes margin-top 40 + margin-bottom 80 inside the wrapper
+  const bottomPad = 120
 
   return (
     <div
@@ -169,8 +238,8 @@ export function EditorCanvas({
                   key={v.key}
                   className="absolute rounded-[1px]"
                   style={{
-                    left: padX + v.left,
-                    top: padY + v.top,
+                    left: v.left,
+                    top: v.top,
                     width: v.width,
                     height: v.height,
                     backgroundColor: v.user.color + "33",
@@ -182,8 +251,8 @@ export function EditorCanvas({
                   key={v.key}
                   className="remote-caret blinking absolute"
                   style={{
-                    left: padX + v.left,
-                    top: padY + v.top,
+                    left: v.left,
+                    top: v.top,
                     height: v.height,
                     backgroundColor: v.user.color,
                   }}
@@ -197,6 +266,52 @@ export function EditorCanvas({
                 </div>
               )
             )}
+          </div>
+
+          {/* Comment highlights overlay */}
+          <div className="no-print pointer-events-none absolute inset-0 z-[9]">
+            {highlightViews.map((h) =>
+              h.rects.map((r, i) => (
+                <div
+                  key={`${h.key}-hl-${i}`}
+                  className={cn(
+                    "comment-highlight absolute rounded-[2px] transition-colors",
+                    h.active && "comment-highlight-active"
+                  )}
+                  style={{
+                    left: r.left,
+                    top: r.top,
+                    width: r.width,
+                    height: r.height,
+                    ...(h.active ? { backgroundColor: h.color + "40" } : undefined),
+                  }}
+                  data-comment-hl={h.id}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Comment markers (clickable) */}
+          <div className="no-print absolute inset-0 z-[11]">
+            {highlightViews.map((h) => (
+              <button
+                key={`${h.key}-marker`}
+                role="button"
+                aria-label={`Open comment thread (${h.count} ${h.count === 1 ? "message" : "messages"})`}
+                data-comment-marker={h.id}
+                className="comment-marker"
+                style={{
+                  left: h.marker.left + 4,
+                  top: h.marker.top,
+                  height: Math.min(h.marker.height, 22),
+                  backgroundColor: h.color,
+                }}
+                onClick={() => onCommentClick?.(h.id)}
+              >
+                <MessageSquareMore className="h-3 w-3" />
+                {h.count > 1 && <span className="text-[10px] font-semibold tabular-nums">{h.count}</span>}
+              </button>
+            ))}
           </div>
         </div>
       </div>

@@ -36,3 +36,19 @@ export interface RemoteCursor {
 }
 
 export type DocFilter = "all" | "starred" | "trash"
+
+export interface CommentDTO {
+  id: string
+  docId: string
+  parentId: string | null
+  authorId: string
+  authorName: string
+  authorColor: string
+  quote: string
+  anchorOffset: number
+  content: string
+  resolved: boolean
+  createdAt: string
+  updatedAt: string
+  replies: CommentDTO[]
+}

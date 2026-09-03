@@ -44,6 +44,7 @@ export type DialogKey =
   | "shortcuts"
   | "helpwrite"
   | "about"
+  | "table"
 
 export interface EditorApi {
   docId: string
@@ -75,4 +76,11 @@ export interface EditorApi {
   openDialog: (d: DialogKey) => void
   presence: CollabUser[]
   connected: boolean
+  /* comments */
+  commentsOpen: boolean
+  toggleComments: (open?: boolean) => void
+  openCommentComposer: () => void
+  unresolvedCommentCount: number
+  /* insert table */
+  insertTable: (rows: number, cols: number) => void
 }

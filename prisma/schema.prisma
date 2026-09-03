@@ -20,6 +20,7 @@ model Document {
   updatedAt DateTime @updatedAt
 
   versions DocumentVersion[]
+  comments Comment[]
 }
 
 model DocumentVersion {
@@ -30,6 +31,32 @@ model DocumentVersion {
   createdAt DateTime @default(now())
 
   doc Document @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@index([docId, createdAt])
+}
+
+/// Threaded comments anchored to quoted text inside a document.
+model Comment {
+  id          String   @id @default(cuid())
+  docId       String
+  /// null for top-level comments, parent Comment id for replies
+  parentId    String?
+  /// author profile snapshot (local identity: id / name / color)
+  authorId    String
+  authorName  String
+  authorColor String
+  /// quoted document text the comment is anchored to ("" when unanchored)
+  quote       String   @default("")
+  /// character offset of the quote inside the document text at creation time
+  anchorOffset Int     @default(0)
+  content     String
+  resolved    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  doc         Document      @relation(fields: [docId], references: [id], onDelete: Cascade)
+  parent      Comment?      @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Comment[]     @relation("CommentThread")
 
   @@index([docId, createdAt])
 }

@@ -12,6 +12,15 @@ export interface DocChangePayload {
   by: string // socket id of the sender
 }
 
+export type CommentAction = "add" | "reply" | "resolve" | "unresolve" | "delete" | "edit"
+
+export interface CommentsChangedPayload {
+  docId: string
+  action: CommentAction
+  commentId?: string
+  by?: string
+}
+
 /**
  * Realtime collaboration client. Connects to the gateway on the mini-service
  * (port 3003) via `?XTransformPort=3003`, joins a per-document room and relays
@@ -20,7 +29,8 @@ export interface DocChangePayload {
 export function useCollab(
   docId: string | null,
   user: CollabUser | null,
-  onDocChange: (p: DocChangePayload) => void
+  onDocChange: (p: DocChangePayload) => void,
+  onCommentsChanged?: (p: CommentsChangedPayload) => void
 ) {
   const [connected, setConnected] = React.useState(false)
   const [myId, setMyId] = React.useState<string | null>(null)
@@ -29,9 +39,13 @@ export function useCollab(
 
   const socketRef = React.useRef<Socket | null>(null)
   const handlerRef = React.useRef(onDocChange)
+  const commentsHandlerRef = React.useRef(onCommentsChanged)
   React.useEffect(() => {
     handlerRef.current = onDocChange
   }, [onDocChange])
+  React.useEffect(() => {
+    commentsHandlerRef.current = onCommentsChanged
+  }, [onCommentsChanged])
 
   React.useEffect(() => {
     if (!docId || !user) return
@@ -74,6 +88,11 @@ export function useCollab(
       setRemoteCursors((prev) => ({ ...prev, [c.user.id]: { user: c.user, start: c.start, end: c.end, ts: Date.now() } }))
     })
 
+    socket.on("comments-changed", (p: CommentsChangedPayload) => {
+      if (p.docId !== docId) return
+      commentsHandlerRef.current?.(p)
+    })
+
     return () => {
       try {
         socket.emit("leave-doc", {})
@@ -101,6 +120,12 @@ export function useCollab(
     socket.emit("cursor", { docId, start, end })
   }, [docId])
 
+  const emitCommentsChanged = React.useCallback((action: CommentAction, commentId?: string) => {
+    const socket = socketRef.current
+    if (!socket || !socket.connected || !docId) return
+    socket.emit("comments-changed", { docId, action, commentId })
+  }, [docId])
+
   // prune stale remote cursors (user inactive > 8s)
   React.useEffect(() => {
     const t = setInterval(() => {
@@ -118,5 +143,5 @@ export function useCollab(
     return () => clearInterval(t)
   }, [])
 
-  return { connected, myId, presence, remoteCursors, emitDocChange, emitCursor }
+  return { connected, myId, presence, remoteCursors, emitDocChange, emitCursor, emitCommentsChanged }
 }

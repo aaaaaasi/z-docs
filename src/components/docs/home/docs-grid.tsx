@@ -291,10 +291,10 @@ function DocCard({ doc, index, inTrash, ...actions }: DocActions & { doc: Docume
       style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
       aria-label={`Open ${doc.title}`}
     >
-      <div className="relative overflow-hidden rounded-sm border shadow-sm transition-all group-hover:shadow-md group-focus-visible:shadow-md">
+      <div className="relative overflow-hidden rounded-sm border shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md group-focus-visible:-translate-y-0.5 group-focus-visible:shadow-md">
         <DocPreview html={doc.content} width={152} className="mx-auto" />
         {doc.starred && !inTrash && (
-          <Star className="absolute right-1.5 top-1.5 h-4 w-4 fill-amber-400 text-amber-400 drop-shadow" aria-label="Starred" />
+          <Star className="absolute right-1.5 top-1.5 h-4 w-4 fill-amber-400 text-amber-400 drop-shadow transition-transform duration-200 group-hover:scale-110" aria-label="Starred" />
         )}
         {inTrash && (
           <div className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">

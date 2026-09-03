@@ -22,7 +22,9 @@ export function DocsApp() {
 
   return (
     <TooltipProvider delayDuration={250}>
-      {view === "home" ? <HomeView /> : <EditorView />}
+      <div key={view} className="animate-view-in">
+        {view === "home" ? <HomeView /> : <EditorView />}
+      </div>
     </TooltipProvider>
   )
 }

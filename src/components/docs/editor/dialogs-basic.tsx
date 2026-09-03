@@ -279,3 +279,65 @@ export function FindReplaceDialog({
     </Dialog>
   )
 }
+
+/* ---------------- Table dialog ---------------- */
+
+const GRID_MAX = 8
+
+export function TableDialog({
+  open, onOpenChange, onInsert,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onInsert: (rows: number, cols: number) => void
+}) {
+  const [hover, setHover] = React.useState({ rows: 0, cols: 0 })
+
+  React.useEffect(() => {
+    if (open) setHover({ rows: 0, cols: 0 })
+  }, [open])
+
+  const pick = (rows: number, cols: number) => {
+    onOpenChange(false)
+    // let the Radix overlay release focus before mutating the editor
+    setTimeout(() => onInsert(rows, cols), 220)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Insert table</DialogTitle>
+        </DialogHeader>
+        <div className="flex justify-center py-2">
+          <div className="flex flex-col gap-1" onMouseLeave={() => setHover({ rows: 0, cols: 0 })} role="grid" aria-label="Table size picker">
+            {Array.from({ length: GRID_MAX }).map((_, r) => (
+              <div key={r} className="flex gap-1">
+                {Array.from({ length: GRID_MAX }).map((_, c) => {
+                  const on = r < hover.rows && c < hover.cols
+                  return (
+                    <button
+                      key={c}
+                      aria-label={`Insert ${r + 1} by ${c + 1} table`}
+                      onMouseEnter={() => setHover({ rows: r + 1, cols: c + 1 })}
+                      onClick={() => pick(r + 1, c + 1)}
+                      className={`h-7 w-7 rounded-[3px] border transition-all ${
+                        on ? "border-primary bg-primary/70 scale-105" : "border-border bg-muted/60 hover:bg-muted"
+                      }`}
+                    />
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+        <p className="text-center text-sm tabular-nums text-muted-foreground" role="status">
+          {hover.rows > 0 ? `${hover.rows} × ${hover.cols} table` : "Hover to pick a size, click to insert"}
+        </p>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
