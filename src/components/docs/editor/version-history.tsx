@@ -66,11 +66,11 @@ export function VersionHistorySheet({
                 ))}
               </div>
             ) : versions.length === 0 ? (
-              <div className="flex flex-col items-center rounded-xl border border-dashed p-8 text-center">
+              <div className="flex flex-col items-center rounded-lg border border-dashed p-8 text-center">
                 <FileText className="h-8 w-8 text-muted-foreground/40" />
                 <p className="mt-3 text-sm font-medium">No versions yet</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Keep editing — snapshots appear as your document evolves.
+                  Keep editing. Snapshots appear as your document evolves.
                 </p>
               </div>
             ) : (
@@ -88,16 +88,16 @@ export function VersionHistorySheet({
                         i === 0 ? "bg-primary shadow-[0_0_0_3px_rgba(18,156,88,0.15)]" : "bg-background"
                       )}
                     />
-                    <div className="rounded-lg border p-3 transition-all hover:border-primary/40 hover:shadow-sm">
-                      <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
+                    <div className="rounded-lg border p-3 transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-sm">
+                      <p className="tnum flex flex-wrap items-center gap-2 text-sm font-medium">
                         {fullTime(v.createdAt)}
                         {i === 0 && (
-                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
                             Latest
                           </span>
                         )}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="tnum text-xs text-muted-foreground">
                         {relativeTime(v.createdAt)} · {v.wordCount.toLocaleString()} words
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
@@ -200,7 +200,7 @@ export function VersionDiffDialog({
       aria-label="Version changes"
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white elev-2"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b bg-background px-4 py-3">
@@ -208,7 +208,7 @@ export function VersionDiffDialog({
             <p className="flex items-center gap-1.5 text-sm font-semibold">
               <GitCompareArrows className="h-4 w-4 text-primary" /> What changed
             </p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className="tnum mt-0.5 text-xs text-muted-foreground">
               {fullTime(base.createdAt)}
               <ArrowRight className="mx-1 inline h-3 w-3" />
               {target.label}
@@ -236,23 +236,23 @@ export function VersionDiffDialog({
           </Select>
           <div className="ml-auto flex items-center gap-1.5 text-xs font-medium">
             {stats && stats.addedWords > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(18,156,88,0.12)] px-2.5 py-1 text-[#0b7a4b]">
+              <span className="tnum inline-flex items-center gap-1 rounded-md bg-[rgba(18,156,88,0.12)] px-2.5 py-1 text-[#0b7a4b]">
                 <TrendingUp className="h-3 w-3" />+{stats.addedWords} {stats.addedWords === 1 ? "word" : "words"}
               </span>
             )}
             {stats && stats.removedWords > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-[rgba(217,48,37,0.10)] px-2.5 py-1 text-[#b3261e]">
+              <span className="tnum inline-flex items-center gap-1 rounded-md bg-[rgba(217,48,37,0.10)] px-2.5 py-1 text-[#b3261e]">
                 <TrendingDown className="h-3 w-3" />−{stats.removedWords} {stats.removedWords === 1 ? "word" : "words"}
               </span>
             )}
             {stats && stats.addedWords === 0 && stats.removedWords === 0 && (
-              <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">No word changes</span>
+              <span className="tnum rounded-md bg-muted px-2.5 py-1 text-muted-foreground">No word changes</span>
             )}
           </div>
         </div>
 
         <ScrollArea className="flex-1 bg-neutral-50 p-6">
-          <div className="mx-auto max-w-[616px] rounded-lg bg-white p-8 shadow-md">
+          <div className="mx-auto max-w-[616px] rounded-lg bg-white p-8 shadow-[0_1px_2px_rgba(35,32,28,0.08),0_12px_40px_rgba(35,32,28,0.1)]">
             {segments.length === 0 ? (
               <p className="text-sm text-muted-foreground">Both versions are empty.</p>
             ) : (
@@ -313,20 +313,20 @@ export function VersionPreviewDialog({
       aria-label="Version preview"
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl"
+        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white elev-2"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b bg-background px-4 py-3">
           <div>
             <p className="text-sm font-semibold">Snapshot preview</p>
-            <p className="text-xs text-muted-foreground">{fullTime(version.createdAt)}</p>
+            <p className="tnum text-xs text-muted-foreground">{fullTime(version.createdAt)}</p>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close preview">
             Close
           </Button>
         </div>
         <ScrollArea className="flex-1 bg-neutral-100 p-6">
-          <div className="mx-auto max-w-[616px] bg-white p-12 shadow-md">
+          <div className="mx-auto max-w-[616px] bg-white p-12 shadow-[0_1px_2px_rgba(35,32,28,0.08),0_12px_40px_rgba(35,32,28,0.1)]">
             <div className="doc-content" dangerouslySetInnerHTML={{ __html: version.content }} />
           </div>
         </ScrollArea>

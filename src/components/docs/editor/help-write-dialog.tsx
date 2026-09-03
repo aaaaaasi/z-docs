@@ -56,7 +56,7 @@ export function HelpWriteDialog({
       })
       if (!res.ok) throw new Error("The AI service is unavailable right now.")
       const data = (await res.json()) as { text?: string }
-      if (!data.text) throw new Error("Empty response — try rephrasing your prompt.")
+      if (!data.text) throw new Error("Empty response. Try rephrasing your prompt.")
       setResult(data.text)
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong")
@@ -107,7 +107,7 @@ export function HelpWriteDialog({
               <button
                 key={s}
                 onClick={() => setPrompt(s)}
-                className="shrink-0 rounded-full border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
+                className="shrink-0 rounded-md border bg-muted/50 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-foreground"
               >
                 <Wand2 className="mr-1 inline h-3 w-3" />
                 {s}

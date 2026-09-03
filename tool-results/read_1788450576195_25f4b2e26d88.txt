@@ -1,0 +1,247 @@
+     1→# Project Worklog — Z-Docs (Google Docs clone)
+     2→
+     3→---
+     4→Task ID: 0
+     5→Agent: main (Z.ai Code)
+     6→Task: Project kickoff — build a Google Docs-like website (Next.js 16 + Prisma + socket.io collab)
+     7→
+     8→Work Log:
+     9→- Explored scaffold: Next.js 16 App Router, Tailwind 4, shadcn/ui (full set), Prisma+SQLite, dev server on :3000 running.
+    10→- Confirmed websocket example pattern: server on port 3003 with path '/', client connects `io('/?XTransformPort=3003')`.
+    11→- Caddyfile confirmed: `?XTransformPort={port}` gateway.
+    12→
+    13→Stage Summary:
+    14→- Architecture decided: single route `/` SPA with two client views (home / editor), deep-link `/?doc=<id>` via history API.
+    15→- API contract defined under `/api/documents*` (list/create/get/patch/delete/duplicate/versions/restore) + `/api/ai/write` (LLM).
+    16→- Collab realtime: mini-service `mini-services/collab-service` (socket.io, port 3003) — presence, doc-change sync, remote cursors.
+    17→- Prisma models: Document (title, content HTML, starred, trashed), DocumentVersion (snapshots, capped 20).
+    18→- Tasks: 1 frontend (me), 2 backend (me), 3 collab service (subagent 3-a), 4 AI+socket integration (me), 5 QA (me), 6 cron+worklog (me).
+    19→
+    20→---
+    21→Task ID: 1
+    22→Agent: main (Z.ai Code)
+    23→Task: Frontend — full SPA at `/` (home view + editor view)
+    24→
+    25→Work Log:
+    26→- globals.css: teal primary theme, .doc-page (816px white page, 1in padding), .doc-content rich-text defaults (Google Docs typography), .doc-preview scaled thumbnails, remote-caret styles, custom scrollbars, print CSS.
+    27→- lib: docs-types.ts, doc-utils.ts (strip/word count/palette/fonts/relative time), templates.ts (6 templates with real content), identity.ts (localStorage user), editor-dom.ts (text-offset ⇄ Range, selectedBlocks).
+    28→- store/docs-store.ts: zustand — view switch, ?doc= deep-link via history API + popstate, list/search/filter, CRUD actions with optimistic updates.
+    29→- Home: header (logo, debounced search, theme toggle, user menu popover with rename/color), sidebar (nav + fake apps + storage widget, mobile Sheet), template gallery (live HTML previews + AI card), docs grid (cards with live previews, star badges, dropdown context menus, rename dialog, delete confirm, grid/list toggle, sort, empty states).
+    30→- Editor: header (title input, star, save status, presence avatars, share, theme), menu bar (File/Edit/View/Insert/Format/Tools/Help working dropdowns), toolbar (style/font/size selects, B/I/U/S, color+highlight palettes, link/image, align/line-spacing, lists, indent, clear, AI button), canvas (contentEditable page + remote cursors overlay + zoom wrapper), status pill (pages/words/chars/zoom + socket dot).
+    31→- Dialogs: link, image (URL/upload), find & replace (text-node walk), share (copy link + presence), version history sheet + preview, Help me write (AI), word count, shortcuts, about.
+    32→- Fixed: home-view import paths, lucide icons (SearchReplace→Replace, FontFamily→Baseline, AppsGrid→LayoutGrid), dialog onOpenChange booleans, version preview null-render.
+    33→
+    34→Stage Summary:
+    35→- Frontend compiles, page renders HTTP 200, "Z-Docs" present in HTML.
+    36→
+    37→---
+    38→Task ID: 2
+    39→Agent: main (Z.ai Code)
+    40→Task: Backend — Prisma + API routes + AI route
+    41→
+    42→Work Log:
+    43→- prisma/schema.prisma: Document (title/content/starred/trashed) + DocumentVersion (snapshots, cascade delete, index docId+createdAt). db:push OK.
+    44→- /api/documents: GET (filter all|starred|trash + q search on title/content, updatedAt desc) + POST create.
+    45→- /api/documents/[id]: GET / PATCH (auto version snapshot ≤1 per 5 min, cap 20) / DELETE.
+    46→- /api/documents/[id]/duplicate, /versions, /restore-version.
+    47→- /api/ai/write: z-ai-web-dev-sdk chat completion (backend only) with document-editor system prompt.
+    48→- curl-tested every endpoint: create/list/patch/snapshot/versions/duplicate/restore/404/delete all pass; test data cleaned up.
+    49→
+    50→Stage Summary:
+    51→- Full REST contract working; version snapshotting verified (old content captured before update).
+    52→
+    53→---
+    54→Task ID: 3-a
+    55→Agent: general-purpose subagent
+    56→Task: Socket.io collaboration mini-service (port 3003)
+    57→
+    58→Work Log:
+    59→- Read worklog + examples/websocket/server.ts (path:'/' pattern for Caddy XTransformPort) + src/hooks/use-collab.ts (event contract) — implementations match the frontend expectations exactly.
+    60→- Created mini-services/collab-service/: package.json (name "collab-service", dev script `bun --hot index.ts`) and index.ts (TypeScript, interfaces for CollabUser/JoinDocPayload/DocChangePayload/CursorPayload/PresencePayload, per-socket sessions Map keyed by socket.id).
+    61→- Server: http on hardcoded port 3003, `new Server(httpServer, { path: '/', cors: { origin: '*', methods: ['GET','POST'] }, pingTimeout: 60000, pingInterval: 25000 })`.
+    62→- Events implemented: join-doc (leave previous room first for doc switching, join `doc:${docId}`, store profile, broadcast `presence` { docId, users:[{id,name,color}] } to whole room using LOCAL user ids); leave-doc (leave room, clear profile, fresh presence); doc-change (broadcast to room except sender with { docId, content, title, version, by: socket.id }); cursor (broadcast except sender with { docId, start, end, user: stored profile }, skipped if no profile); disconnect (cleanup + fresh presence). Console logs kept short ([connect]/[join]/[leave]/[presence]/[disconnect]). SIGTERM/SIGINT graceful shutdown.
+    63→- `bun install socket.io` → socket.io@4.8.3 (ships own types, no @types needed).
+    64→- Started service: NOTE plain `nohup bun run dev &` dies between tool sessions in this sandbox — the surviving pattern (same as the main dev server, pid 1149) is orphaning to init: `( nohup bun run dev > /tmp/collab-service.log 2>&1 & )` → bun run dev (pid 3592, PPID 1) → bun --hot index.ts (pid 3594). Also: /start.sh's bun+mini-services flow auto-runs `bun run dev` for every mini-services/* dir with a package.json on container boot, so the service is covered on restarts too.
+    65→- Verified: port 3003 listening (ss), socket.io engine handshake OK direct (http://localhost:3003/?EIO=4&transport=polling) and through Caddy gateway (http://localhost:81/?XTransformPort=3003&EIO=4&transport=polling).
+    66→- Test /tmp/collab-test.ts (run via `cd /home/z/my-project && bun run /tmp/collab-test.ts`, socket.io-client from main project): 7/7 PASS — presence A sees 2 users; presence B sees 2 users; doc-change received by B with content/title/version; `by` = A's socket id; A receives no own echo; cursor received by B with sender profile {id,name,color}; disconnect → B sees 1 user. Extra /tmp/collab-rooms.ts: 3/3 PASS — two rooms active simultaneously, room isolation (doc2 client gets no doc1 events), doc switching joins new room + refreshes old room presence. Test clients disconnected afterwards.
+    67→
+    68→Stage Summary:
+    69→- collab-service RUNNING on port 3003 (hot-reload enabled), verified end-to-end (10/10 assertions PASS) incl. via the Caddy ?XTransformPort=3003 gateway path. Ready for task 4 (frontend integration via use-collab.ts — contract already matches).
+    70→
+    71→---
+    72→Task ID: 4
+    73→Agent: main (Z.ai Code)
+    74→Task: AI route + realtime integration + fixes found during QA
+    75→
+    76→Work Log:
+    77→- /api/ai/write implemented with z-ai-web-dev-sdk (LLM skill instructions followed; backend-only usage).
+    78→- Fixed: identity.ts rewritten with useSyncExternalStore (lint error + live profile updates via zdocs-user-changed event).
+    79→- Fixed: exec/insert commands now ensureSelection() — restores saved Range when toolbar clicks blur the editor.
+    80→- Fixed: Radix modal dialogs trap focus → insert-from-dialog (link/image/AI) now closes dialog first, inserts after 220ms timeout.
+    81→- Fixed: setFilter now refetches the document list (trash/starred views were stale).
+    82→- Fixed: VersionPreviewDialog gains Escape handling + z-[60] (was un-closeable via keyboard).
+    83→- Fixed: mobile header search width (w-28) to prevent 4px horizontal overflow.
+    84→- Fixed CSS bug: `-webkit-user-modify: read-write-plaintext-only` was silently disabling ALL execCommand rich-text formatting (bold/italic/etc.) — removed. Required clearing stale Turbopack cache (.next) + dev server restart.
+    85→- Cleaned corrupted deps arrays introduced by a bad MultiEdit (regex-repaired all "[handleInput" occurrences).
+    86→
+    87→Stage Summary:
+    88→- All editor formatting commands, dialogs, AI insert now verified working end-to-end.
+    89→
+    90→---
+    91→Task ID: 5
+    92→Agent: main (Z.ai Code)
+    93→Task: End-to-end QA with agent-browser + VLM screenshot review
+    94→
+    95→Work Log:
+    96→- agent-browser full golden path: template gallery → create Meeting notes doc → editor opens → typed text → autosaved ("All changes saved", persisted in DB via curl).
+    97→- Bold verified through real UI clicks (instrumented execCommand to confirm calls + DOM mutation).
+    98→- Collaboration verified with two isolated sessions through Caddy gateway (localhost:81 — direct :3000 bypasses the XTransformPort routing, sockets only work via gateway): presence 2 users, live text sync t2→main, remote caret "Guest Koala" rendered with label.
+    99→- AI Help-me-write: generated draft (~15s), inserted into document, confirmed in content.
+   100→- Version history: snapshots listed (auto-captured during edits), preview dialog, restore flow.
+   101→- Share dialog: link with ?doc= deep link, copy button, presence people list.
+   102→- Dark mode: html.dark, white page + dark canvas (paper stays white).
+   103→- Title rename + star persisted; trash → restore → trash → delete forever all verified via UI and API.
+   104→- Mobile (390×844): hamburger + sheet nav, no horizontal scroll, toolbar scrollable, page 92vw, status pill OK. Sticky footer verified both short (empty state, pinned to bottom) and long (pushed down) pages.
+   105→- VLM screenshot reviews: desktop home 8/10, dark editor 8/10, mobile home & editor pass.
+   106→- Seeded "Welcome to Z-Docs" welcome doc; deleted QA test docs.
+   107→- bun run lint: clean (0 errors, 0 warnings). Dev server restarted clean after cache wipe; collab-service (pid 3592) still running on 3003.
+   108→
+   109→Stage Summary:
+   110→- App fully functional and verified. Remaining known nice-to-haves: real conflict resolution (currently LWW), multi-cursor label collision avoidance, print iframe in Safari.
+   111→
+   112→---
+   113→Task ID: 6
+   114→Agent: main (Z.ai Code)
+   115→Task: Scheduled webDevReview cron job + project wrap-up
+   116→
+   117→Work Log:
+   118→- Created cron job (job_id 355945, name "Z-Docs 15-min web dev review"): kind=webDevReview, fixed_rate every 900 seconds, full English QA+development prompt (worklog review → agent-browser QA → fix bugs or add features → update worklog).
+   119→- Final health check: Next.js dev server on :3000 (API 200), collab-service on :3003 (socket.io handshake via gateway 200), lint clean.
+   120→- Final VLM review of home page: 9/10, no critical issues.
+   121→
+   122→Stage Summary:
+   123→- Z-Docs is complete and verified: home (templates, grid/list, search, stars, trash, context menus) + editor (full toolbar, autosave, versions, share, print/export, dark mode) + realtime collab (presence, live sync, remote cursors) + AI writing assistant. A "Welcome to Z-Docs" seed doc is included.
+   124→- Next-phase ideas for the scheduled reviewer: comments/annotations, OAuth identities, richer version diffs, offline support, mobile drawing/annotations, doc folders.
+   125→
+   126→---
+   127→Task ID: 7
+   128→Agent: main (Z.ai Code) — scheduled webDevReview round
+   129→Task: Assess project status, QA via agent-browser, fix bugs, add comments feature + insert table + styling polish
+   130→
+   131→Work Log:
+   132→- Health check: dev server :3000 (200), collab-service :3003 via gateway (200), lint clean, dev.log clean, perf DCL 129ms.
+   133→- QA round 1 findings (agent-browser + VLM): no functional bugs (autosave, bold, dark mode 9/10, no console errors). Styling issues: "Normal text" truncated in style dropdown (w-118px), mobile template gallery cut-off look, aggressive title truncation, low-contrast "soon" badges, template hover states static.
+   134→- NEW FEATURE — threaded comments system (full stack):
+   135→  - Prisma: Comment model (parentId self-relation for threads, author snapshot id/name/color, quote + anchorOffset, resolved, cascade delete, index docId+createdAt). db:push OK.
+   136→  - API: GET/POST /api/documents/[id]/comments (threaded list, create + reply), PATCH/DELETE /api/comments/[id] (resolve/reopen, edit, delete). curl smoke-tested all operations incl. cascade.
+   137→  - collab-service: new `comments-changed` relay (client→server action add/reply/resolve/unresolve/delete/edit + commentId; server broadcasts to room except sender). Hot-reloaded, verified via gateway.
+   138→  - use-collab.ts: onCommentsChanged handler + emitCommentsChanged; comments live-sync verified with 2 sessions (guest comment appeared in main session + live text sync still works).
+   139→  - Frontend: comments-sidebar.tsx (right panel with open/resolved sections, thread cards with avatars, quoted-text chips, reply forms, resolve/reopen, delete; full-width overlay on mobile; 340px slide on desktop narrowing the canvas), CommentBubble (fixed-position pill above text selection), comment highlights overlay + clickable count markers in editor-canvas (yellow highlight rects + author-colored marker chips), quote anchoring via new findQuoteRange (offset hint + full-text fallback, re-aligns after edits via contentTick).
+   140→  - Entry points: toolbar comment button with unresolved-count badge, header comments toggle with badge, Insert menu → Comment, Ctrl+Alt+M shortcut, shortcuts dialog updated.
+   141→- BUG FOUND & FIXED (pre-existing!): overlay geometry in editor-canvas used hardcoded padY=40 but .doc-page has margin: 40px auto 80px → real offset (40,80). All overlays (remote cursors AND comment highlights) were rendered 40px too high. Fixed by using el.offsetLeft/offsetTop dynamically; also wrapper bottomPad 100→120. Verified pixel-perfect alignment (highlight rect == text rect).
+   142→- BUG FIXED: db.comment undefined after schema push — running dev server had stale Prisma client in memory; restarted dev server (kill 5200, relaunch orphaned `( nohup bun run dev & )` pattern). NOTE for future schema changes: always restart the dev server after db:push.
+   143→- NEW FEATURE — Insert Table: TableDialog with 8×8 hover grid picker (dialogs-basic.tsx), insertTable API (HTML table.zdocs-table + trailing <p>), Insert menu item, CSS for tables. Initial attempt with Popover-in-DropdownMenu failed (dropdown closes → popover unmounts); refactored to Dialog pattern like link/image. Verified: 3×3 inserted, cells editable.
+   144→- Styling polish: paragraph-style select widened 118→132px, template gallery mobile scroll-snap + tighter gap + "Use template" hover overlay + stronger hover lift, AI card icon rotate on hover, docs-grid card hover lift + star scale, SOON badges as bordered pills with better contrast, view-switch fade animation (docs-app keyed div + .animate-view-in), prefers-reduced-motion support, fade-in animation for comment cards/bubbles/composer.
+   145→
+   146→Stage Summary:
+   147→- Comments verified end-to-end: bubble → composer → submit → thread card + highlight + marker → reply (marker count 2) → resolve (highlight cleared, "1 resolved thread" section) → reopen → marker click focuses/scrolls/flashes → 2-session live sync. VLM: comment UI 9/10, mobile comments 9/10, table+aligned highlight 9/10.
+   148→- Table insert verified (3×3, editable cells). Home page final VLM 8/10 (only remaining nit: carousel shows partially-cut 6th card — intentional Google-Docs-style affordance).
+   149→- State: dev server restarted (fresh pid tree), collab-service hot-reloaded with comments-changed, lint clean, all API routes 200, QA test docs deleted, "Welcome to Z-Docs" seed intact.
+   150→- Known limitations / next-phase ideas: comments anchor by quote-text search (rich anchors with persistent marks could survive edits better), reply notifications only via toast, no comment editing inline (PATCH /api/comments/:id content ready but no UI), table column/row insert UI, folders for docs home, OAuth identities.
+   151→
+   152→---
+   153→Task ID: 8
+   154→Agent: main (Z.ai Code) — scheduled webDevReview round
+   155→Task: Assess status, QA via agent-browser, fix critical click-interception bug, add table operations + comment editing + folders, styling polish
+   156→
+   157→Work Log:
+   158→- Health check: dev :3000 200, collab :3003 200 (via gateway), lint clean, dev.log clean. Initial agent-browser QA: home + editor stable, no console errors; VLM screenshots 7/10 (home) & 6/10 (editor) — most flagged "issues" verified as screenshot-crop artifacts via programmatic rect checks (status pill not clipped, text color correct).
+   159→- CRITICAL BUG FOUND & FIXED (pre-existing from Task 7): the comment-markers overlay in editor-canvas.tsx (`absolute inset-0 z-[11]`) was missing `pointer-events-none` — it intercepted ALL clicks/hit-tests across the document canvas (elementFromPoint returned the overlay, not the text). Fixed: container `pointer-events-none`, marker buttons `pointer-events-auto`. Verified: real clicks land in text nodes, focus follows, real keyboard typing inserts characters at the caret.
+   160→- NEW FEATURE — table structural operations:
+   161→  - editor-dom.ts: getTableContext (selection→table/row/cell), describeTableAt (serializable TableInfo), insertTableRow (above/below, preserves TH tags), insertTableColumn (left/right), deleteTableRow/Column (auto-removes table when last), toggleTableHeader (TD⇄TH, keeps innerHTML), ensureParagraph safety net, placeCaretInCell, caretRangeFromPoint (cross-browser), pointInSelection.
+   162→  - editor-view.tsx: tableOp callback (all 8 ops with caret parking + toasts), tableInfo live state on selectionchange, right-click ContextMenu on canvas (moves caret to click point via caretRangeFromPoint unless preserving a selection) with conditional table items (header/delete row/col/table), menuTableInfo state.
+   163→  - menu-bar.tsx: Insert → "Table ⌘⇧T" + "Table options" submenu (insert row/col above/below/left/right, header row, delete row/col/table, hint when caret not in table).
+   164→  - editor-types.ts: TableOp union + tableOp/tableInfo on EditorApi. globals.css: zdocs-table th styling (border, #f1f3f4 bg, bold). ⌘⇧T shortcut added.
+   165→- NEW FEATURE — inline comment editing: comments-sidebar.tsx EditForm (textarea + Save/Cancel, Ctrl+Enter, Esc), Edit buttons on thread cards + reply items (author-gated, hover-reveal on replies), group/thread hover class; editor-view editComment (PATCH /api/comments/:id, updates state incl. nested replies, emits comments-changed "edit" — collab relay + use-collab already supported the action).
+   166→- NEW FEATURE — folders (full stack):
+   167→  - Prisma: Folder model (name unique, color) + Document.folderId (SetNull on folder delete). db:push OK + dev server restarted (fresh pid 18018; killed stale next dev holding .next/dev/lock — must kill parent node pid, not just next-server).
+   168→  - /api/folders: GET (with document counts), POST (random 7-color palette, 409 on dupe name), PATCH (rename), DELETE (docs→root). All curl-verified incl. folder scoping (`?folder=root` vs id) and doc move via PATCH /api/documents/:id folderId.
+   169→  - documents route: toMeta + folderId; GET folder param scoping; PATCH validates folder exists.
+   170→  - store: folders/activeFolderId state, refreshFolders, openFolder/createFolder/renameFolder/deleteFolder (falls back to all view)/moveToFolder (optimistic); createDoc accepts folderId.
+   171→  - sidebar-nav: Folders section (FolderPlus inline create input w/ Enter/Esc, per-folder colored icons, count badge, hover ⋮ menu rename/delete, inline rename overlay, empty-state hint).
+   172→  - docs-grid: "Move to" submenu in card menus (No folder + list w/ ✓ current), folder chips (colored icon + name) on grid cards & list rows, folder name as section heading. Mobile sheet shares the same nav content.
+   173→- Styling polish (mandatory): teal ::selection in .doc-content (0.22 alpha, lighter in tables), template gallery focus-visible rings + AI card "Ask AI" hover CTA (matches template overlay pattern), AI card border-primary/20, sidebar Workspace items + SOON badges more muted (text-muted-foreground/50-60), toolbar separator between font-size stepper and B/I/U/S, ⌘⇧T hint.
+   174→- QA (agent-browser): folders UI (create "Projects", move Welcome doc via card menu → chip appears, folder view scoped to 1 doc); table ops via Insert menu (insert row above 2→3 rows; header TD→TH) AND right-click context menu (delete column 2→1 cols; delete table → tableGone + paragraphs preserved); comment add → Edit → save ("Edited comment text v2" persisted via API); real typing test (click → keyboard type inserts at caret, backspace removes); dark mode toggle OK; no console errors throughout. VLM: table demo 8/10, home 8/10 (remaining nits = intentional Google-Docs-style partial-card affordance / subjective rhythm).
+   175→- Cleanup: QA docs deleted; Welcome doc restored to root (folderId null); empty "Projects" folder kept as demo.
+   176→
+   177→Stage Summary:
+   178→- Z-Docs now: home (templates, folders, grid/list, search, stars, trash, context menus) + editor (full toolbar, autosave, versions, share, print/export, dark mode, tables w/ structural ops, comments w/ edit) + realtime collab (presence, live sync, remote cursors, comment sync) + AI writing assistant.
+   179→- Critical pointer-events fix restores full editor interactivity (was degrading all click interactions since Task 7).
+   180→- State: dev server restarted (pid 18018) with fresh Prisma client, collab-service still running (pid 3594), lint clean, all endpoints 200, welcome seed intact + "Projects" demo folder.
+   181→- Known limitations / next-phase ideas: table cell merge/split, column width drag, folder drag-and-drop reordering, comment emoji reactions, doc tags, OAuth identities, offline support, print iframe in Safari.
+   182→
+   183→---
+   184→Task ID: 9
+   185→Agent: main (Z.ai Code) — scheduled webDevReview round
+   186→Task: Assess status, QA regression, add document outline + emoji picker, styling polish
+   187→
+   188→Work Log:
+   189→- Health check: dev :3000 (pid 18018) 200, collab :3003 200, lint clean, dev.log clean. Found an extra "Meeting notes — 2026-09-03" doc (523 chars) in the DB — possibly user-created via the preview panel between rounds; treated as user data (restored it to clean state after tests rather than deleting).
+   190→- QA regression (agent-browser): folders render with "Projects"; click-to-text still lands in text nodes (Task 8 pointer-events fix intact); ⌘⇧T shortcut opens table dialog and inserts 3×3; comment bubble → composer → submit → Edit button all work; zero console errors. Cleaned up test comment + test table from the Meeting notes doc via API.
+   191→- NEW FEATURE — document outline sidebar (Google Docs parity):
+   192→  - outline-sidebar.tsx: left panel (248px desktop / full-width overlay mobile, same slide pattern as comments sidebar), header with item count, h1–h4 tree with per-level indentation/weight, click-to-jump, empty state with format hint, tooltips for truncated titles.
+   193→  - editor-view.tsx: parseOutline (querySelectorAll h1-h4, stamps stable data-oid attrs on the live DOM), re-parses on [doc, contentTick, remoteContent] (live update while typing, verified: added heading appeared ~400ms later), jumpToOutline (canvas.scrollTo with zoom compensation, 1/3-viewport offset, .outline-flash background pulse animation), toggleOutline.
+   194→  - Entry points: View menu → "Show document outline" checkbox; NEW ListTree toggle button in editor header (before the comments button, aria-pressed).
+   195→  - editor-types: outlineOpen/toggleOutline on EditorApi. globals.css: outline-flash keyframe animation.
+   196→  - BUG FOUND & FIXED during dev: TDZ ReferenceError "Cannot access 'toggleOutline' before initialization" — the outline callbacks were declared after the `api` object that references them; moved the whole outline/emoji block before the api object.
+   197→- NEW FEATURE — emoji & symbols picker:
+   198→  - emoji-dialog.tsx: search input + 5 category tabs (Smileys/People/Objects/Symbols/Nature, ~140 curated emoji with names), grid (8 cols desktop / 10 sm), insert-on-click, dialog stays open for multi-insert, Done button, search empty state.
+   199→  - editor-view insertEmoji: initially used insertHtmlAtCursor → FAILED from the open dialog (Radix focus trap blocks execCommand — the Task 4 lesson generalizes to any insert-while-dialog-open). Rewrote to direct Range manipulation: uses live selection if editor holds it, else savedRangeRef, else appends at end; deleteContents + insertNode + caret advance + savedRange update; falls back to insertAdjacentHTML on any range error. Verified: 😀 then 🚀 inserted back-to-back at the caret (positions 371/373), dialog stayed open, autosave fired.
+   200→  - Entry point: Insert menu → "Emoji & symbols" (Smile icon).
+   201→- Styling polish (mandatory): emoji category labels shortened to fix real truncation VLM found ("Objects & wor" — verified scrollWidth == clientWidth after fix), footer text contrast bumped (text-foreground/70), Done button given font-medium + shadow-sm + px-4, ⌘⇧T added to the shortcuts dialog.
+   202→- QA (agent-browser): outline toggle via menu checkbox AND header button; 5 headings parsed from Meeting notes doc; jump scrolled canvas 0→653 with flash on "Next meeting"; live outline update (5→6 items after adding a heading); emoji dialog: search "check" → 2 results, category switch, 2 sequential inserts, Done closes; mobile 390×844: outline opens full-width, no horizontal overflow; zero console errors throughout. VLM: outline 8/10, emoji picker 7/10→fixed (remaining flags were the page behind the modal + subjective overlay contrast).
+   203→- Cleanup: Meeting notes doc restored to its exact 523-char original (test emojis/heading/table stripped, PATCH-verified), comments empty, welcome doc intact.
+   204→
+   205→Stage Summary:
+   206→- Z-Docs now: home (templates, folders, grid/list, search, stars, trash) + editor (full toolbar, autosave, versions, share, print/export, dark mode, tables w/ structural ops, comments w/ edit, document outline, emoji picker) + realtime collab + AI assistant.
+   207→- Key architectural lesson recorded: inserts from open Radix dialogs must use direct Range manipulation, not execCommand (insertEmoji pattern is the template for future "insert while dialog open" features).
+   208→- State: dev server healthy (no restart needed — no schema changes this round), collab-service running, lint clean, all endpoints 200, DB: Welcome + user's Meeting notes docs + "Projects" folder.
+   209→- Known limitations / next-phase ideas: table cell merge/split + column width drag, folder drag-and-drop, comment emoji reactions, doc tags, OAuth identities, offline support, version diff view, export to PDF (currently .doc/HTML/txt only).
+   210→
+   211→---
+   212→Task ID: 10
+   213→Agent: main (Z.ai Code) — scheduled webDevReview round
+   214→Task: Assess status, QA via agent-browser, add version-diff view + AI polish quick actions, styling polish
+   215→
+   216→Work Log:
+   217→- Health check: dev :3000 (pid 18018) 200, collab :3003 200 via gateway, lint clean, dev.log clean.
+   218→- QA regression (agent-browser): home (folders/templates render, 0 console errors), editor (title/canvas/save pill OK), click-to-text lands in H1 and typing+delete works (Task 8 pointer-events fix intact), outline toggle works, version history sheet loads. No bugs found → proceeded to features.
+   219→- IMPORTANT: user is ACTIVELY using the app during this round — 4 new "Untitled document" docs appeared mid-session and the Meeting notes doc grew 523→633 chars (data-oid attrs from outline stamping). Treated all as user data; every QA PATCH to the user's doc was restored to the exact user state afterwards (md5-verified); temp QA doc created for diff screenshots was deleted.
+   220→- NEW FEATURE — version history diff ("Changes" per version):
+   221→  - src/lib/text-diff.ts (new): two-pass diff — LCS over lines (paragraph-scale, size-guarded 4M cells w/ trivial fallback) + word-level LCS refinement inside paired del/add runs; tokenizeWords keeps whitespace tokens; collapseNoise merges whitespace-only seams; reconstruction property verified (21/21 tests: old/new reconstruct, edge cases empty/identical/single-word, stats sanity).
+   222→  - version-history.tsx: "Changes" button per version card → VersionDiffDialog: "Compare with" Select (Current document + all other versions, default current), stats pills (+N words green / −M words red / "No word changes"), diff body (whitespace-pre-wrap, ins.diff-ins green / del.diff-del red strikethrough w/ box-decoration-break clone for clean multi-line wraps), added/removed legend footer, Escape closes.
+   223→  - editor-view: VersionHistorySheet gains getCurrentContent prop (reads live contentRef).
+   224→  - globals.css: .diff-body/.diff-ins/.diff-del + dark-mode variants.
+   225→  - Verified: word-level precision (only changed phrases light up, e.g. "brown"→"red" in a line), stats (+19/−1 and +14/−4 on real edits), select target switching, "No word changes" when contents match (all 5 meeting-doc snapshots were textually identical — only data-oid attr diffs, correctly invisible to the diff).
+   226→- NEW FEATURE — AI polish (one-click transforms):
+   227→  - /api/ai/transform (new route): POST {text, action, title?} with 6 actions (summarize/improve/proofread/shorten/lengthen/simplify), per-action system prompts, 12k-char input cap, z-ai-web-dev-sdk backend-only. curl smoke test passed (proofread).
+   228→  - ai-tools-dialog.tsx (new): 6 action chips (2-col mobile / 3-col desktop, radiogroup semantics, selected ring, focus-visible rings), collapsible source preview (chevron + words count, controlled details via showSource state), Run button, editable result textarea with word-delta indicator, Replace selection / Insert below cursor / Retry / Copy actions (dialog closes 240ms before applying — Radix focus-trap lesson).
+   229→  - editor-view: openAiTools callback captures selection + clones Range into aiRangeRef (falls back to whole-doc text via htmlToText); replaceAiResult uses execCommand("insertHTML") on the captured range so AI edits are UNDOABLE (⌘Z verified working — first implementation via raw Range surgery was NOT undoable, caught in QA and rewritten); insertAiResult inserts paragraphs at caret; ⌥⌘A shortcut (openAiTools is a stable useCallback, added to keydown deps); shortcuts dialog updated.
+   230→  - Entry points: Tools menu → "AI polish" (⌥⌘A hint), toolbar "Polish" pill button (Wand2 icon) next to "Help me write".
+   231→  - Verified end-to-end: selection capture (6 words), AI run, replace applied + toast, undo restores exactly; whole-doc mode (53 words, 6 chips); mobile 390px: dialog fits, 2-col chips, no horizontal scroll.
+   232→- BUG FOUND & FIXED (this round's own code): Turbopack served a STALE CSS chunk — globals.css edits (diff styles) were in the file but not in the served stylesheet (other rules from Task 9 were). touch + recompile didn't help; fixed by killing the dev-server process tree (parent bun 18003, bash 18004, node 18005, next-server 18018), rm -rf .next, orphaned relaunch (next-server pid 32261). diff rules then served (5 occurrences) and ins/del computed styles verified in BOTH light (teal/red) and dark (emerald/rose) modes. LESSON: after globals.css edits, verify rules actually served via styleSheets cssRules scan, not just file content.
+   233→- Styling polish (mandatory):
+   234→  - Version history: gradient timeline spine (primary→border→transparent), first dot filled primary with soft halo + "LATEST" pill on newest card, cards hover:shadow-sm.
+   235→  - Diff legend: text-xs text-foreground/70, h-3 swatches (VLM contrast nit).
+   236→  - AI chips: hint text 10px→10.5px muted→foreground/60 (contrast), icons shrink-0, chevron affordance on source preview.
+   237→  - Toolbar: "Polish" button (muted pill → primary hover, distinct from filled "Help me write" CTA).
+   238→  - Home: storage bar track bg-muted→bg-border/70 (contrast), template-gallery header chevron gap 4→6px + group-hover translate-x micro-interaction.
+   239→- QA (agent-browser + VLM): VLM reviews — versions panel 8/10 (zero concrete issues), AI dialog 8/10 (2 real fixes applied: hint contrast + chevron), diff dialog 8/10 (all flagged "issues" verified programmatically as false positives: no overflow — scrollWidth==clientWidth; select text near-black; pills centered; "truncation" = literal doc ellipsis char / crop artifacts). Final home + editor: 0 console errors, 0 page errors, lint clean, all endpoints 200.
+   240→- Cleanup: temp QA doc deleted; user's 6 docs + "Projects" folder intact; Meeting notes doc byte-identical to user's live state; light mode restored; desktop viewport restored.
+   241→
+   242→Stage Summary:
+   243→- Z-Docs now: home (templates, folders, grid/list, search, stars, trash) + editor (full toolbar, autosave, versions w/ inline word-level diff, share, print/export, dark mode, tables w/ structural ops, comments w/ edit, document outline, emoji picker, AI write + AI polish) + realtime collab + AI assistant.
+   244→- New reusable assets: src/lib/text-diff.ts (drop-in diff engine), /api/ai/transform route, AI-tools dialog pattern (stable capture callback + undoable execCommand apply).
+   245→- State: dev server restarted with fresh cache (next-server pid 32261, .next cleared), collab-service running (pid 3594), lint clean, DB: user's 6 docs + Projects folder (user actively creating docs — do not delete "Untitled document" docs).
+   246→- Known limitations / next-phase ideas: table cell merge/split + column width drag, folder drag-and-drop reordering, comment emoji reactions, doc tags, OAuth identities, offline support, PDF export, diff view could anchor to HTML structure (currently text-only, by design), AI polish on very large docs (12k char cap).
+   247→

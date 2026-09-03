@@ -11,14 +11,14 @@ export function StatusPill({ api }: { api: EditorApi }) {
     <div
       role="status"
       aria-label="Document statistics"
-      className="no-print fixed bottom-4 left-1/2 z-30 flex h-8 -translate-x-1/2 items-center gap-1 overflow-hidden rounded-full border bg-background/95 px-1.5 text-xs text-muted-foreground shadow-lg backdrop-blur"
+      className="no-print fixed bottom-4 left-1/2 z-30 flex h-8 -translate-x-1/2 items-center gap-1 overflow-hidden rounded-md border bg-background/95 px-1.5 text-xs text-muted-foreground elev-1 backdrop-blur"
     >
-      <span className="hidden items-center gap-1 px-2 py-1 sm:flex">
+      <span className="tnum hidden items-center gap-1 px-2 py-1 sm:flex">
         {s.pages} page{s.pages !== 1 ? "s" : ""}
       </span>
       <span className="h-4 w-px bg-border" />
       <button
-        className="px-2 py-1 transition-colors hover:text-foreground"
+        className="tnum px-2 py-1 transition-colors hover:text-foreground"
         onClick={() => api.openDialog("wordcount")}
         aria-label="Word count details"
       >
@@ -34,7 +34,7 @@ export function StatusPill({ api }: { api: EditorApi }) {
       {api.presence.length > 1 && (
         <>
           <span className="h-4 w-px bg-border" />
-          <span className="flex items-center gap-1 px-2 py-1">
+          <span className="tnum flex items-center gap-1 px-2 py-1">
             <Users className="h-3.5 w-3.5" />
             {api.presence.length}
           </span>
@@ -45,7 +45,7 @@ export function StatusPill({ api }: { api: EditorApi }) {
         <Button
           variant="ghost" size="icon"
           aria-label="Zoom out"
-          className="h-7 w-7 rounded-full text-muted-foreground"
+          className="h-7 w-7 rounded-md text-muted-foreground"
           onClick={() => api.setZoom(Math.max(0.5, +(api.zoom - 0.1).toFixed(2)))}
         >
           <Minus className="h-3 w-3" />
@@ -54,7 +54,7 @@ export function StatusPill({ api }: { api: EditorApi }) {
         <Button
           variant="ghost" size="icon"
           aria-label="Zoom in"
-          className="h-7 w-7 rounded-full text-muted-foreground"
+          className="h-7 w-7 rounded-md text-muted-foreground"
           onClick={() => api.setZoom(Math.min(2, +(api.zoom + 0.1).toFixed(2)))}
         >
           <Plus className="h-3 w-3" />

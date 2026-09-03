@@ -19,7 +19,7 @@ function SaveState({ api }: { api: EditorApi }) {
       : api.saveStatus === "unsaved"
         ? ["Unsaved changes", CloudUpload, "text-amber-600"]
         : api.saveStatus === "error"
-          ? ["Offline — retrying", CloudOff, "text-destructive"]
+          ? ["Offline, retrying", CloudOff, "text-destructive"]
           : ["All changes saved", CloudCheck, "text-muted-foreground"]
 
   return (
@@ -28,7 +28,7 @@ function SaveState({ api }: { api: EditorApi }) {
       <span>
         {text}
         {api.saveStatus === "saved" && api.lastSavedAt && (
-          <span className="hidden sm:inline"> · {relativeTime(api.lastSavedAt.toISOString())}</span>
+          <span className="tnum hidden sm:inline"> · {relativeTime(api.lastSavedAt.toISOString())}</span>
         )}
       </span>
     </div>
@@ -83,13 +83,14 @@ export function EditorHeader({ api }: { api: EditorApi }) {
               <button
                 onClick={api.toggleStar}
                 aria-label={api.starred ? "Remove star" : "Add star"}
-                className="rounded-full p-1.5 transition-colors hover:bg-muted"
+                className="rounded-md p-1.5 transition-colors hover:bg-muted"
               >
                 <Star
                   className={cn(
                     "h-4 w-4",
                     api.starred ? "fill-amber-400 text-amber-400" : "text-muted-foreground"
                   )}
+                  strokeWidth={1.75}
                 />
               </button>
             </TooltipTrigger>
@@ -122,7 +123,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
                 api.outlineOpen ? "bg-muted text-foreground" : "text-muted-foreground"
               )}
             >
-              <ListTree className="h-4.5 w-4.5" />
+              <ListTree className="h-4.5 w-4.5" strokeWidth={1.75} />
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
@@ -140,10 +141,10 @@ export function EditorHeader({ api }: { api: EditorApi }) {
                 api.commentsOpen ? "bg-muted text-foreground" : "text-muted-foreground"
               )}
             >
-              <MessageSquare className="h-4.5 w-4.5" />
+              <MessageSquare className="h-4.5 w-4.5" strokeWidth={1.75} />
               {api.unresolvedCommentCount > 0 && (
                 <span
-                  className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground shadow"
+                  className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground shadow"
                   aria-label={`${api.unresolvedCommentCount} unresolved comments`}
                 >
                   {api.unresolvedCommentCount > 9 ? "9+" : api.unresolvedCommentCount}
@@ -158,7 +159,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
         </Tooltip>
         <Button
           size="sm"
-          className="gap-2 rounded-full px-4 max-sm:px-3"
+          className="gap-2 rounded-md px-4 max-sm:px-3"
           onClick={() => api.openDialog("share")}
         >
           <Share2 className="h-4 w-4" />

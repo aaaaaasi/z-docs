@@ -94,14 +94,14 @@ export function DocsGrid() {
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <h2 className="text-base font-semibold">{titleFor(filter, folders, activeFolderId)}</h2>
           {!loading && (
-            <span className="text-sm text-muted-foreground">
+            <span className="tnum text-[13px] text-muted-foreground">
               {sorted.length} {sorted.length === 1 ? "document" : "documents"}
               {searchQuery ? ` matching “${searchQuery}”` : ""}
             </span>
           )}
           <div className="ml-auto flex items-center gap-2">
             <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
-              <SelectTrigger className="h-9 w-[150px] rounded-full text-sm" aria-label="Sort documents">
+              <SelectTrigger className="h-8 w-[128px] rounded-md text-[13px] text-muted-foreground" aria-label="Sort documents">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -110,12 +110,12 @@ export function DocsGrid() {
                 <SelectItem value="title">Title A–Z</SelectItem>
               </SelectContent>
             </Select>
-            <div className="flex items-center rounded-full border p-0.5">
+            <div className="flex items-center rounded-md border p-0.5">
               <Button
                 variant="ghost" size="icon"
                 aria-label="Grid view"
                 onClick={() => setLayout("grid")}
-                className={cn("h-8 w-8 rounded-full", layout === "grid" ? "bg-muted" : "text-muted-foreground")}
+                className={cn("h-7 w-7 rounded-[5px]", layout === "grid" ? "bg-accent text-accent-foreground" : "text-muted-foreground")}
               >
                 <LayoutGrid className="h-4 w-4" />
               </Button>
@@ -123,7 +123,7 @@ export function DocsGrid() {
                 variant="ghost" size="icon"
                 aria-label="List view"
                 onClick={() => setLayout("list")}
-                className={cn("h-8 w-8 rounded-full", layout === "list" ? "bg-muted" : "text-muted-foreground")}
+                className={cn("h-7 w-7 rounded-[5px]", layout === "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground")}
               >
                 <List className="h-4 w-4" />
               </Button>
@@ -133,7 +133,7 @@ export function DocsGrid() {
 
         {error && (
           <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
-            {error} — <button className="underline underline-offset-2" onClick={() => useDocsStore.getState().refresh()}>retry</button>
+            {error}. <button className="font-medium underline underline-offset-2" onClick={() => useDocsStore.getState().refresh()}>Retry</button>
           </div>
         )}
 
@@ -174,7 +174,7 @@ export function DocsGrid() {
             ))}
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border">
+          <div className="overflow-hidden rounded-lg border">
             {sorted.map((doc, i) => (
               <DocRow
                 key={doc.id}
@@ -356,13 +356,13 @@ function DocCard({
       style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
       aria-label={`Open ${doc.title}`}
     >
-      <div className="relative overflow-hidden rounded-sm border shadow-sm transition-all duration-200 group-hover:-translate-y-0.5 group-hover:shadow-md group-focus-visible:-translate-y-0.5 group-focus-visible:shadow-md">
+      <div className="relative overflow-hidden rounded-sm border elev-1 transition-[border-color,box-shadow] duration-200 group-hover:border-foreground/25 group-hover:elev-2 group-focus-visible:border-foreground/25 group-focus-visible:elev-2">
         <DocPreview html={doc.content} width={152} className="mx-auto" />
         {doc.starred && !inTrash && (
           <Star className="absolute right-1.5 top-1.5 h-4 w-4 fill-amber-400 text-amber-400 drop-shadow transition-transform duration-200 group-hover:scale-110" aria-label="Starred" />
         )}
         {inTrash && (
-          <div className="absolute left-1.5 top-1.5 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-medium text-white">
+          <div className="absolute left-1.5 top-1.5 rounded-[4px] bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white">
             In trash
           </div>
         )}
@@ -401,7 +401,7 @@ function DocRow({
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && actions.onOpen()}
       className={cn(
         "animate-card-in group flex cursor-pointer items-center gap-3 border-b px-4 py-3 outline-none last:border-b-0 hover:bg-muted/50 focus-visible:bg-muted/50",
-        index === 0 && "rounded-t-xl", index % 2 === 1 && "bg-muted/20"
+        index === 0 && "rounded-t-lg", index % 2 === 1 && "bg-muted/30"
       )}
       aria-label={`Open ${doc.title}`}
     >
@@ -420,8 +420,8 @@ function DocRow({
           {doc.snippet || "Empty document"}
         </p>
       </div>
-      <span className="hidden w-20 shrink-0 text-right text-xs text-muted-foreground sm:block">{doc.wordCount} words</span>
-      <span className="hidden w-32 shrink-0 text-right text-xs text-muted-foreground md:block">{relativeTime(doc.updatedAt)}</span>
+      <span className="tnum hidden w-20 shrink-0 text-right text-xs text-muted-foreground sm:block">{doc.wordCount} words</span>
+      <span className="tnum hidden w-32 shrink-0 text-right text-xs text-muted-foreground md:block">{relativeTime(doc.updatedAt)}</span>
       <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
     </div>
   )
@@ -431,7 +431,7 @@ function EmptyState({ filter, search }: { filter: string; search: boolean }) {
   const createDoc = useDocsStore((s) => s.createDoc)
   const openDoc = useDocsStore((s) => s.openDoc)
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-center">
+    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
       {search ? (
         <SearchX className="h-10 w-10 text-muted-foreground/40" />
       ) : filter === "trash" ? (
@@ -457,7 +457,7 @@ function EmptyState({ filter, search }: { filter: string; search: boolean }) {
       </p>
       {!search && filter === "all" && (
         <Button
-          className="mt-4 rounded-full"
+          className="mt-4"
           onClick={async () => {
             const id = await createDoc({ templateId: "blank" })
             if (id) openDoc(id)

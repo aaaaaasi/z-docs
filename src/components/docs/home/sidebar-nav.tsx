@@ -80,14 +80,16 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
         variant="ghost"
         onClick={onSelect}
         className={cn(
-          "w-full justify-start gap-3 rounded-full px-4 py-2.5 text-sm font-normal",
-          active ? "bg-primary/10 text-primary hover:bg-primary/15" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          "w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[13px] font-normal",
+          active
+            ? "bg-accent font-medium text-accent-foreground"
+            : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
         )}
       >
         {icon}
         <span className="flex-1 text-left">{label}</span>
         {badge !== undefined && badge > 0 && (
-          <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{badge}</span>
+          <span className="tnum text-[11px] text-muted-foreground">{badge}</span>
         )}
       </Button>
     )
@@ -97,7 +99,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
   return (
     <div className="flex h-full flex-col p-3">
       <div className="px-2 pb-3 pt-1">
-        <NewDocButton className="w-full rounded-full" />
+        <NewDocButton className="w-full" />
       </div>
 
       <nav className="flex flex-col gap-0.5" aria-label="Document filters">
@@ -110,8 +112,8 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
       </nav>
 
       {/* Folders */}
-      <div className="mt-4 flex items-center justify-between px-4">
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Folders</span>
+      <div className="mt-4 flex items-center justify-between px-3">
+        <span className="text-[11px] font-medium tracking-wide text-muted-foreground">Folders</span>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -120,7 +122,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                 setCreating(true)
                 setNewName("")
               }}
-              className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
             >
               <FolderPlus className="h-4 w-4" />
             </button>
@@ -131,7 +133,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
 
       <nav className="mt-1 flex flex-col gap-0.5" aria-label="Document folders">
         {creating && (
-          <div className="flex items-center gap-2 px-4 py-1.5">
+          <div className="flex items-center gap-2.5 px-3 py-1.5">
             <Folder className="h-4.5 w-4.5 shrink-0 text-muted-foreground" />
             <Input
               autoFocus
@@ -151,7 +153,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
               }}
               onBlur={() => setCreating(false)}
               placeholder="Folder name"
-              className="h-8 rounded-full text-sm"
+              className="h-8 rounded-md text-[13px]"
               maxLength={80}
             />
           </div>
@@ -165,16 +167,16 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                 variant="ghost"
                 onClick={() => openFolder(f.id)}
                 className={cn(
-                  "w-full justify-start gap-3 rounded-full px-4 py-2.5 text-sm font-normal",
+                  "w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[13px] font-normal",
                   active
-                    ? "bg-primary/10 text-primary hover:bg-primary/15"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    ? "bg-accent font-medium text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                 )}
               >
                 <Folder className="h-4.5 w-4.5 shrink-0" style={{ color: active ? undefined : f.color }} fill={active ? f.color : "none"} />
                 <span className="flex-1 truncate text-left">{f.name}</span>
                 {renaming?.id !== f.id && (
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+                  <span className="tnum text-[11px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
                     {(f.count ?? 0) > 0 ? f.count : ""}
                   </span>
                 )}
@@ -185,7 +187,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                   <DropdownMenuTrigger asChild>
                     <button
                       aria-label={`Actions for folder ${f.name}`}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <MoreVertical className="h-3.5 w-3.5" />
@@ -210,7 +212,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
               )}
               {/* inline rename */}
               {renaming?.id === f.id && (
-                <div className="absolute inset-0 flex items-center gap-2 rounded-full bg-background px-4">
+                <div className="absolute inset-0 flex items-center gap-2.5 rounded-md bg-background px-3">
                   <Folder className="h-4.5 w-4.5 shrink-0" style={{ color: f.color }} />
                   <Input
                     autoFocus
@@ -224,7 +226,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                       if (e.key === "Escape") setRenaming(null)
                     }}
                     onBlur={() => setRenaming(null)}
-                    className="h-7 rounded-full text-sm"
+                    className="h-7 rounded-md text-[13px]"
                     maxLength={80}
                   />
                 </div>
@@ -237,13 +239,13 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
         })}
 
         {folders.length === 0 && !creating && (
-          <p className="px-4 py-2 text-xs text-muted-foreground/70">
-            No folders yet — create one to organize your docs.
+          <p className="px-3 py-2 text-[11.5px] leading-relaxed text-muted-foreground/80">
+            No folders yet. Create one to organize your docs.
           </p>
         )}
       </nav>
 
-      <div className="mt-4 px-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+      <div className="mt-4 px-3 text-[11px] font-medium tracking-wide text-muted-foreground/70">
         Workspace
       </div>
       <nav className="mt-1 flex flex-col gap-0.5" aria-label="Workspace apps">
@@ -258,13 +260,11 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
               <Button
                 variant="ghost"
                 disabled
-                className="w-full justify-start gap-3 rounded-full px-4 py-2.5 text-sm font-normal text-muted-foreground/50"
+                className="w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[13px] font-normal text-muted-foreground/50"
               >
                 {item.icon}
                 <span className="flex-1 text-left">{item.label}</span>
-                <span className="rounded-full border bg-muted/60 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                  soon
-                </span>
+                <span className="text-[10px] text-muted-foreground/60">soon</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="right" className="text-xs">Coming soon</TooltipContent>
@@ -272,16 +272,16 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
         ))}
       </nav>
 
-      <div className="mt-auto px-4 pb-4">
-        <div className="rounded-xl border bg-muted/50 p-3">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Cloud className="h-4 w-4" />
+      <div className="mt-auto px-3 pb-4">
+        <div className="rounded-lg border border-border/70 bg-muted/40 p-3">
+          <div className="flex items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground">
+            <Cloud className="h-3.5 w-3.5" strokeWidth={1.75} />
             Storage
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/70">
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-border/70">
             <div className="h-full w-[12%] rounded-full bg-primary transition-[width] duration-500" />
           </div>
-          <p className="mt-1.5 text-[11px] text-muted-foreground">1.8 GB of 15 GB used</p>
+          <p className="tnum mt-1.5 text-[11px] text-muted-foreground">1.8 GB of 15 GB used</p>
         </div>
       </div>
     </div>

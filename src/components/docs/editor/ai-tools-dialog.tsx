@@ -117,7 +117,7 @@ export function AiToolsDialog({
                   onClick={() => setAction(a.id)}
                   disabled={loading}
                   className={cn(
-                    "flex flex-col items-start gap-1 rounded-lg border p-2.5 text-left transition-all duration-150",
+                    "flex flex-col items-start gap-1 rounded-lg border p-2.5 text-left transition-[background-color,border-color,box-shadow] duration-150",
                     "hover:border-primary/50 hover:bg-primary/5 hover:shadow-sm",
                     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     "disabled:pointer-events-none disabled:opacity-50",

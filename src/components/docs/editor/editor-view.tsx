@@ -605,7 +605,7 @@ export function EditorView() {
             const nextRow = ctx.table.rows[Math.min(ctx.rowIndex, ctx.table.rows.length - 1)]
             if (nextRow?.cells[0]) placeCaretInCell(nextRow.cells[0])
           }
-          toast({ title: removedTable ? "Last row removed — table deleted" : "Row deleted" })
+          toast({ title: removedTable ? "Last row removed, table deleted" : "Row deleted" })
           break
         }
         case "delete-col": {
@@ -615,7 +615,7 @@ export function EditorView() {
             const cell = row?.cells[Math.min(ctx.colIndex, row.cells.length - 1)]
             if (cell) placeCaretInCell(cell)
           }
-          toast({ title: removedTable ? "Last column removed — table deleted" : "Column deleted" })
+          toast({ title: removedTable ? "Last column removed, table deleted" : "Column deleted" })
           break
         }
         case "delete-table": {
@@ -1318,7 +1318,7 @@ img { max-width: 100%; }
           <p className="text-lg font-semibold">{loadError}</p>
           <p className="mt-1 text-sm text-muted-foreground">It may have been deleted by someone else.</p>
         </div>
-        <Button onClick={goHomeStore} className="rounded-full px-6">Back to documents</Button>
+        <Button onClick={goHomeStore} className="rounded-md px-6">Back to documents</Button>
       </div>
     )
   }
@@ -1425,7 +1425,7 @@ img { max-width: 100%; }
         </div>
       ) : (
         <div className="doc-canvas-bg flex flex-1 items-start justify-center overflow-hidden p-10">
-          <div className="w-full max-w-[816px] space-y-4 rounded-sm bg-white p-24 shadow-lg">
+          <div className="w-full max-w-[816px] space-y-4 rounded-sm bg-white p-24 shadow-[0_1px_2px_rgba(35,32,28,0.08),0_12px_40px_rgba(35,32,28,0.1)]">
             <div className="flex items-center gap-3 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
               <span className="text-sm">Loading document…</span>

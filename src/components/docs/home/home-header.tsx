@@ -5,23 +5,21 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Search, Menu, FileText, LayoutGrid, Settings } from "lucide-react"
+import { Search, Menu, LayoutGrid, Settings } from "lucide-react"
 import { UserMenu } from "@/components/docs/user-menu"
 import { ThemeToggle } from "@/components/docs/theme-toggle"
 import { useDocsStore } from "@/store/docs-store"
 import { SidebarNavContent } from "./sidebar-nav"
 
-/** Logo wordmark used across the app */
+/** Logo wordmark used across the app: a blinking caret next to a serif wordmark */
 export function DocsLogo({ size = "md" }: { size?: "sm" | "md" }) {
-  const box = size === "sm" ? "h-8 w-8 rounded-md" : "h-9 w-9 rounded-[10px]"
-  const text = size === "sm" ? "text-lg" : "text-xl"
+  const caret = size === "sm" ? "h-4 w-[2.5px]" : "h-[18px] w-[3px]"
+  const text = size === "sm" ? "text-[16px]" : "text-[18px]"
   return (
-    <div className="flex items-center gap-2.5 select-none">
-      <div className={`${box} flex items-center justify-center bg-primary text-primary-foreground shadow-sm`}>
-        <FileText className={size === "sm" ? "h-4 w-4" : "h-5 w-5"} />
-      </div>
-      <span className={`${text} font-semibold tracking-tight text-muted-foreground`}>
-        Z<span className="text-foreground">-Docs</span>
+    <div className="flex items-center gap-1.5 select-none" aria-label="Z-Docs home">
+      <span aria-hidden="true" className={`${caret} rounded-[1px] bg-primary logo-caret`} />
+      <span className={`font-editorial ${text} font-medium tracking-tight text-foreground`}>
+        Z-Docs
       </span>
     </div>
   )
@@ -63,6 +61,7 @@ export function HomeHeader() {
 
       <DocsLogo />
 
+      {/* Search: a resting pill that wakes into a white card on focus */}
       <div className="relative ml-2 hidden max-w-xl flex-1 items-center sm:flex">
         <Search className="pointer-events-none absolute left-4 h-4.5 w-4.5 text-muted-foreground" />
         <Input
@@ -70,7 +69,7 @@ export function HomeHeader() {
           onChange={(e) => setLocal(e.target.value)}
           placeholder="Search your documents"
           aria-label="Search documents"
-          className="h-11 rounded-full border-transparent bg-muted pl-11 pr-4 text-sm focus-visible:border-ring"
+          className="h-11 rounded-full border-transparent bg-muted pl-11 pr-4 text-sm transition-[background-color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground/80 focus-visible:border-border focus-visible:bg-background focus-visible:shadow-[0_1px_2px_rgba(35,32,28,0.05),0_6px_20px_rgba(35,32,28,0.08)]"
         />
       </div>
 
@@ -83,12 +82,12 @@ export function HomeHeader() {
             onChange={(e) => setLocal(e.target.value)}
             placeholder="Search"
             aria-label="Search documents"
-            className="h-9 w-28 rounded-full border-transparent bg-muted pl-9 pr-3 text-sm focus-visible:w-40"
+            className="h-9 w-28 rounded-full border-transparent bg-muted pl-9 pr-3 text-sm focus-visible:w-40 focus-visible:border-border focus-visible:bg-background"
           />
         </div>
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-full text-muted-foreground hover:text-foreground sm:flex" aria-label="Apps (demo)">
+            <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-full text-muted-foreground hover:text-foreground sm:flex" aria-label="More apps (demo)">
               <LayoutGrid className="h-4.5 w-4.5" />
             </Button>
           </TooltipTrigger>

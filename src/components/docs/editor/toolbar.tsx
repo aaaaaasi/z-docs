@@ -28,7 +28,7 @@ function TB({
   iconClassName,
   disabled,
 }: {
-  icon: React.ComponentType<{ className?: string }>
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
   label: string
   active?: boolean
   onClick: () => void
@@ -51,7 +51,7 @@ function TB({
             className
           )}
         >
-          <Icon className={cn("h-4.5 w-4.5", iconClassName)} />
+          <Icon className={cn("h-4.5 w-4.5", iconClassName)} strokeWidth={1.75} />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="text-xs">{label}</TooltipContent>
@@ -198,7 +198,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
                 variant="ghost" size="icon" aria-label="Text color"
                 className="relative h-9 w-9 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
               >
-                <Text className="h-4.5 w-4.5" />
+                <Text className="h-4.5 w-4.5" strokeWidth={1.75} />
                 <span className="absolute bottom-1.5 left-1/2 h-1 w-5 -translate-x-1/2 rounded-sm" style={{ backgroundColor: lastTextColor }} />
               </Button>
             </PopoverTrigger>
@@ -224,7 +224,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
                 variant="ghost" size="icon" aria-label="Highlight color"
                 className="relative h-9 w-9 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
               >
-                <Highlighter className="h-4.5 w-4.5" />
+                <Highlighter className="h-4.5 w-4.5" strokeWidth={1.75} />
                 <span className="absolute bottom-1.5 left-1/2 h-1 w-5 -translate-x-1/2 rounded-sm" style={{ backgroundColor: lastHighlight }} />
               </Button>
             </PopoverTrigger>
@@ -263,7 +263,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
         />
         {api.unresolvedCommentCount > 0 && (
           <span
-            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground shadow"
+            className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground shadow"
             aria-label={`${api.unresolvedCommentCount} unresolved comments`}
           >
             {api.unresolvedCommentCount > 9 ? "9+" : api.unresolvedCommentCount}
@@ -283,13 +283,13 @@ export function Toolbar({ api }: { api: EditorApi }) {
                 className="h-9 w-9 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
               >
                 {api.fmt.align === "center" ? (
-                  <AlignCenter className="h-4.5 w-4.5" />
+                  <AlignCenter className="h-4.5 w-4.5" strokeWidth={1.75} />
                 ) : api.fmt.align === "right" ? (
-                  <AlignRight className="h-4.5 w-4.5" />
+                  <AlignRight className="h-4.5 w-4.5" strokeWidth={1.75} />
                 ) : api.fmt.align === "full" ? (
-                  <AlignJustify className="h-4.5 w-4.5" />
+                  <AlignJustify className="h-4.5 w-4.5" strokeWidth={1.75} />
                 ) : (
-                  <AlignLeft className="h-4.5 w-4.5" />
+                  <AlignLeft className="h-4.5 w-4.5" strokeWidth={1.75} />
                 )}
               </Button>
             </DropdownMenuTrigger>
@@ -348,9 +348,9 @@ export function Toolbar({ api }: { api: EditorApi }) {
             variant="outline"
             size="sm"
             onClick={() => api.openDialog("helpwrite")}
-            className="h-9 shrink-0 gap-1.5 rounded-full border-primary/30 bg-primary/5 text-primary hover:bg-primary/10 hover:text-primary"
+            className="h-9 shrink-0 gap-1.5 rounded-md text-muted-foreground hover:border-border hover:bg-accent/60 hover:text-foreground"
           >
-            <Sparkles className="h-4 w-4" />
+            <Sparkles className="h-4 w-4" strokeWidth={1.75} />
             <span className="hidden text-xs font-medium sm:inline">Help me write</span>
           </Button>
         </TooltipTrigger>
@@ -364,14 +364,14 @@ export function Toolbar({ api }: { api: EditorApi }) {
             size="sm"
             onClick={() => api.openDialog("aitools")}
             aria-label="AI polish"
-            className="h-9 shrink-0 gap-1.5 rounded-full border-border bg-background text-muted-foreground transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+            className="h-9 shrink-0 gap-1.5 rounded-md border-border bg-background text-muted-foreground transition-[background-color,border-color,color] hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
           >
             <Wand2 className="h-4 w-4" />
             <span className="hidden text-xs font-medium sm:inline">Polish</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">
-          AI polish — improve, fix grammar, shorten (⌥⌘A)
+          AI polish: improve, fix grammar, shorten (⌥⌘A)
         </TooltipContent>
       </Tooltip>
 

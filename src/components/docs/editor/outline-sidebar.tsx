@@ -36,7 +36,7 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
         "no-print relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-r bg-background/95 backdrop-blur-sm",
         "transition-[margin-left] duration-300 ease-in-out",
         open ? "ml-0" : "pointer-events-none -ml-[248px] max-lg:-ml-[100%]",
-        "max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:w-full max-lg:border-r max-lg:bg-background max-lg:shadow-2xl max-lg:transition-transform",
+        "max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:w-full max-lg:border-r max-lg:bg-background max-lg:transition-transform",
         !open && "max-lg:pointer-events-none max-lg:-translate-x-full"
       )}
     >
@@ -46,7 +46,7 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
           <ListTree className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Document outline</h2>
           {items.length > 0 && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+            <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
               {items.length}
             </span>
           )}
@@ -54,7 +54,7 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
             variant="ghost"
             size="icon"
             aria-label="Close document outline"
-            className="ml-auto h-8 w-8 rounded-full text-muted-foreground"
+            className="ml-auto h-8 w-8 rounded-md text-muted-foreground"
             onClick={onClose}
           >
             <X className="h-4 w-4" />

@@ -257,7 +257,7 @@ export function EmojiDialog({
                 aria-selected={c.id === category}
                 onClick={() => setCategory(c.id)}
                 className={cn(
-                  "shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                  "shrink-0 rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
                   c.id === category
                     ? "bg-primary/10 text-primary"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -295,7 +295,7 @@ export function EmojiDialog({
 
         <div className="flex items-center justify-between text-xs text-foreground/70">
           <span>Click an emoji to insert it at the caret.</span>
-          <Button variant="outline" size="sm" className="h-7 rounded-full px-4 text-xs font-medium shadow-sm" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" size="sm" className="h-7 rounded-md px-4 text-xs font-medium shadow-sm" onClick={() => onOpenChange(false)}>
             Done
           </Button>
         </div>

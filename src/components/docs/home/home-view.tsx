@@ -18,9 +18,9 @@ export function HomeView() {
       </div>
       <footer className="mt-auto border-t bg-background px-4 py-3 text-center text-xs text-muted-foreground">
         <span className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-          <span>Z-Docs — a Google Docs-style demo</span>
+          <span className="font-editorial text-[13px] font-medium tracking-tight text-foreground/70">Z-Docs</span>
           <span aria-hidden="true" className="hidden sm:inline">·</span>
-          <span className="hidden sm:inline">real-time editing, templates, version history &amp; AI drafting</span>
+          <span className="hidden sm:inline">documents for teams</span>
         </span>
       </footer>
     </div>

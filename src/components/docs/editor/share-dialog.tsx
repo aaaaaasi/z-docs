@@ -112,7 +112,7 @@ export function ShareDialog({
           <div className="flex-1">
             <p className="text-sm font-medium">General access</p>
             <p className="text-xs text-muted-foreground">
-              {access === "link" ? "Anyone on this network with the link" : "Restricted — only people with access"}
+              {access === "link" ? "Anyone on this network with the link" : "Restricted, only people with access"}
             </p>
           </div>
           <Select value={access} onValueChange={setAccess}>
@@ -128,7 +128,7 @@ export function ShareDialog({
 
         <div className="flex items-center gap-2 rounded-lg border border-dashed p-2.5 text-muted-foreground">
           <UserPlus className="h-4 w-4" />
-          <Input disabled placeholder="Invite by email — coming soon" className="h-8 border-transparent bg-transparent text-sm" />
+          <Input disabled placeholder="Invite by email, coming soon" className="h-8 border-transparent bg-transparent text-sm" />
         </div>
       </DialogContent>
     </Dialog>

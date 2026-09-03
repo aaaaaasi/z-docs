@@ -321,7 +321,7 @@ export function TableDialog({
                       aria-label={`Insert ${r + 1} by ${c + 1} table`}
                       onMouseEnter={() => setHover({ rows: r + 1, cols: c + 1 })}
                       onClick={() => pick(r + 1, c + 1)}
-                      className={`h-7 w-7 rounded-[3px] border transition-all ${
+                      className={`h-7 w-7 rounded-[3px] border transition-[background-color,border-color,transform] ${
                         on ? "border-primary bg-primary/70 scale-105" : "border-border bg-muted/60 hover:bg-muted"
                       }`}
                     />

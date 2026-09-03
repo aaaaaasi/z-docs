@@ -214,7 +214,7 @@ export function MenuBar({ api }: { api: EditorApi }) {
               api.fmt.align === align && "bg-muted text-foreground"
             )}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-4 w-4" strokeWidth={1.75} />
           </button>
         ))}
       </div>

@@ -66,7 +66,7 @@ function Composer({
   if (quote == null) return null
 
   return (
-    <div className="animate-fade-in rounded-xl border bg-card p-3 shadow-sm" data-testid="comment-composer">
+    <div className="animate-fade-in rounded-lg border bg-card p-3" data-testid="comment-composer">
       <div className="mb-2 flex items-start gap-2 rounded-lg bg-muted/70 p-2">
         <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <p className="line-clamp-3 text-xs italic leading-snug text-muted-foreground">{quote}</p>
@@ -88,12 +88,12 @@ function Composer({
         aria-label="Comment text"
       />
       <div className="mt-2 flex items-center justify-end gap-2">
-        <Button variant="ghost" size="sm" className="h-8 rounded-full text-muted-foreground" onClick={onCancel}>
+        <Button variant="ghost" size="sm" className="h-8 rounded-md text-muted-foreground" onClick={onCancel}>
           Cancel
         </Button>
         <Button
           size="sm"
-          className="h-8 gap-1.5 rounded-full px-4"
+          className="h-8 gap-1.5 rounded-md px-4"
           disabled={!text.trim() || submitting}
           onClick={() => onSubmit(text.trim())}
         >
@@ -140,10 +140,10 @@ function ReplyForm({
         aria-label="Reply text"
       />
       <div className="mt-1 flex justify-end gap-2">
-        <Button variant="ghost" size="sm" className="h-7 rounded-full text-muted-foreground" onClick={onCancel}>
+        <Button variant="ghost" size="sm" className="h-7 rounded-md text-muted-foreground" onClick={onCancel}>
           Cancel
         </Button>
-        <Button size="sm" className="h-7 rounded-full px-3 text-xs" disabled={!text.trim()} onClick={() => onSubmit(text.trim())}>
+        <Button size="sm" className="h-7 rounded-md px-3 text-xs" disabled={!text.trim()} onClick={() => onSubmit(text.trim())}>
           Reply
         </Button>
       </div>
@@ -190,12 +190,12 @@ function EditForm({
         aria-label="Edit comment text"
       />
       <div className="mt-1 flex justify-end gap-2">
-        <Button variant="ghost" size="sm" className="h-7 rounded-full text-muted-foreground" onClick={onCancel}>
+        <Button variant="ghost" size="sm" className="h-7 rounded-md text-muted-foreground" onClick={onCancel}>
           Cancel
         </Button>
         <Button
           size="sm"
-          className="h-7 rounded-full px-3 text-xs"
+          className="h-7 rounded-md px-3 text-xs"
           disabled={!text.trim() || text.trim() === initial || busy}
           onClick={() => onSubmit(text.trim())}
         >
@@ -225,7 +225,7 @@ function MessageBody({
     <div className="min-w-0 flex-1">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <span className="text-sm font-medium leading-tight">{authorName}</span>
-        <span className="text-[11px] text-muted-foreground">{relativeTime(time)}</span>
+        <span className="tnum text-[11px] text-muted-foreground">{relativeTime(time)}</span>
         {resolved && <CheckCircle2 className="h-3.5 w-3.5 text-primary" aria-label="Resolved" />}
       </div>
       <div
@@ -267,7 +267,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
       ref={ref}
       data-comment-id={comment.id}
       className={cn(
-        "animate-fade-in scroll-mt-4 rounded-xl border bg-card p-3 shadow-sm transition-all group/thread",
+        "animate-fade-in scroll-mt-4 rounded-lg border bg-card p-3 transition-[border-color,box-shadow,opacity] group/thread",
         active && "border-primary/60 ring-2 ring-primary/20",
         comment.resolved && "opacity-75"
       )}
@@ -334,7 +334,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
                   variant="ghost"
                   size="icon"
                   aria-label="Edit reply"
-                  className="h-6 w-6 shrink-0 rounded-full text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/thread:opacity-100 focus-visible:opacity-100"
+                  className="h-6 w-6 shrink-0 rounded-md text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/thread:opacity-100 focus-visible:opacity-100"
                   onClick={() => setEditing(r.id)}
                   disabled={busy}
                 >
@@ -359,7 +359,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 gap-1 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => setReplying(true)}
             disabled={busy}
           >
@@ -369,7 +369,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 gap-1 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              className="h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setEditing(comment.id)}
               disabled={busy}
             >
@@ -381,7 +381,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 gap-1 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
+                className="h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
                 onClick={onToggleResolve}
                 disabled={busy}
               >
@@ -400,7 +400,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
                   variant="ghost"
                   size="sm"
                   aria-label="Delete comment thread"
-                  className="ml-auto h-7 gap-1 rounded-full px-2.5 text-xs text-muted-foreground hover:text-destructive"
+                  className="ml-auto h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-destructive"
                   onClick={onDelete}
                   disabled={busy}
                 >
@@ -454,7 +454,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
         "no-print relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-l bg-background/95 backdrop-blur-sm",
         "transition-[margin-right] duration-300 ease-in-out",
         open ? "mr-0" : "pointer-events-none -mr-[340px] max-lg:-mr-[100%]",
-        "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:w-full max-lg:border-l max-lg:bg-background max-lg:shadow-2xl max-lg:transition-transform",
+        "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:w-full max-lg:border-l max-lg:bg-background max-lg:transition-transform",
         !open && "max-lg:pointer-events-none max-lg:translate-x-full"
       )}
     >
@@ -464,7 +464,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
           <MessageCircle className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Comments</h2>
           {!loading && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+            <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
               {openThreads.length} open
             </span>
           )}
@@ -472,7 +472,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
             variant="ghost"
             size="icon"
             aria-label="Close comments panel"
-            className="ml-auto h-8 w-8 rounded-full text-muted-foreground"
+            className="ml-auto h-8 w-8 rounded-md text-muted-foreground"
             onClick={onClose}
           >
             <X className="h-4 w-4" />
@@ -493,7 +493,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
               <Loader2 className="h-4 w-4 animate-spin" /> Loading comments…
             </div>
           ) : comments.length === 0 && pendingQuote == null ? (
-            <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed py-10 text-center">
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-center">
               <MessageSquarePlus className="h-8 w-8 text-muted-foreground/40" />
               <div>
                 <p className="text-sm font-medium">No comments yet</p>
@@ -574,7 +574,7 @@ export function CommentBubble({
       data-testid="comment-bubble"
       onMouseDown={(e) => e.preventDefault()} // keep the text selection
       onClick={onAdd}
-      className="no-print animate-fade-in fixed z-50 flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border/80 bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-lg transition-all hover:scale-105 hover:border-primary/40 hover:shadow-xl"
+      className="no-print animate-fade-in fixed z-50 flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border/80 bg-card px-3 py-1.5 text-xs font-medium text-foreground elev-2 transition-[border-color,box-shadow,transform] hover:scale-105 hover:border-primary/40"
       style={{
         left: Math.min(Math.max(x - 60, 8), window.innerWidth - 140),
         top: Math.max(y, 8),

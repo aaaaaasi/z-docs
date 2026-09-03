@@ -43,12 +43,10 @@ export function TemplateGallery() {
   return (
     <section aria-label="Start a new document" className="border-b bg-background px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-6xl">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-muted-foreground">Start a new document</h2>
-          </div>
-          <span className="group hidden items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:flex">
-            Template gallery <ChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-[13px] font-medium text-foreground/70">Start a new document</h2>
+          <span className="group hidden cursor-default items-center gap-1 text-[13px] text-primary transition-colors hover:underline hover:underline-offset-4 sm:flex">
+            Template gallery <ChevronRight className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
           </span>
         </div>
 
@@ -57,40 +55,30 @@ export function TemplateGallery() {
           role="list"
           aria-label="Document templates"
         >
-          {/* AI card */}
+          {/* AI card: quiet white card, thin-line icon, no gradient theatrics */}
           <button
             onClick={() => start("ai")}
             disabled={busyId === "ai"}
-            className="group flex w-[152px] shrink-0 flex-col items-center gap-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 rounded-sm disabled:opacity-60 max-sm:snap-start"
+            className="group flex w-[152px] shrink-0 flex-col items-center gap-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 rounded-sm disabled:opacity-60 max-sm:snap-start"
             aria-label="Help me write with AI"
           >
-            <div className="relative h-[197px] w-[152px] overflow-hidden rounded-sm border border-primary/20 bg-gradient-to-br from-primary/5 via-primary/10 to-primary/20 shadow-sm transition-all duration-200 group-hover:shadow-md group-hover:-translate-y-1">
+            <div className="relative flex h-[197px] w-[152px] items-center justify-center overflow-hidden rounded-sm border bg-card elev-1 transition-[border-color,box-shadow] duration-200 group-hover:border-primary/45 group-hover:elev-2 group-focus-visible:border-primary/45 group-focus-visible:elev-2">
               {busyId === "ai" ? (
                 <div className="flex h-full items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" strokeWidth={1.75} />
                 </div>
               ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-3 p-4">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground shadow-md transition-transform duration-200 group-hover:scale-110 group-hover:rotate-3">
-                    <Sparkles className="h-6 w-6" />
-                  </div>
-                  <p className="px-2 text-center text-xs font-medium leading-snug text-foreground">
-                    Help me write something…
+                <div className="flex flex-col items-center gap-3 px-4">
+                  <Sparkles className="h-7 w-7 text-primary transition-transform duration-200 group-hover:scale-105" strokeWidth={1.5} />
+                  <p className="text-center text-[12.5px] font-medium leading-snug text-foreground">
+                    Help me write
                   </p>
-                  <p className="text-center text-[10px] leading-tight text-muted-foreground">Powered by AI</p>
-                </div>
-              )}
-              {/* hover overlay — matches template cards */}
-              {!busyId && (
-                <div className="pointer-events-none absolute inset-0 flex items-end justify-center bg-gradient-to-t from-primary/30 via-transparent to-transparent pb-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                  <span className="rounded-full bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground shadow-lg">
-                    Ask AI
-                  </span>
+                  <p className="text-center text-[11px] leading-tight text-muted-foreground">AI draft</p>
                 </div>
               )}
             </div>
-            <p className="w-full truncate text-center text-sm font-medium">Help me write</p>
-            <p className="w-full truncate text-center text-xs text-muted-foreground">Draft with AI</p>
+            <p className="w-full truncate text-center text-[13px] font-medium">Help me write</p>
+            <p className="w-full truncate text-center text-[11.5px] text-muted-foreground">Draft with AI</p>
           </button>
 
           {TEMPLATES.map((t) => {
@@ -100,31 +88,31 @@ export function TemplateGallery() {
                 key={t.id}
                 onClick={() => start(t.id)}
                 disabled={busyId === t.id}
-                className="group flex w-[152px] shrink-0 flex-col items-center gap-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 rounded-sm disabled:opacity-60 max-sm:snap-start"
+                className="group flex w-[152px] shrink-0 flex-col items-center gap-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 rounded-sm disabled:opacity-60 max-sm:snap-start"
                 aria-label={`Create from ${t.name} template`}
               >
-                <div className="relative h-[197px] w-[152px] overflow-hidden rounded-sm border bg-white shadow-sm transition-all duration-200 group-hover:shadow-md group-hover:-translate-y-1">
+                <div className="relative h-[197px] w-[152px] overflow-hidden rounded-sm border bg-card elev-1 transition-[border-color,box-shadow] duration-200 group-hover:border-foreground/25 group-hover:elev-2 group-focus-visible:border-foreground/25 group-focus-visible:elev-2">
                   {busyId === t.id ? (
                     <div className="flex h-full items-center justify-center">
-                      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                      <Loader2 className="h-5 w-5 animate-spin text-primary" strokeWidth={1.75} />
                     </div>
                   ) : (
                     <DocPreview html={t.content} width={152} />
                   )}
-                  {/* hover overlay */}
+                  {/* hover affordance: flat tint + small label, no blur */}
                   {!busyId && (
-                    <div className="pointer-events-none absolute inset-0 flex items-end justify-center bg-gradient-to-t from-black/25 via-transparent to-transparent pb-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-                      <span className="rounded-full bg-foreground/85 px-3 py-1 text-[11px] font-medium text-background shadow-lg backdrop-blur-sm">
+                    <div className="pointer-events-none absolute inset-0 flex items-end justify-center bg-foreground/[0.05] pb-3 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                      <span className="rounded-[4px] bg-foreground px-2.5 py-1 text-[11px] font-medium text-background">
                         Use template
                       </span>
                     </div>
                   )}
                 </div>
                 <div className="flex w-full items-center justify-center gap-1.5">
-                  <Icon className={cn("h-4 w-4", t.accent)} />
-                  <p className="truncate text-sm font-medium">{t.name}</p>
+                  <Icon className={cn("h-3.5 w-3.5", t.accent)} strokeWidth={1.75} />
+                  <p className="truncate text-[13px] font-medium">{t.name}</p>
                 </div>
-                <p className="w-full truncate text-center text-xs text-muted-foreground">{t.description}</p>
+                <p className="w-full truncate text-center text-[11.5px] text-muted-foreground">{t.description}</p>
               </button>
             )
           })}
