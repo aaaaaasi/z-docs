@@ -27,7 +27,7 @@ import { ShareDialog } from "./share-dialog"
 import { VersionHistorySheet } from "./version-history"
 import { HelpWriteDialog } from "./help-write-dialog"
 import { WordCountDialog, ShortcutsDialog, AboutDialog } from "./info-dialogs"
-import { FileWarning, Loader2 } from "lucide-react"
+import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2 } from "lucide-react"
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from "@/components/ui/context-menu"
@@ -54,6 +54,7 @@ export function EditorView() {
   const [spellCheck, setSpellCheck] = React.useState(true)
   const [fmt, setFmt] = React.useState<FormatState>(DEFAULT_FORMAT)
   const [tableInfo, setTableInfo] = React.useState<TableInfo | null>(null)
+  const [menuTableInfo, setMenuTableInfo] = React.useState<TableInfo | null>(null)
   const [remoteContent, setRemoteContent] = React.useState<string | null>(null)
   const [dialog, setDialog] = React.useState<string | null>(null)
   const [linkHasSelection, setLinkHasSelection] = React.useState(false)
@@ -1021,6 +1022,9 @@ img { max-width: 100%; }
       } else if (k === "p") {
         e.preventDefault()
         printDoc()
+      } else if (k === "t" && e.shiftKey) {
+        e.preventDefault()
+        setDialog("table")
       } else if (k === "\\") {
         e.preventDefault()
         clearFormatting()
@@ -1138,27 +1142,74 @@ img { max-width: 100%; }
 
       {doc ? (
         <div className="relative flex min-h-0 flex-1">
-          <EditorCanvas
-            key={docId}
-            pageRef={pageRef}
-            initialContent={doc.content}
-            remoteContent={remoteContent}
-            onRemoteApplied={() => setRemoteContent(null)}
-            onInput={handleInput}
-            spellCheck={spellCheck}
-            zoom={zoom}
-            remoteCursors={remoteCursors}
-            comments={comments}
-            activeCommentId={activeCommentId}
-            contentTick={contentTick}
-            onCommentClick={(id) => {
-              const c = comments.find((t) => t.id === id)
-              if (c) {
-                focusComment(c)
-                setCommentsOpen(true)
-              }
-            }}
-          />
+          <ContextMenu>
+            <ContextMenuTrigger
+              asChild
+              onContextMenu={onCanvasContextMenu}
+              className="contents"
+            >
+              <div className="contents">
+                <EditorCanvas
+                  key={docId}
+                  pageRef={pageRef}
+                  initialContent={doc.content}
+                  remoteContent={remoteContent}
+                  onRemoteApplied={() => setRemoteContent(null)}
+                  onInput={handleInput}
+                  spellCheck={spellCheck}
+                  zoom={zoom}
+                  remoteCursors={remoteCursors}
+                  comments={comments}
+                  activeCommentId={activeCommentId}
+                  contentTick={contentTick}
+                  onCommentClick={(id) => {
+                    const c = comments.find((t) => t.id === id)
+                    if (c) {
+                      focusComment(c)
+                      setCommentsOpen(true)
+                    }
+                  }}
+                />
+              </div>
+            </ContextMenuTrigger>
+            <ContextMenuContent className="w-56">
+              <ContextMenuItem onClick={() => tableOp("row-above")}>
+                <Rows3 className="h-4 w-4" /> Insert row above
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => tableOp("row-below")}>
+                <Rows3 className="h-4 w-4" /> Insert row below
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onClick={() => tableOp("col-left")}>
+                <Columns3 className="h-4 w-4" /> Insert column left
+              </ContextMenuItem>
+              <ContextMenuItem onClick={() => tableOp("col-right")}>
+                <Columns3 className="h-4 w-4" /> Insert column right
+              </ContextMenuItem>
+              {menuTableInfo && <ContextMenuSeparator />}
+              {menuTableInfo && (
+                <ContextMenuItem onClick={() => tableOp("toggle-header")}>
+                  <Heading className="h-4 w-4" /> {menuTableInfo.hasHeader ? "Remove header row" : "Make first row a header"}
+                </ContextMenuItem>
+              )}
+              {menuTableInfo && <ContextMenuSeparator />}
+              {menuTableInfo && (
+                <ContextMenuItem onClick={() => tableOp("delete-row")} className="text-destructive focus:text-destructive">
+                  <Trash2 className="h-4 w-4" /> Delete row
+                </ContextMenuItem>
+              )}
+              {menuTableInfo && (
+                <ContextMenuItem onClick={() => tableOp("delete-col")} className="text-destructive focus:text-destructive">
+                  <Trash2 className="h-4 w-4" /> Delete column
+                </ContextMenuItem>
+              )}
+              {menuTableInfo && (
+                <ContextMenuItem onClick={() => tableOp("delete-table")} className="text-destructive focus:text-destructive">
+                  <Trash2 className="h-4 w-4" /> Delete table
+                </ContextMenuItem>
+              )}
+            </ContextMenuContent>
+          </ContextMenu>
           <CommentsSidebar
             open={commentsOpen}
             onClose={() => toggleComments(false)}
@@ -1171,6 +1222,7 @@ img { max-width: 100%; }
             onSubmitComment={(text) => void submitComment(text)}
             onCancelComposer={() => setPendingQuote(null)}
             onReply={(parentId, text) => void submitReply(parentId, text)}
+            onEdit={(id, content) => void editComment(id, content)}
             onToggleResolve={(c) => void toggleResolveComment(c)}
             onDelete={(c) => void deleteComment(c)}
             onFocusComment={focusComment}

@@ -148,3 +148,34 @@ Stage Summary:
 - Table insert verified (3×3, editable cells). Home page final VLM 8/10 (only remaining nit: carousel shows partially-cut 6th card — intentional Google-Docs-style affordance).
 - State: dev server restarted (fresh pid tree), collab-service hot-reloaded with comments-changed, lint clean, all API routes 200, QA test docs deleted, "Welcome to Z-Docs" seed intact.
 - Known limitations / next-phase ideas: comments anchor by quote-text search (rich anchors with persistent marks could survive edits better), reply notifications only via toast, no comment editing inline (PATCH /api/comments/:id content ready but no UI), table column/row insert UI, folders for docs home, OAuth identities.
+
+---
+Task ID: 8
+Agent: main (Z.ai Code) — scheduled webDevReview round
+Task: Assess status, QA via agent-browser, fix critical click-interception bug, add table operations + comment editing + folders, styling polish
+
+Work Log:
+- Health check: dev :3000 200, collab :3003 200 (via gateway), lint clean, dev.log clean. Initial agent-browser QA: home + editor stable, no console errors; VLM screenshots 7/10 (home) & 6/10 (editor) — most flagged "issues" verified as screenshot-crop artifacts via programmatic rect checks (status pill not clipped, text color correct).
+- CRITICAL BUG FOUND & FIXED (pre-existing from Task 7): the comment-markers overlay in editor-canvas.tsx (`absolute inset-0 z-[11]`) was missing `pointer-events-none` — it intercepted ALL clicks/hit-tests across the document canvas (elementFromPoint returned the overlay, not the text). Fixed: container `pointer-events-none`, marker buttons `pointer-events-auto`. Verified: real clicks land in text nodes, focus follows, real keyboard typing inserts characters at the caret.
+- NEW FEATURE — table structural operations:
+  - editor-dom.ts: getTableContext (selection→table/row/cell), describeTableAt (serializable TableInfo), insertTableRow (above/below, preserves TH tags), insertTableColumn (left/right), deleteTableRow/Column (auto-removes table when last), toggleTableHeader (TD⇄TH, keeps innerHTML), ensureParagraph safety net, placeCaretInCell, caretRangeFromPoint (cross-browser), pointInSelection.
+  - editor-view.tsx: tableOp callback (all 8 ops with caret parking + toasts), tableInfo live state on selectionchange, right-click ContextMenu on canvas (moves caret to click point via caretRangeFromPoint unless preserving a selection) with conditional table items (header/delete row/col/table), menuTableInfo state.
+  - menu-bar.tsx: Insert → "Table ⌘⇧T" + "Table options" submenu (insert row/col above/below/left/right, header row, delete row/col/table, hint when caret not in table).
+  - editor-types.ts: TableOp union + tableOp/tableInfo on EditorApi. globals.css: zdocs-table th styling (border, #f1f3f4 bg, bold). ⌘⇧T shortcut added.
+- NEW FEATURE — inline comment editing: comments-sidebar.tsx EditForm (textarea + Save/Cancel, Ctrl+Enter, Esc), Edit buttons on thread cards + reply items (author-gated, hover-reveal on replies), group/thread hover class; editor-view editComment (PATCH /api/comments/:id, updates state incl. nested replies, emits comments-changed "edit" — collab relay + use-collab already supported the action).
+- NEW FEATURE — folders (full stack):
+  - Prisma: Folder model (name unique, color) + Document.folderId (SetNull on folder delete). db:push OK + dev server restarted (fresh pid 18018; killed stale next dev holding .next/dev/lock — must kill parent node pid, not just next-server).
+  - /api/folders: GET (with document counts), POST (random 7-color palette, 409 on dupe name), PATCH (rename), DELETE (docs→root). All curl-verified incl. folder scoping (`?folder=root` vs id) and doc move via PATCH /api/documents/:id folderId.
+  - documents route: toMeta + folderId; GET folder param scoping; PATCH validates folder exists.
+  - store: folders/activeFolderId state, refreshFolders, openFolder/createFolder/renameFolder/deleteFolder (falls back to all view)/moveToFolder (optimistic); createDoc accepts folderId.
+  - sidebar-nav: Folders section (FolderPlus inline create input w/ Enter/Esc, per-folder colored icons, count badge, hover ⋮ menu rename/delete, inline rename overlay, empty-state hint).
+  - docs-grid: "Move to" submenu in card menus (No folder + list w/ ✓ current), folder chips (colored icon + name) on grid cards & list rows, folder name as section heading. Mobile sheet shares the same nav content.
+- Styling polish (mandatory): teal ::selection in .doc-content (0.22 alpha, lighter in tables), template gallery focus-visible rings + AI card "Ask AI" hover CTA (matches template overlay pattern), AI card border-primary/20, sidebar Workspace items + SOON badges more muted (text-muted-foreground/50-60), toolbar separator between font-size stepper and B/I/U/S, ⌘⇧T hint.
+- QA (agent-browser): folders UI (create "Projects", move Welcome doc via card menu → chip appears, folder view scoped to 1 doc); table ops via Insert menu (insert row above 2→3 rows; header TD→TH) AND right-click context menu (delete column 2→1 cols; delete table → tableGone + paragraphs preserved); comment add → Edit → save ("Edited comment text v2" persisted via API); real typing test (click → keyboard type inserts at caret, backspace removes); dark mode toggle OK; no console errors throughout. VLM: table demo 8/10, home 8/10 (remaining nits = intentional Google-Docs-style partial-card affordance / subjective rhythm).
+- Cleanup: QA docs deleted; Welcome doc restored to root (folderId null); empty "Projects" folder kept as demo.
+
+Stage Summary:
+- Z-Docs now: home (templates, folders, grid/list, search, stars, trash, context menus) + editor (full toolbar, autosave, versions, share, print/export, dark mode, tables w/ structural ops, comments w/ edit) + realtime collab (presence, live sync, remote cursors, comment sync) + AI writing assistant.
+- Critical pointer-events fix restores full editor interactivity (was degrading all click interactions since Task 7).
+- State: dev server restarted (pid 18018) with fresh Prisma client, collab-service still running (pid 3594), lint clean, all endpoints 200, welcome seed intact + "Projects" demo folder.
+- Known limitations / next-phase ideas: table cell merge/split, column width drag, folder drag-and-drop reordering, comment emoji reactions, doc tags, OAuth identities, offline support, print iframe in Safari.

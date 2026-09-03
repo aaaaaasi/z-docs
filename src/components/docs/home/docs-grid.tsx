@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu"
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -19,19 +20,23 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { useDocsStore } from "@/store/docs-store"
-import type { DocumentMeta } from "@/lib/docs-types"
+import type { DocumentMeta, FolderDTO } from "@/lib/docs-types"
 import { relativeTime } from "@/lib/doc-utils"
 import { DocPreview } from "@/components/docs/doc-preview"
 import {
-  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX
+  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 type SortKey = "updated" | "created" | "title"
 
-function titleFor(filter: string) {
+function titleFor(filter: string, folders: FolderDTO[], activeFolderId: string | null) {
   if (filter === "trash") return "Trash"
   if (filter === "starred") return "Starred"
+  if (filter === "folder") {
+    const f = folders.find((x) => x.id === activeFolderId)
+    return f ? f.name : "Folder"
+  }
   return "Recent documents"
 }
 
@@ -49,6 +54,9 @@ export function DocsGrid() {
   const setTrashed = useDocsStore((s) => s.setTrashed)
   const deleteForever = useDocsStore((s) => s.deleteForever)
   const duplicateDoc = useDocsStore((s) => s.duplicateDoc)
+  const folders = useDocsStore((s) => s.folders)
+  const activeFolderId = useDocsStore((s) => s.activeFolderId)
+  const moveToFolder = useDocsStore((s) => s.moveToFolder)
   const { toast } = useToast()
 
   const [sort, setSort] = React.useState<SortKey>("updated")
@@ -84,7 +92,7 @@ export function DocsGrid() {
     <section aria-label="Document list" className="flex-1 px-4 py-6 sm:px-8">
       <div className="mx-auto max-w-6xl">
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          <h2 className="text-base font-semibold">{titleFor(filter)}</h2>
+          <h2 className="text-base font-semibold">{titleFor(filter, folders, activeFolderId)}</h2>
           {!loading && (
             <span className="text-sm text-muted-foreground">
               {sorted.length} {sorted.length === 1 ? "document" : "documents"}
@@ -149,6 +157,7 @@ export function DocsGrid() {
                 doc={doc}
                 index={i}
                 inTrash={filter === "trash"}
+                folders={folders}
                 onOpen={() => openDoc(doc.id)}
                 onStar={() => toggleStar(doc.id)}
                 onRename={() => { setRenaming(doc); setRenameValue(doc.title) }}
@@ -156,6 +165,11 @@ export function DocsGrid() {
                 onRestore={() => { void setTrashed(doc.id, false); toast({ title: "Restored", description: doc.title }) }}
                 onDelete={() => setDeleting(doc)}
                 onDuplicate={() => { void duplicateDoc(doc.id); toast({ title: "Copy created" }) }}
+                onMoveToFolder={(folderId) => {
+                  void moveToFolder(doc.id, folderId)
+                  const f = folders.find((x) => x.id === folderId)
+                  toast({ title: f ? `Moved to “${f.name}”` : "Removed from folder" })
+                }}
               />
             ))}
           </div>
@@ -167,6 +181,7 @@ export function DocsGrid() {
                 doc={doc}
                 index={i}
                 inTrash={filter === "trash"}
+                folders={folders}
                 onOpen={() => openDoc(doc.id)}
                 onStar={() => toggleStar(doc.id)}
                 onRename={() => { setRenaming(doc); setRenameValue(doc.title) }}
@@ -174,6 +189,11 @@ export function DocsGrid() {
                 onRestore={() => { void setTrashed(doc.id, false); toast({ title: "Restored", description: doc.title }) }}
                 onDelete={() => setDeleting(doc)}
                 onDuplicate={() => { void duplicateDoc(doc.id); toast({ title: "Copy created" }) }}
+                onMoveToFolder={(folderId) => {
+                  void moveToFolder(doc.id, folderId)
+                  const f = folders.find((x) => x.id === folderId)
+                  toast({ title: f ? `Moved to “${f.name}”` : "Removed from folder" })
+                }}
               />
             ))}
           </div>
@@ -233,9 +253,46 @@ interface DocActions {
   onRestore: () => void
   onDelete: () => void
   onDuplicate: () => void
+  onMoveToFolder: (folderId: string | null) => void
 }
 
-function CardMenu({ doc, inTrash, ...a }: DocActions & { doc: DocumentMeta; inTrash: boolean }) {
+function MoveToSubmenu({
+  folders,
+  docFolderId,
+  onPick,
+}: {
+  folders: FolderDTO[]
+  docFolderId: string | null | undefined
+  onPick: (folderId: string | null) => void
+}) {
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="gap-2">
+        <FolderInput className="h-4 w-4" /> Move to
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-48">
+        <DropdownMenuItem onClick={() => onPick(null)}>
+          <Folder className="h-4 w-4" /> No folder
+          {!docFolderId && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+        </DropdownMenuItem>
+        {folders.length > 0 && <DropdownMenuSeparator />}
+        {folders.map((f) => (
+          <DropdownMenuItem key={f.id} onClick={() => onPick(f.id)}>
+            <Folder className="h-4 w-4" style={{ color: f.color }} /> {f.name}
+            {docFolderId === f.id && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
+function CardMenu({
+  doc,
+  inTrash,
+  folders,
+  ...a
+}: DocActions & { doc: DocumentMeta; inTrash: boolean; folders: FolderDTO[] }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -258,6 +315,7 @@ function CardMenu({ doc, inTrash, ...a }: DocActions & { doc: DocumentMeta; inTr
             </DropdownMenuItem>
             <DropdownMenuItem onClick={a.onRename}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
             <DropdownMenuItem onClick={a.onDuplicate}><Copy className="h-4 w-4" /> Make a copy</DropdownMenuItem>
+            <MoveToSubmenu folders={folders} docFolderId={doc.folderId} onPick={a.onMoveToFolder} />
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={a.onTrash} className="text-destructive focus:text-destructive">
               <Trash2 className="h-4 w-4" /> Move to trash
@@ -278,7 +336,14 @@ function CardMenu({ doc, inTrash, ...a }: DocActions & { doc: DocumentMeta; inTr
   )
 }
 
-function DocCard({ doc, index, inTrash, ...actions }: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean }) {
+function DocCard({
+  doc,
+  index,
+  inTrash,
+  folders,
+  ...actions
+}: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean; folders: FolderDTO[] }) {
+  const folder = folders.find((f) => f.id === doc.folderId)
   return (
     <div
       role="button"
@@ -306,16 +371,28 @@ function DocCard({ doc, index, inTrash, ...actions }: DocActions & { doc: Docume
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium leading-tight">{doc.title}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {folder && (
+              <span className="mr-1 inline-flex items-center gap-0.5 align-baseline text-[11px]" style={{ color: folder.color }}>
+                <Folder className="inline h-3 w-3" /> {folder.name}
+              </span>
+            )}
             {relativeTime(doc.updatedAt)}
           </p>
         </div>
-        <CardMenu doc={doc} inTrash={inTrash} {...actions} />
+        <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
       </div>
     </div>
   )
 }
 
-function DocRow({ doc, index, inTrash, ...actions }: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean }) {
+function DocRow({
+  doc,
+  index,
+  inTrash,
+  folders,
+  ...actions
+}: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean; folders: FolderDTO[] }) {
+  const folder = folders.find((f) => f.id === doc.folderId)
   return (
     <div
       role="button"
@@ -334,11 +411,18 @@ function DocRow({ doc, index, inTrash, ...actions }: DocActions & { doc: Documen
           {doc.title}
           {doc.starred && !inTrash && <Star className="ml-1.5 inline h-3.5 w-3.5 fill-amber-400 text-amber-400" />}
         </p>
-        <p className="truncate text-xs text-muted-foreground">{doc.snippet || "Empty document"}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          {folder && (
+            <span className="mr-1 inline-flex items-center gap-0.5 align-baseline text-[11px]" style={{ color: folder.color }}>
+              <Folder className="inline h-3 w-3" /> {folder.name}
+            </span>
+          )}
+          {doc.snippet || "Empty document"}
+        </p>
       </div>
       <span className="hidden w-20 shrink-0 text-right text-xs text-muted-foreground sm:block">{doc.wordCount} words</span>
       <span className="hidden w-32 shrink-0 text-right text-xs text-muted-foreground md:block">{relativeTime(doc.updatedAt)}</span>
-      <CardMenu doc={doc} inTrash={inTrash} {...actions} />
+      <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
     </div>
   )
 }

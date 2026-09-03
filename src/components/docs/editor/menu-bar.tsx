@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu"
 import { useTheme } from "next-themes"
 import type { EditorApi } from "./editor-types"
@@ -12,7 +13,8 @@ import {
   ClipboardCopy, ClipboardPaste, Replace, Moon, Maximize, ZoomIn, Link, ImagePlus,
   Minus, CalendarDays, Sparkles, Bold, Italic, Underline, Strikethrough, Superscript,
   Subscript, RemoveFormatting, AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  List, ListOrdered, TextQuote, Calculator, Keyboard, Info, MessageSquarePlus, Table
+  List, ListOrdered, TextQuote, Calculator, Keyboard, Info, MessageSquarePlus, Table,
+  Rows3, Columns3, Heading, ChevronRight
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -98,8 +100,52 @@ export function MenuBar({ api }: { api: EditorApi }) {
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("table")}>
-          <Table className="h-4 w-4" /> Table
+          <Table className="h-4 w-4" /> Table <DropdownMenuShortcut>⌘⇧T</DropdownMenuShortcut>
         </DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger className="gap-2">
+            <Table className="h-4 w-4" /> Table options
+            <ChevronRight className="ml-auto h-3.5 w-3.5" />
+          </DropdownMenuSubTrigger>
+          <DropdownMenuSubContent className="w-56">
+            <DropdownMenuItem onClick={() => api.tableOp("row-above")}>
+              <Rows3 className="h-4 w-4" /> Insert row above
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => api.tableOp("row-below")}>
+              <Rows3 className="h-4 w-4" /> Insert row below
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => api.tableOp("col-left")}>
+              <Columns3 className="h-4 w-4" /> Insert column left
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => api.tableOp("col-right")}>
+              <Columns3 className="h-4 w-4" /> Insert column right
+            </DropdownMenuItem>
+            {api.tableInfo && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => api.tableOp("toggle-header")}>
+                  <Heading className="h-4 w-4" /> {api.tableInfo.hasHeader ? "Remove header row" : "Header row"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => api.tableOp("delete-row")} className="text-destructive focus:text-destructive">
+                  <Rows3 className="h-4 w-4" /> Delete row
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => api.tableOp("delete-col")} className="text-destructive focus:text-destructive">
+                  <Columns3 className="h-4 w-4" /> Delete column
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => api.tableOp("delete-table")} className="text-destructive focus:text-destructive">
+                  <Table className="h-4 w-4" /> Delete table
+                </DropdownMenuItem>
+              </>
+            )}
+            {!api.tableInfo && (
+              <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                Place the caret inside a table to enable row &amp; column tools.
+              </div>
+            )}
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
         <DropdownMenuItem onClick={api.openCommentComposer}>
           <MessageSquarePlus className="h-4 w-4" /> Comment <DropdownMenuShortcut>⌘⌥M</DropdownMenuShortcut>
         </DropdownMenuItem>

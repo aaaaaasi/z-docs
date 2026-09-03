@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import type { CommentDTO } from "@/lib/docs-types"
 import { relativeTime } from "@/lib/doc-utils"
 import {
-  MessageSquarePlus, X, Check, RotateCcw, Trash2, CornerDownRight, MessageCircle, Loader2, CheckCircle2, Quote
+  MessageSquarePlus, X, Check, RotateCcw, Trash2, CornerDownRight, MessageCircle, Loader2, CheckCircle2, Quote, Pencil
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -151,6 +151,61 @@ function ReplyForm({
   )
 }
 
+/* --------------------------------------------------------------- edit form */
+
+function EditForm({
+  initial,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  initial: string
+  busy: boolean
+  onSubmit: (text: string) => void
+  onCancel: () => void
+}) {
+  const [text, setText] = React.useState(initial)
+  const ref = React.useRef<HTMLTextAreaElement | null>(null)
+  React.useEffect(() => {
+    const t = setTimeout(() => ref.current?.focus(), 40)
+    return () => clearTimeout(t)
+  }, [])
+
+  return (
+    <div className="mt-1.5 rounded-lg border bg-muted/60 p-2">
+      <Textarea
+        ref={ref}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim()) {
+            e.preventDefault()
+            onSubmit(text.trim())
+          }
+          if (e.key === "Escape") onCancel()
+        }}
+        placeholder="Edit comment…"
+        className="min-h-[52px] resize-none border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+        maxLength={2000}
+        aria-label="Edit comment text"
+      />
+      <div className="mt-1 flex justify-end gap-2">
+        <Button variant="ghost" size="sm" className="h-7 rounded-full text-muted-foreground" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          className="h-7 rounded-full px-3 text-xs"
+          disabled={!text.trim() || text.trim() === initial || busy}
+          onClick={() => onSubmit(text.trim())}
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /* -------------------------------------------------------------- thread card */
 
 function MessageBody({
@@ -192,10 +247,12 @@ interface ThreadCardProps {
   onToggleResolve: () => void
   onDelete: () => void
   onFocusClick?: () => void
+  onEdit?: (id: string, content: string) => void
 }
 
-function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onDelete, onFocusClick }: ThreadCardProps) {
+function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onDelete, onFocusClick, onEdit }: ThreadCardProps) {
   const [replying, setReplying] = React.useState(false)
+  const [editing, setEditing] = React.useState<string | null>(null)
   const ref = React.useRef<HTMLDivElement | null>(null)
 
   React.useEffect(() => {
@@ -210,16 +267,30 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
       ref={ref}
       data-comment-id={comment.id}
       className={cn(
-        "animate-fade-in scroll-mt-4 rounded-xl border bg-card p-3 shadow-sm transition-all",
+        "animate-fade-in scroll-mt-4 rounded-xl border bg-card p-3 shadow-sm transition-all group/thread",
         active && "border-primary/60 ring-2 ring-primary/20",
         comment.resolved && "opacity-75"
       )}
     >
       <div className="flex gap-2.5">
         <CommentAvatar name={comment.authorName} color={comment.authorColor} />
-        <MessageBody authorName={comment.authorName} authorColor={comment.authorColor} time={lastActivity} resolved={comment.resolved}>
-          {comment.content}
-        </MessageBody>
+        {editing === comment.id ? (
+          <div className="min-w-0 flex-1">
+            <EditForm
+              initial={comment.content}
+              busy={busy}
+              onSubmit={(text) => {
+                onEdit?.(comment.id, text)
+                setEditing(null)
+              }}
+              onCancel={() => setEditing(null)}
+            />
+          </div>
+        ) : (
+          <MessageBody authorName={comment.authorName} authorColor={comment.authorColor} time={lastActivity} resolved={comment.resolved}>
+            {comment.content}
+          </MessageBody>
+        )}
       </div>
 
       {comment.quote && (
@@ -240,10 +311,36 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
               <CornerDownRight className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
               <div className="flex gap-2">
                 <CommentAvatar name={r.authorName} color={r.authorColor} size="sm" />
-                <MessageBody authorName={r.authorName} authorColor={r.authorColor} time={r.createdAt} resolved={r.resolved}>
-                  {r.content}
-                </MessageBody>
+                {editing === r.id ? (
+                  <div className="min-w-0 flex-1">
+                    <EditForm
+                      initial={r.content}
+                      busy={busy}
+                      onSubmit={(text) => {
+                        onEdit?.(r.id, text)
+                        setEditing(null)
+                      }}
+                      onCancel={() => setEditing(null)}
+                    />
+                  </div>
+                ) : (
+                  <MessageBody authorName={r.authorName} authorColor={r.authorColor} time={r.createdAt} resolved={r.resolved}>
+                    {r.content}
+                  </MessageBody>
+                )}
               </div>
+              {editing !== r.id && (meId === r.authorId || meId === null) && onEdit && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Edit reply"
+                  className="h-6 w-6 shrink-0 rounded-full text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/thread:opacity-100 focus-visible:opacity-100"
+                  onClick={() => setEditing(r.id)}
+                  disabled={busy}
+                >
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              )}
             </div>
           ))}
         </div>
@@ -268,6 +365,17 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
           >
             <CornerDownRight className="h-3.5 w-3.5" /> Reply
           </Button>
+          {(meId === comment.authorId || meId === null) && onEdit && editing !== comment.id && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1 rounded-full px-2.5 text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setEditing(comment.id)}
+              disabled={busy}
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </Button>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -322,6 +430,7 @@ export interface CommentsSidebarProps {
   onSubmitComment: (text: string) => void
   onCancelComposer: () => void
   onReply: (parentId: string, text: string) => void
+  onEdit: (id: string, content: string) => void
   onToggleResolve: (c: CommentDTO) => void
   onDelete: (c: CommentDTO) => void
   onFocusComment: (c: CommentDTO) => void
@@ -330,7 +439,7 @@ export interface CommentsSidebarProps {
 export function CommentsSidebar(props: CommentsSidebarProps) {
   const {
     open, onClose, comments, loading, activeCommentId, pendingQuote, busy, meId,
-    onSubmitComment, onCancelComposer, onReply, onToggleResolve, onDelete, onFocusComment,
+    onSubmitComment, onCancelComposer, onReply, onEdit, onToggleResolve, onDelete, onFocusComment,
   } = props
 
   const openThreads = React.useMemo(() => comments.filter((c) => !c.resolved), [comments])
@@ -403,6 +512,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
                   busy={busy}
                   meId={meId}
                   onReply={(text) => onReply(c.id, text)}
+                  onEdit={onEdit}
                   onToggleResolve={() => onToggleResolve(c)}
                   onDelete={() => onDelete(c)}
                   onFocusClick={() => onFocusComment(c)}
@@ -429,6 +539,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
                           busy={busy}
                           meId={meId}
                           onReply={(text) => onReply(c.id, text)}
+                          onEdit={onEdit}
                           onToggleResolve={() => onToggleResolve(c)}
                           onDelete={() => onDelete(c)}
                           onFocusClick={() => onFocusComment(c)}

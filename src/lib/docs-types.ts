@@ -4,6 +4,7 @@ export interface DocumentDTO {
   content: string
   starred: boolean
   trashed: boolean
+  folderId?: string | null
   createdAt: string
   updatedAt: string
 }
@@ -11,6 +12,15 @@ export interface DocumentDTO {
 export interface DocumentMeta extends DocumentDTO {
   snippet: string
   wordCount: number
+}
+
+export interface FolderDTO {
+  id: string
+  name: string
+  color: string
+  count?: number
+  createdAt: string
+  updatedAt: string
 }
 
 export interface VersionDTO {
@@ -35,7 +45,7 @@ export interface RemoteCursor {
   ts: number
 }
 
-export type DocFilter = "all" | "starred" | "trash"
+export type DocFilter = "all" | "starred" | "trash" | "folder"
 
 export interface CommentDTO {
   id: string

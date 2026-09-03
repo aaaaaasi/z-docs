@@ -10,6 +10,7 @@ function toMeta(doc: {
   content: string
   starred: boolean
   trashed: boolean
+  folderId: string | null
   createdAt: Date
   updatedAt: Date
 }) {
@@ -19,6 +20,7 @@ function toMeta(doc: {
     content: doc.content,
     starred: doc.starred,
     trashed: doc.trashed,
+    folderId: doc.folderId,
     snippet: getSnippet(doc.content),
     wordCount: countWords(htmlToText(doc.content)),
     createdAt: doc.createdAt.toISOString(),
@@ -32,6 +34,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url)
     const filter = searchParams.get("filter") ?? "all"
     const q = searchParams.get("q")?.trim() ?? ""
+    const folderId = searchParams.get("folder")?.trim() ?? ""
 
     const conditions: Record<string, unknown> = {}
 
@@ -40,6 +43,11 @@ export async function GET(req: NextRequest) {
       conditions.trashed = false
       if (filter === "starred") conditions.starred = true
     }
+
+    // folder scoping: "root" = documents with no folder; a folder id scopes to it;
+    // omitted ("all") = every non-trashed document across folders (used by search)
+    if (folderId === "root") conditions.folderId = null
+    else if (folderId && folderId !== "all") conditions.folderId = folderId
 
     if (q) {
       conditions.OR = [{ title: { contains: q } }, { content: { contains: q } }]

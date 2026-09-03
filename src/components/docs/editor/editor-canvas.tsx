@@ -292,14 +292,14 @@ export function EditorCanvas({
           </div>
 
           {/* Comment markers (clickable) */}
-          <div className="no-print absolute inset-0 z-[11]">
+          <div className="no-print pointer-events-none absolute inset-0 z-[11]">
             {highlightViews.map((h) => (
               <button
                 key={`${h.key}-marker`}
                 role="button"
                 aria-label={`Open comment thread (${h.count} ${h.count === 1 ? "message" : "messages"})`}
                 data-comment-marker={h.id}
-                className="comment-marker"
+                className="comment-marker pointer-events-auto"
                 style={{
                   left: h.marker.left + 4,
                   top: h.marker.top,

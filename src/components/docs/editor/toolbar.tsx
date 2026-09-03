@@ -182,6 +182,8 @@ export function Toolbar({ api }: { api: EditorApi }) {
         </Button>
       </div>
 
+      <div className="mx-1 h-6 w-px shrink-0 bg-border" />
+
       <TB icon={Bold} label="Bold (Ctrl+B)" active={api.fmt.bold} onClick={() => api.exec("bold")} iconClassName="font-black" />
       <TB icon={Italic} label="Italic (Ctrl+I)" active={api.fmt.italic} onClick={() => api.exec("italic")} iconClassName="italic" />
       <TB icon={Underline} label="Underline (Ctrl+U)" active={api.fmt.underline} onClick={() => api.exec("underline")} />

@@ -170,6 +170,15 @@
   word-break: break-word;
   caret-color: #0f766e;
 }
+.doc-content ::selection {
+  background: rgba(15, 118, 110, 0.22);
+}
+.doc-content a::selection {
+  background: rgba(15, 118, 110, 0.28);
+}
+.doc-content table ::selection {
+  background: rgba(15, 118, 110, 0.18);
+}
 .doc-content:focus {
   outline: none;
 }
