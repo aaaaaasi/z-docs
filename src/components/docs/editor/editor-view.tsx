@@ -8,7 +8,12 @@ import { useDocsStore } from "@/store/docs-store"
 import { useLocalUser } from "@/lib/identity"
 import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@/hooks/use-collab"
 import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
-import { selectionOffsets, selectedBlocks, escapeRegex, findQuoteRange } from "@/lib/editor-dom"
+import {
+  selectionOffsets, selectedBlocks, escapeRegex, findQuoteRange,
+  getTableContext, describeTableAt, insertTableRow, insertTableColumn, deleteTableRow,
+  deleteTableColumn, deleteTableEl, toggleTableHeader, ensureParagraph, placeCaretInCell,
+  caretRangeFromPoint, pointInSelection, type TableInfo,
+} from "@/lib/editor-dom"
 import type { DocumentDTO, CommentDTO } from "@/lib/docs-types"
 import { EditorCanvas } from "./editor-canvas"
 import { EditorHeader } from "./editor-header"
@@ -16,13 +21,16 @@ import { MenuBar } from "./menu-bar"
 import { Toolbar } from "./toolbar"
 import { StatusPill } from "./status-pill"
 import { CommentsSidebar, CommentBubble, type PendingQuote } from "./comments-sidebar"
-import { DEFAULT_FORMAT, type EditorApi, type FormatState } from "./editor-types"
+import { DEFAULT_FORMAT, type EditorApi, type FormatState, type TableOp } from "./editor-types"
 import { LinkDialog, ImageDialog, FindReplaceDialog, TableDialog } from "./dialogs-basic"
 import { ShareDialog } from "./share-dialog"
 import { VersionHistorySheet } from "./version-history"
 import { HelpWriteDialog } from "./help-write-dialog"
 import { WordCountDialog, ShortcutsDialog, AboutDialog } from "./info-dialogs"
 import { FileWarning, Loader2 } from "lucide-react"
+import {
+  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
+} from "@/components/ui/context-menu"
 
 export function EditorView() {
   const docId = useDocsStore((s) => s.currentDocId) ?? ""
@@ -45,6 +53,7 @@ export function EditorView() {
   const [zoom, setZoomState] = React.useState(1)
   const [spellCheck, setSpellCheck] = React.useState(true)
   const [fmt, setFmt] = React.useState<FormatState>(DEFAULT_FORMAT)
+  const [tableInfo, setTableInfo] = React.useState<TableInfo | null>(null)
   const [remoteContent, setRemoteContent] = React.useState<string | null>(null)
   const [dialog, setDialog] = React.useState<string | null>(null)
   const [linkHasSelection, setLinkHasSelection] = React.useState(false)
@@ -350,6 +359,7 @@ export function EditorView() {
       if (!sel || !sel.anchorNode || !el.contains(sel.anchorNode)) return
       if (sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange()
       refreshFmt()
+      setTableInfo(describeTableAt(el))
       const now = Date.now()
       if (now - lastCursorEmitRef.current > 140) {
         lastCursorEmitRef.current = now
@@ -554,6 +564,77 @@ export function EditorView() {
     [insertHtmlAtCursor, toast]
   )
 
+  /* ---------------- table structural operations ---------------- */
+  const tableOp = React.useCallback(
+    (op: TableOp) => {
+      if (op === "insert") {
+        setDialog("table")
+        return
+      }
+      const el = pageRef.current
+      if (!el) return
+      const ctx = getTableContext(el)
+      if (!ctx) return
+      switch (op) {
+        case "row-above":
+        case "row-below": {
+          const tr = insertTableRow(ctx, op === "row-above" ? "above" : "below")
+          placeCaretInCell(tr.cells[0])
+          toast({ title: "Row inserted" })
+          break
+        }
+        case "col-left":
+        case "col-right": {
+          const cells = insertTableColumn(ctx, op === "col-left" ? "left" : "right")
+          const target = cells[Math.min(ctx.rowIndex, cells.length - 1)]
+          if (target) placeCaretInCell(target)
+          toast({ title: "Column inserted" })
+          break
+        }
+        case "delete-row": {
+          const removedTable = !deleteTableRow(ctx)
+          if (!removedTable) {
+            const nextRow = ctx.table.rows[Math.min(ctx.rowIndex, ctx.table.rows.length - 1)]
+            if (nextRow?.cells[0]) placeCaretInCell(nextRow.cells[0])
+          }
+          toast({ title: removedTable ? "Last row removed — table deleted" : "Row deleted" })
+          break
+        }
+        case "delete-col": {
+          const removedTable = !deleteTableColumn(ctx)
+          if (!removedTable) {
+            const row = ctx.table.rows[ctx.rowIndex]
+            const cell = row?.cells[Math.min(ctx.colIndex, row.cells.length - 1)]
+            if (cell) placeCaretInCell(cell)
+          }
+          toast({ title: removedTable ? "Last column removed — table deleted" : "Column deleted" })
+          break
+        }
+        case "delete-table": {
+          const next = ctx.table.nextElementSibling as HTMLElement | null
+          const prev = ctx.table.previousElementSibling as HTMLElement | null
+          deleteTableEl(ctx)
+          // park the caret in a nearby block so typing keeps working
+          const park = next?.querySelector("p, td, th") ?? prev?.querySelector("p, td, th")
+          if (park) placeCaretInCell(park as HTMLElement)
+          toast({ title: "Table deleted" })
+          break
+        }
+        case "toggle-header": {
+          const nowHeader = toggleTableHeader(ctx)
+          placeCaretInCell(ctx.cell)
+          toast({ title: nowHeader ? "Header row on" : "Header row off" })
+          break
+        }
+      }
+      ensureParagraph(el)
+      handleInput()
+      refreshFmt()
+      setTableInfo(describeTableAt(el))
+    },
+    [handleInput, refreshFmt, toast]
+  )
+
   /* ---------------- comments: actions ---------------- */
   const submitComment = React.useCallback(
     async (text: string) => {
@@ -636,6 +717,35 @@ export function EditorView() {
           prev.map((t) => (t.id === c.id ? { ...t, resolved: !c.resolved } : t))
         )
         emitCommentsChanged(c.resolved ? "unresolve" : "resolve", c.id)
+      } catch {
+        toast({ title: "Couldn’t update the comment", variant: "destructive" })
+      } finally {
+        setCommentBusy(false)
+      }
+    },
+    [emitCommentsChanged, toast]
+  )
+
+  const editComment = React.useCallback(
+    async (id: string, content: string) => {
+      setCommentBusy(true)
+      try {
+        const res = await fetch(`/api/comments/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content }),
+        })
+        if (!res.ok) throw new Error("failed")
+        setComments((prev) =>
+          prev.map((c) => {
+            if (c.id === id) return { ...c, content }
+            const replies = c.replies?.map((r) => (r.id === id ? { ...r, content } : r))
+            if (replies && replies !== c.replies) return { ...c, replies }
+            return c
+          })
+        )
+        emitCommentsChanged("edit", id)
+        toast({ title: "Comment updated" })
       } catch {
         toast({ title: "Couldn’t update the comment", variant: "destructive" })
       } finally {
@@ -975,12 +1085,36 @@ img { max-width: 100%; }
     unresolvedCommentCount: comments.filter((c) => !c.resolved).length,
     /* insert table */
     insertTable,
+    /* table operations */
+    tableOp,
+    tableInfo,
   }
 
   const openDialog = (d: string | null) => setDialog(d)
   const onDialogChange = (o: boolean) => {
     if (!o) setDialog(null)
   }
+
+  /** Right-click on the canvas: move the caret to the click point (so table
+   *  operations act on the clicked cell) unless the click keeps an existing
+   *  selection, then refresh the menu's table descriptor. */
+  const onCanvasContextMenu = React.useCallback(
+    (e: React.MouseEvent) => {
+      const el = pageRef.current
+      if (!el || !el.contains(e.target as Node)) return
+      if (!pointInSelection(e.clientX, e.clientY)) {
+        const range = caretRangeFromPoint(e.clientX, e.clientY)
+        if (range && el.contains(range.startContainer)) {
+          const sel = window.getSelection()
+          sel?.removeAllRanges()
+          sel?.addRange(range)
+          savedRangeRef.current = range.cloneRange()
+        }
+      }
+      setMenuTableInfo(describeTableAt(el))
+    },
+    []
+  )
 
   /* ---------------- render ---------------- */
   if (loadError) {

@@ -1,6 +1,18 @@
 import type { CollabUser } from "@/lib/docs-types"
+import type { TableInfo } from "@/lib/editor-dom"
 
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error"
+
+export type TableOp =
+  | "insert"
+  | "row-above"
+  | "row-below"
+  | "col-left"
+  | "col-right"
+  | "delete-row"
+  | "delete-col"
+  | "delete-table"
+  | "toggle-header"
 
 export interface FormatState {
   bold: boolean
@@ -83,4 +95,8 @@ export interface EditorApi {
   unresolvedCommentCount: number
   /* insert table */
   insertTable: (rows: number, cols: number) => void
+  /* table structural operations (act on the caret's table) */
+  tableOp: (op: TableOp) => void
+  /** live table descriptor at the caret — null when not inside a table */
+  tableInfo: TableInfo | null
 }

@@ -139,6 +139,193 @@ export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+/* ------------------------------------------------------------------ tables */
+
+export interface TableContext {
+  table: HTMLTableElement
+  row: HTMLTableRowElement
+  cell: HTMLTableCellElement
+  rowIndex: number
+  colIndex: number
+}
+
+/** Table info for UI state (serializable, safe for React state). */
+export interface TableInfo {
+  rows: number
+  cols: number
+  rowIndex: number
+  colIndex: number
+  hasHeader: boolean
+}
+
+/** Resolve the table/row/cell containing the current selection, if any. */
+export function getTableContext(root: HTMLElement): TableContext | null {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return null
+  let node: Node | null = sel.anchorNode
+  if (!node || !root.contains(node)) return null
+  while (node && node !== root) {
+    const el = node as HTMLElement
+    if (el.tagName === "TD" || el.tagName === "TH") break
+    node = node.parentNode
+  }
+  if (!node || node === root) return null
+  const cell = node as HTMLTableCellElement
+  const row = cell.closest("tr") as HTMLTableRowElement | null
+  const table = cell.closest("table") as HTMLTableElement | null
+  if (!row || !table || !root.contains(table)) return null
+  const rowIndex = Array.prototype.indexOf.call(table.rows, row)
+  const colIndex = Array.prototype.indexOf.call(row.cells, cell)
+  if (rowIndex < 0 || colIndex < 0) return null
+  return { table, row, cell, rowIndex, colIndex }
+}
+
+/** Serializable descriptor of the table at the selection (for menu state). */
+export function describeTableAt(root: HTMLElement): TableInfo | null {
+  const ctx = getTableContext(root)
+  if (!ctx) return null
+  return {
+    rows: ctx.table.rows.length,
+    cols: ctx.row.cells.length,
+    rowIndex: ctx.rowIndex,
+    colIndex: ctx.colIndex,
+    hasHeader: !!ctx.table.rows[0]?.cells[0] && ctx.table.rows[0].cells[0].tagName === "TH",
+  }
+}
+
+function makeCell(tag: string): HTMLTableCellElement {
+  const c = document.createElement(tag === "TH" ? "th" : "td")
+  c.innerHTML = "&nbsp;"
+  return c
+}
+
+/** Place the caret inside a cell so the user can keep typing. */
+export function placeCaretInCell(cell: HTMLElement): void {
+  try {
+    const range = document.createRange()
+    range.selectNodeContents(cell)
+    range.collapse(false)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+  } catch {
+    // ignore
+  }
+}
+
+/** Insert a row above/below the context row; returns the new row. */
+export function insertTableRow(ctx: TableContext, where: "above" | "below"): HTMLTableRowElement {
+  const tr = document.createElement("tr")
+  const tags = Array.from(ctx.row.cells).map((c) => c.tagName)
+  if (tags.length === 0) tags.push("TD")
+  for (const t of tags) tr.appendChild(makeCell(t))
+  if (where === "above" || ctx.row.nextSibling == null) {
+    if (where === "above") ctx.row.parentNode?.insertBefore(tr, ctx.row)
+    else ctx.row.parentNode?.appendChild(tr)
+  } else {
+    ctx.row.parentNode?.insertBefore(tr, ctx.row.nextSibling)
+  }
+  return tr
+}
+
+/** Insert a column left/right of the context column; returns the new cells. */
+export function insertTableColumn(ctx: TableContext, where: "left" | "right"): HTMLTableCellElement[] {
+  const cells: HTMLTableCellElement[] = []
+  for (const row of Array.from(ctx.table.rows)) {
+    const ref = row.cells[ctx.colIndex] ?? row.cells[row.cells.length - 1]
+    const cell = makeCell(ref?.tagName ?? "TD")
+    if (ref && where === "left") row.insertBefore(cell, ref)
+    else if (ref?.nextSibling) row.insertBefore(cell, ref.nextSibling)
+    else row.appendChild(cell)
+    cells.push(cell)
+  }
+  return cells
+}
+
+/** Delete the context row. Returns true if the table itself became empty and was removed. */
+export function deleteTableRow(ctx: TableContext): boolean {
+  const rowCount = ctx.table.rows.length
+  ctx.row.remove()
+  if (ctx.table.rows.length === 0) {
+    ctx.table.remove()
+    return true
+  }
+  return rowCount > 1
+}
+
+/** Delete the context column. Returns true if the table itself became empty and was removed. */
+export function deleteTableColumn(ctx: TableContext): boolean {
+  for (const row of Array.from(ctx.table.rows)) {
+    const cell = row.cells[ctx.colIndex]
+    if (cell) cell.remove()
+  }
+  if (ctx.table.rows.length > 0 && ctx.table.rows[0].cells.length === 0) {
+    ctx.table.remove()
+    return true
+  }
+  return false
+}
+
+/** Remove the whole table. */
+export function deleteTableEl(ctx: TableContext): void {
+  ctx.table.remove()
+}
+
+/** Toggle the first row between header (th) and body (td) cells. Returns the new header state. */
+export function toggleTableHeader(ctx: TableContext): boolean {
+  const firstRow = ctx.table.rows[0]
+  if (!firstRow) return false
+  const isHeader = firstRow.cells[0]?.tagName === "TH"
+  for (const cell of Array.from(firstRow.cells)) {
+    const next = document.createElement(isHeader ? "td" : "th")
+    next.innerHTML = cell.innerHTML
+    if (cell === ctx.cell) ctx.cell = next
+    cell.replaceWith(next)
+  }
+  return !isHeader
+}
+
+/** Make sure the document always has a paragraph to type in after structural deletes. */
+export function ensureParagraph(root: HTMLElement): void {
+  if (root.querySelector("p, h1, h2, h3, h4, li, table, blockquote, pre")) return
+  const p = document.createElement("p")
+  p.innerHTML = "<br>"
+  root.appendChild(p)
+}
+
+/** Caret range from a point, cross-browser (WebKit + Firefox). */
+export function caretRangeFromPoint(x: number, y: number): Range | null {
+  try {
+    const d = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
+    if (typeof d.caretRangeFromPoint === "function") return d.caretRangeFromPoint(x, y)
+    const dd = document as Document & {
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+    }
+    if (typeof dd.caretPositionFromPoint === "function") {
+      const pos = dd.caretPositionFromPoint(x, y)
+      if (!pos) return null
+      const r = document.createRange()
+      r.setStart(pos.offsetNode, pos.offset)
+      r.collapse(true)
+      return r
+    }
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+/** Is the point inside the selection's rendered rects? */
+export function pointInSelection(x: number, y: number): boolean {
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return false
+  const rects = sel.getRangeAt(0).getClientRects()
+  for (const r of rects) {
+    if (x >= r.left - 1 && x <= r.right + 1 && y >= r.top - 1 && y <= r.bottom + 1) return true
+  }
+  return false
+}
+
 /**
  * Locate the DOM range for a comment's quoted text. First tries the stored
  * creation-time offset hint; when the document has shifted (text added or
