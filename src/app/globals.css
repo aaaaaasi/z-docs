@@ -350,6 +350,16 @@
   display: none;
 }
 
+/* Outline jump flash (View → Show document outline) */
+@keyframes outline-flash-kf {
+  0% { background-color: rgba(15, 118, 110, 0.28); }
+  100% { background-color: transparent; }
+}
+.outline-flash {
+  animation: outline-flash-kf 1.6s ease-out 1;
+  border-radius: 2px;
+}
+
 /* Custom slim scrollbars for list areas */
 .slim-scroll {
   scrollbar-width: thin;

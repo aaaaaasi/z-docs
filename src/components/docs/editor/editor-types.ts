@@ -57,6 +57,7 @@ export type DialogKey =
   | "helpwrite"
   | "about"
   | "table"
+  | "emoji"
 
 export interface EditorApi {
   docId: string
@@ -93,6 +94,9 @@ export interface EditorApi {
   toggleComments: (open?: boolean) => void
   openCommentComposer: () => void
   unresolvedCommentCount: number
+  /* document outline */
+  outlineOpen: boolean
+  toggleOutline: (open?: boolean) => void
   /* insert table */
   insertTable: (rows: number, cols: number) => void
   /* table structural operations (act on the caret's table) */

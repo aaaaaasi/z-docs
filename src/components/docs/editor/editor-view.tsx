@@ -27,6 +27,8 @@ import { ShareDialog } from "./share-dialog"
 import { VersionHistorySheet } from "./version-history"
 import { HelpWriteDialog } from "./help-write-dialog"
 import { WordCountDialog, ShortcutsDialog, AboutDialog } from "./info-dialogs"
+import { OutlineSidebar, type OutlineItem } from "./outline-sidebar"
+import { EmojiDialog } from "./emoji-dialog"
 import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2 } from "lucide-react"
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
@@ -55,6 +57,8 @@ export function EditorView() {
   const [fmt, setFmt] = React.useState<FormatState>(DEFAULT_FORMAT)
   const [tableInfo, setTableInfo] = React.useState<TableInfo | null>(null)
   const [menuTableInfo, setMenuTableInfo] = React.useState<TableInfo | null>(null)
+  const [outlineOpen, setOutlineOpen] = React.useState(false)
+  const [outlineItems, setOutlineItems] = React.useState<OutlineItem[]>([])
   const [remoteContent, setRemoteContent] = React.useState<string | null>(null)
   const [dialog, setDialog] = React.useState<string | null>(null)
   const [linkHasSelection, setLinkHasSelection] = React.useState(false)
@@ -1039,6 +1043,94 @@ img { max-width: 100%; }
     return () => window.removeEventListener("keydown", onKey)
   }, [performSave, printDoc, clearFormatting, openCommentComposer])
 
+  /* ---------------- document outline ---------------- */
+  /** Re-scan the live DOM for h1–h4 and stamp stable data-oid attributes. */
+  const parseOutline = React.useCallback(() => {
+    const el = pageRef.current
+    if (!el) {
+      setOutlineItems([])
+      return
+    }
+    const headings = Array.from(el.querySelectorAll("h1, h2, h3, h4"))
+    const stamp = Date.now().toString(36)
+    const items: OutlineItem[] = headings.map((h, i) => {
+      const oid = h.dataset.oid ?? `${stamp}-${i}`
+      h.dataset.oid = oid
+      return {
+        oid,
+        level: Number(h.tagName[1]) as 1 | 2 | 3 | 4,
+        text: (h.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 120),
+      }
+    })
+    setOutlineItems(items)
+  }, [])
+
+  React.useEffect(() => {
+    // child (EditorCanvas) effects run first, so innerHTML is already set here
+    const t = setTimeout(parseOutline, 60)
+    return () => clearTimeout(t)
+  }, [doc, contentTick, remoteContent, parseOutline])
+
+  const toggleOutline = React.useCallback((open?: boolean) => {
+    setOutlineOpen((prev) => open ?? !prev)
+  }, [])
+
+  /** Scroll the canvas to a heading and flash it. */
+  const jumpToOutline = React.useCallback(
+    (item: OutlineItem) => {
+      const el = pageRef.current?.querySelector(`[data-oid="${item.oid}"]`) as HTMLElement | null
+      if (!el) return
+      const canvas = el.closest(".doc-canvas-bg") as HTMLElement | null
+      if (canvas) {
+        const canvasRect = canvas.getBoundingClientRect()
+        const rect = el.getBoundingClientRect()
+        const target = canvas.scrollTop + (rect.top - canvasRect.top) / zoom - canvasRect.height / 3 / zoom
+        canvas.scrollTo({ top: Math.max(0, target), behavior: "smooth" })
+      }
+      el.classList.remove("outline-flash")
+      void el.offsetWidth // restart the animation
+      el.classList.add("outline-flash")
+      window.setTimeout(() => el.classList.remove("outline-flash"), 1700)
+    },
+    [zoom]
+  )
+
+  /* ---------------- insert emoji ---------------- */
+  /** Insert an emoji at the caret WITHOUT relying on document focus — the
+   *  picker stays open (Radix dialog focus-traps the page), so execCommand
+   *  is unusable; manipulate the saved Range directly instead. */
+  const insertEmoji = React.useCallback(
+    (emoji: string) => {
+      const el = pageRef.current
+      if (!el) return
+      const sel = window.getSelection()
+      let range: Range | null = null
+      if (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)) {
+        range = sel.getRangeAt(0)
+      } else if (savedRangeRef.current && el.contains(savedRangeRef.current.startContainer)) {
+        range = savedRangeRef.current
+      }
+      if (!range) {
+        el.insertAdjacentHTML("beforeend", escapeHtml(emoji))
+      } else {
+        try {
+          range.deleteContents()
+          const text = document.createTextNode(emoji)
+          range.insertNode(text)
+          range.setStartAfter(text)
+          range.collapse(true)
+          sel?.removeAllRanges()
+          sel?.addRange(range)
+          savedRangeRef.current = range.cloneRange()
+        } catch {
+          el.insertAdjacentHTML("beforeend", escapeHtml(emoji))
+        }
+      }
+      handleInput()
+    },
+    [handleInput]
+  )
+
   /* ---------------- editor api for children ---------------- */
   const others = React.useMemo(() => presence.filter((u) => u.id !== user?.id), [presence, user?.id])
 
@@ -1092,6 +1184,9 @@ img { max-width: 100%; }
     /* table operations */
     tableOp,
     tableInfo,
+    /* document outline */
+    outlineOpen,
+    toggleOutline,
   }
 
   const openDialog = (d: string | null) => setDialog(d)
@@ -1142,6 +1237,12 @@ img { max-width: 100%; }
 
       {doc ? (
         <div className="relative flex min-h-0 flex-1">
+          <OutlineSidebar
+            open={outlineOpen}
+            onClose={() => toggleOutline(false)}
+            items={outlineItems}
+            onJump={jumpToOutline}
+          />
           <ContextMenu>
             <ContextMenuTrigger
               asChild
@@ -1259,6 +1360,7 @@ img { max-width: 100%; }
       />
       <ImageDialog open={dialog === "image"} onOpenChange={onDialogChange} onInsert={insertImage} />
       <TableDialog open={dialog === "table"} onOpenChange={onDialogChange} onInsert={insertTable} />
+      <EmojiDialog open={dialog === "emoji"} onOpenChange={onDialogChange} onInsert={insertEmoji} />
       <FindReplaceDialog
         open={dialog === "find"}
         onOpenChange={onDialogChange}

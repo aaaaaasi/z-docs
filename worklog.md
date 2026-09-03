@@ -179,3 +179,31 @@ Stage Summary:
 - Critical pointer-events fix restores full editor interactivity (was degrading all click interactions since Task 7).
 - State: dev server restarted (pid 18018) with fresh Prisma client, collab-service still running (pid 3594), lint clean, all endpoints 200, welcome seed intact + "Projects" demo folder.
 - Known limitations / next-phase ideas: table cell merge/split, column width drag, folder drag-and-drop reordering, comment emoji reactions, doc tags, OAuth identities, offline support, print iframe in Safari.
+
+---
+Task ID: 9
+Agent: main (Z.ai Code) — scheduled webDevReview round
+Task: Assess status, QA regression, add document outline + emoji picker, styling polish
+
+Work Log:
+- Health check: dev :3000 (pid 18018) 200, collab :3003 200, lint clean, dev.log clean. Found an extra "Meeting notes — 2026-09-03" doc (523 chars) in the DB — possibly user-created via the preview panel between rounds; treated as user data (restored it to clean state after tests rather than deleting).
+- QA regression (agent-browser): folders render with "Projects"; click-to-text still lands in text nodes (Task 8 pointer-events fix intact); ⌘⇧T shortcut opens table dialog and inserts 3×3; comment bubble → composer → submit → Edit button all work; zero console errors. Cleaned up test comment + test table from the Meeting notes doc via API.
+- NEW FEATURE — document outline sidebar (Google Docs parity):
+  - outline-sidebar.tsx: left panel (248px desktop / full-width overlay mobile, same slide pattern as comments sidebar), header with item count, h1–h4 tree with per-level indentation/weight, click-to-jump, empty state with format hint, tooltips for truncated titles.
+  - editor-view.tsx: parseOutline (querySelectorAll h1-h4, stamps stable data-oid attrs on the live DOM), re-parses on [doc, contentTick, remoteContent] (live update while typing, verified: added heading appeared ~400ms later), jumpToOutline (canvas.scrollTo with zoom compensation, 1/3-viewport offset, .outline-flash background pulse animation), toggleOutline.
+  - Entry points: View menu → "Show document outline" checkbox; NEW ListTree toggle button in editor header (before the comments button, aria-pressed).
+  - editor-types: outlineOpen/toggleOutline on EditorApi. globals.css: outline-flash keyframe animation.
+  - BUG FOUND & FIXED during dev: TDZ ReferenceError "Cannot access 'toggleOutline' before initialization" — the outline callbacks were declared after the `api` object that references them; moved the whole outline/emoji block before the api object.
+- NEW FEATURE — emoji & symbols picker:
+  - emoji-dialog.tsx: search input + 5 category tabs (Smileys/People/Objects/Symbols/Nature, ~140 curated emoji with names), grid (8 cols desktop / 10 sm), insert-on-click, dialog stays open for multi-insert, Done button, search empty state.
+  - editor-view insertEmoji: initially used insertHtmlAtCursor → FAILED from the open dialog (Radix focus trap blocks execCommand — the Task 4 lesson generalizes to any insert-while-dialog-open). Rewrote to direct Range manipulation: uses live selection if editor holds it, else savedRangeRef, else appends at end; deleteContents + insertNode + caret advance + savedRange update; falls back to insertAdjacentHTML on any range error. Verified: 😀 then 🚀 inserted back-to-back at the caret (positions 371/373), dialog stayed open, autosave fired.
+  - Entry point: Insert menu → "Emoji & symbols" (Smile icon).
+- Styling polish (mandatory): emoji category labels shortened to fix real truncation VLM found ("Objects & wor" — verified scrollWidth == clientWidth after fix), footer text contrast bumped (text-foreground/70), Done button given font-medium + shadow-sm + px-4, ⌘⇧T added to the shortcuts dialog.
+- QA (agent-browser): outline toggle via menu checkbox AND header button; 5 headings parsed from Meeting notes doc; jump scrolled canvas 0→653 with flash on "Next meeting"; live outline update (5→6 items after adding a heading); emoji dialog: search "check" → 2 results, category switch, 2 sequential inserts, Done closes; mobile 390×844: outline opens full-width, no horizontal overflow; zero console errors throughout. VLM: outline 8/10, emoji picker 7/10→fixed (remaining flags were the page behind the modal + subjective overlay contrast).
+- Cleanup: Meeting notes doc restored to its exact 523-char original (test emojis/heading/table stripped, PATCH-verified), comments empty, welcome doc intact.
+
+Stage Summary:
+- Z-Docs now: home (templates, folders, grid/list, search, stars, trash) + editor (full toolbar, autosave, versions, share, print/export, dark mode, tables w/ structural ops, comments w/ edit, document outline, emoji picker) + realtime collab + AI assistant.
+- Key architectural lesson recorded: inserts from open Radix dialogs must use direct Range manipulation, not execCommand (insertEmoji pattern is the template for future "insert while dialog open" features).
+- State: dev server healthy (no restart needed — no schema changes this round), collab-service running, lint clean, all endpoints 200, DB: Welcome + user's Meeting notes docs + "Projects" folder.
+- Known limitations / next-phase ideas: table cell merge/split + column width drag, folder drag-and-drop, comment emoji reactions, doc tags, OAuth identities, offline support, version diff view, export to PDF (currently .doc/HTML/txt only).

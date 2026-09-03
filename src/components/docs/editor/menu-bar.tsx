@@ -14,7 +14,7 @@ import {
   Minus, CalendarDays, Sparkles, Bold, Italic, Underline, Strikethrough, Superscript,
   Subscript, RemoveFormatting, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, TextQuote, Calculator, Keyboard, Info, MessageSquarePlus, Table,
-  Rows3, Columns3, Heading, ChevronRight
+  Rows3, Columns3, Heading, ChevronRight, ListTree, Smile
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -70,6 +70,12 @@ export function MenuBar({ api }: { api: EditorApi }) {
 
       <Menu label="View">
         <DropdownMenuCheckboxItem
+          checked={api.outlineOpen}
+          onCheckedChange={(v) => api.toggleOutline(!!v)}
+        >
+          <ListTree className="h-4 w-4" /> Show document outline
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
           checked={dark}
           onCheckedChange={() => setTheme(dark ? "light" : "dark")}
         >
@@ -101,6 +107,9 @@ export function MenuBar({ api }: { api: EditorApi }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("table")}>
           <Table className="h-4 w-4" /> Table <DropdownMenuShortcut>⌘⇧T</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.openDialog("emoji")}>
+          <Smile className="h-4 w-4" /> Emoji &amp; symbols
         </DropdownMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-2">

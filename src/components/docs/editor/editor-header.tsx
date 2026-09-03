@@ -8,7 +8,7 @@ import { ThemeToggle } from "@/components/docs/theme-toggle"
 import { UserMenu } from "@/components/docs/user-menu"
 import { DocsLogo } from "@/components/docs/home/home-header"
 import type { EditorApi } from "./editor-types"
-import { Star, CloudCheck, CloudOff, CloudUpload, Users, ArrowLeft, Share2, MessageSquare } from "lucide-react"
+import { Star, CloudCheck, CloudOff, CloudUpload, Users, ArrowLeft, Share2, MessageSquare, ListTree } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { relativeTime } from "@/lib/doc-utils"
 
@@ -111,6 +111,24 @@ export function EditorHeader({ api }: { api: EditorApi }) {
             </span>
           </div>
         )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => api.toggleOutline()}
+              aria-label={api.outlineOpen ? "Hide document outline" : "Show document outline"}
+              aria-pressed={api.outlineOpen}
+              className={cn(
+                "rounded-md p-2 transition-colors hover:bg-muted",
+                api.outlineOpen ? "bg-muted text-foreground" : "text-muted-foreground"
+              )}
+            >
+              <ListTree className="h-4.5 w-4.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            {api.outlineOpen ? "Hide document outline" : "Show document outline"}
+          </TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
