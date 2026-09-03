@@ -61,7 +61,8 @@ export function FindReplacePanel({
   if (!open) return null
 
   const hasQuery = query.length > 0
-  const counter = hasQuery ? `${matchCount === 0 ? 0 : activeIndex + 1} of ${matchCount}` : ""
+  const noResults = hasQuery && matchCount === 0
+  const counter = hasQuery ? `${noResults ? 0 : activeIndex + 1} of ${matchCount}` : ""
 
   const iconBtn =
     "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -71,7 +72,7 @@ export function FindReplacePanel({
       role="dialog"
       aria-label="Find and replace"
       className={cn(
-        "no-print elev-1 absolute top-2 z-20 w-[320px] rounded-lg border bg-background p-2.5",
+        "no-print elev-1 animate-fade-in absolute top-2 z-20 w-[320px] rounded-lg border bg-background p-2.5",
         "transition-[right] duration-200",
         "max-lg:left-2 max-lg:w-[calc(100%-1rem)]",
         commentsOpen ? "hidden lg:block lg:right-[352px]" : "right-2"
@@ -97,7 +98,11 @@ export function FindReplacePanel({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault()
-              e.shiftKey ? onPrev() : onNext()
+              if (e.shiftKey) {
+                onPrev()
+              } else {
+                onNext()
+              }
             } else if (e.key === "Escape") {
               e.preventDefault()
               onClose()
@@ -108,11 +113,15 @@ export function FindReplacePanel({
           className="h-8 min-w-0 flex-1 rounded-md border bg-transparent px-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary/50"
         />
         <span
-          className="tnum w-14 shrink-0 text-right text-xs text-muted-foreground"
+          className={cn(
+            "tnum w-14 shrink-0 text-right text-xs",
+            noResults ? "text-destructive" : "text-muted-foreground"
+          )}
           aria-live="polite"
           aria-atomic="true"
+          title={noResults ? "No results found" : undefined}
         >
-          {counter}
+          {noResults ? "No results" : counter}
         </span>
         <button
           type="button"

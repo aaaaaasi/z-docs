@@ -46,7 +46,9 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl / ⌘ + U", "Underline"],
   ["Ctrl / ⌘ + K", "Insert link"],
   ["Ctrl / ⌘ + Shift + T", "Insert table"],
-  ["Ctrl / ⌘ + F", "Find and replace"],
+  ["Ctrl / ⌘ + F", "Find in document"],
+  ["Ctrl / ⌘ + H", "Find and replace"],
+  ["Enter / Shift + Enter", "Next / previous match (in find bar)"],
   ["Ctrl / ⌘ + Alt / ⌥ + M", "Add comment on selection"],
   ["Ctrl / ⌘ + Alt / ⌥ + A", "AI polish: selection or whole document"],
   ["Ctrl / ⌘ + S", "Save now"],
@@ -56,7 +58,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl / ⌘ + \\", "Clear formatting"],
   ["Ctrl / ⌘ + Enter", "Generate AI draft (in Help me write)"],
   ["Ctrl / ⌘ + Enter", "Post comment / reply (in comment forms)"],
-  ["Esc", "Close dialogs"],
+  ["Esc", "Close dialogs or find bar"],
 ]
 
 export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {

@@ -12,7 +12,7 @@ export interface DocChangePayload {
   by: string // socket id of the sender
 }
 
-export type CommentAction = "add" | "reply" | "resolve" | "unresolve" | "delete" | "edit"
+export type CommentAction = "add" | "reply" | "resolve" | "unresolve" | "delete" | "edit" | "react"
 
 export interface CommentsChangedPayload {
   docId: string

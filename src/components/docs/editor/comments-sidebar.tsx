@@ -4,10 +4,10 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import type { CommentDTO } from "@/lib/docs-types"
+import type { CommentDTO, CommentReactionDTO } from "@/lib/docs-types"
 import { relativeTime } from "@/lib/doc-utils"
 import {
-  MessageSquarePlus, X, Check, RotateCcw, Trash2, CornerDownRight, MessageCircle, Loader2, CheckCircle2, Quote, Pencil
+  MessageSquarePlus, X, Check, RotateCcw, Trash2, CornerDownRight, MessageCircle, Loader2, CheckCircle2, Quote, Pencil, SmilePlus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -206,6 +206,115 @@ function EditForm({
   )
 }
 
+/* ---------------------------------------------------------------- reactions */
+
+export const REACTION_EMOJI = ["👍", "❤️", "😂", "🎉", "✅", "👀"] as const
+
+function groupReactions(reactions: CommentReactionDTO[]) {
+  const groups = new Map<string, { emoji: string; count: number; names: string[]; mine: boolean }>()
+  for (const r of reactions) {
+    const g = groups.get(r.emoji) ?? { emoji: r.emoji, count: 0, names: [], mine: false }
+    g.count += 1
+    g.names.push(r.userName)
+    groups.set(r.emoji, g)
+  }
+  return [...groups.values()]
+}
+
+function ReactionRow({
+  reactions,
+  meId,
+  busy,
+  onToggle,
+}: {
+  reactions: CommentReactionDTO[]
+  meId: string | null
+  busy: boolean
+  onToggle: (emoji: string) => void
+}) {
+  const [picking, setPicking] = React.useState(false)
+  const groups = React.useMemo(() => {
+    const g = groupReactions(reactions)
+    for (const item of g) item.mine = meId != null && reactions.some((r) => r.emoji === item.emoji && r.userId === meId)
+    return g
+  }, [reactions, meId])
+
+  React.useEffect(() => {
+    if (!picking) return
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest?.("[data-reaction-picker]")) setPicking(false)
+    }
+    window.addEventListener("mousedown", close)
+    return () => window.removeEventListener("mousedown", close)
+  }, [picking])
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-1" data-reactions>
+      {groups.map((g) => (
+        <Tooltip key={g.emoji}>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              aria-label={`${g.emoji} reaction, ${g.count}. ${g.mine ? "Click to remove yours" : "Click to react"}`}
+              aria-pressed={g.mine}
+              disabled={busy}
+              onClick={() => onToggle(g.emoji)}
+              className={cn(
+                "flex h-6 items-center gap-1 rounded-md border px-1.5 text-xs transition-colors disabled:opacity-50",
+                g.mine
+                  ? "border-primary/40 bg-primary/10 text-foreground"
+                  : "border-border bg-background text-muted-foreground hover:border-border/80 hover:bg-accent hover:text-foreground"
+              )}
+            >
+              <span aria-hidden>{g.emoji}</span>
+              {g.count > 1 && <span className="tnum text-[10px] leading-none">{g.count}</span>}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            {g.names.join(", ")} reacted with {g.emoji}
+          </TooltipContent>
+        </Tooltip>
+      ))}
+
+      <div className="relative" data-reaction-picker>
+        <button
+          type="button"
+          aria-label="Add reaction"
+          aria-expanded={picking}
+          disabled={busy}
+          onClick={() => setPicking((p) => !p)}
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+        >
+          <SmilePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </button>
+        {picking && (
+          <div
+            role="menu"
+            aria-label="Pick a reaction"
+            className="elev-1 absolute bottom-8 left-0 z-10 flex items-center gap-0.5 rounded-lg border bg-background p-1"
+          >
+            {REACTION_EMOJI.map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                role="menuitem"
+                aria-label={`React with ${emoji}`}
+                onClick={() => {
+                  onToggle(emoji)
+                  setPicking(false)
+                }}
+                className="flex h-7 w-7 items-center justify-center rounded-md text-sm transition-transform hover:scale-125 hover:bg-accent"
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 /* -------------------------------------------------------------- thread card */
 
 function MessageBody({
@@ -248,9 +357,10 @@ interface ThreadCardProps {
   onDelete: () => void
   onFocusClick?: () => void
   onEdit?: (id: string, content: string) => void
+  onToggleReaction?: (commentId: string, emoji: string) => void
 }
 
-function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onDelete, onFocusClick, onEdit }: ThreadCardProps) {
+function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onDelete, onFocusClick, onEdit, onToggleReaction }: ThreadCardProps) {
   const [replying, setReplying] = React.useState(false)
   const [editing, setEditing] = React.useState<string | null>(null)
   const ref = React.useRef<HTMLDivElement | null>(null)
@@ -304,42 +414,69 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
         </button>
       )}
 
+      {onToggleReaction && (
+        <ReactionRow
+          reactions={comment.reactions ?? []}
+          meId={meId}
+          busy={busy}
+          onToggle={(emoji) => onToggleReaction(comment.id, emoji)}
+        />
+      )}
+
       {replies.length > 0 && (
         <div className="mt-2 space-y-2 border-l border-border pl-3 ml-4">
           {replies.map((r) => (
-            <div key={r.id} className="flex gap-2.5">
-              <CornerDownRight className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
-              <div className="flex gap-2">
-                <CommentAvatar name={r.authorName} color={r.authorColor} size="sm" />
-                {editing === r.id ? (
-                  <div className="min-w-0 flex-1">
-                    <EditForm
-                      initial={r.content}
-                      busy={busy}
-                      onSubmit={(text) => {
-                        onEdit?.(r.id, text)
-                        setEditing(null)
-                      }}
-                      onCancel={() => setEditing(null)}
-                    />
-                  </div>
-                ) : (
-                  <MessageBody authorName={r.authorName} authorColor={r.authorColor} time={r.createdAt} resolved={r.resolved}>
-                    {r.content}
-                  </MessageBody>
+            <div key={r.id} className="space-y-0.5">
+              <div className="flex gap-2.5">
+                <CornerDownRight className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                <div className="flex gap-2">
+                  <CommentAvatar name={r.authorName} color={r.authorColor} size="sm" />
+                  {editing === r.id ? (
+                    <div className="min-w-0 flex-1">
+                      <EditForm
+                        initial={r.content}
+                        busy={busy}
+                        onSubmit={(text) => {
+                          onEdit?.(r.id, text)
+                          setEditing(null)
+                        }}
+                        onCancel={() => setEditing(null)}
+                      />
+                    </div>
+                  ) : (
+                    <MessageBody authorName={r.authorName} authorColor={r.authorColor} time={r.createdAt} resolved={r.resolved}>
+                      {r.content}
+                    </MessageBody>
+                  )}
+                </div>
+                {editing !== r.id && (meId === r.authorId || meId === null) && onEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Edit reply"
+                    className="h-6 w-6 shrink-0 rounded-md text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/thread:opacity-100 focus-visible:opacity-100"
+                    onClick={() => setEditing(r.id)}
+                    disabled={busy}
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
                 )}
               </div>
-              {editing !== r.id && (meId === r.authorId || meId === null) && onEdit && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Edit reply"
-                  className="h-6 w-6 shrink-0 rounded-md text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/thread:opacity-100 focus-visible:opacity-100"
-                  onClick={() => setEditing(r.id)}
-                  disabled={busy}
+              {onToggleReaction && (
+                <div
+                  className={cn(
+                    "ml-6 transition-opacity",
+                    (r.reactions?.length ?? 0) === 0 &&
+                      "opacity-0 focus-within:opacity-100 group-hover/thread:opacity-100"
+                  )}
                 >
-                  <Pencil className="h-3 w-3" />
-                </Button>
+                  <ReactionRow
+                    reactions={r.reactions ?? []}
+                    meId={meId}
+                    busy={busy}
+                    onToggle={(emoji) => onToggleReaction(r.id, emoji)}
+                  />
+                </div>
               )}
             </div>
           ))}
@@ -434,12 +571,13 @@ export interface CommentsSidebarProps {
   onToggleResolve: (c: CommentDTO) => void
   onDelete: (c: CommentDTO) => void
   onFocusComment: (c: CommentDTO) => void
+  onToggleReaction?: (commentId: string, emoji: string) => void
 }
 
 export function CommentsSidebar(props: CommentsSidebarProps) {
   const {
     open, onClose, comments, loading, activeCommentId, pendingQuote, busy, meId,
-    onSubmitComment, onCancelComposer, onReply, onEdit, onToggleResolve, onDelete, onFocusComment,
+    onSubmitComment, onCancelComposer, onReply, onEdit, onToggleResolve, onDelete, onFocusComment, onToggleReaction,
   } = props
 
   const openThreads = React.useMemo(() => comments.filter((c) => !c.resolved), [comments])
@@ -516,6 +654,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
                   onToggleResolve={() => onToggleResolve(c)}
                   onDelete={() => onDelete(c)}
                   onFocusClick={() => onFocusComment(c)}
+                  onToggleReaction={onToggleReaction}
                 />
               ))}
 
@@ -543,6 +682,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
                           onToggleResolve={() => onToggleResolve(c)}
                           onDelete={() => onDelete(c)}
                           onFocusClick={() => onFocusComment(c)}
+                          onToggleReaction={onToggleReaction}
                         />
                       </div>
                     ))}

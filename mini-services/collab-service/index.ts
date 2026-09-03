@@ -44,7 +44,7 @@ interface CursorPayload {
 
 interface CommentsChangedPayload {
   docId: string
-  action: 'add' | 'reply' | 'resolve' | 'unresolve' | 'delete' | 'edit'
+  action: 'add' | 'reply' | 'resolve' | 'unresolve' | 'delete' | 'edit' | 'react'
   commentId?: string
   by?: string
 }

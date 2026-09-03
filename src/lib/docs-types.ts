@@ -47,6 +47,14 @@ export interface RemoteCursor {
 
 export type DocFilter = "all" | "starred" | "trash" | "folder"
 
+export interface CommentReactionDTO {
+  id: string
+  commentId: string
+  userId: string
+  userName: string
+  emoji: string
+}
+
 export interface CommentDTO {
   id: string
   docId: string
@@ -61,4 +69,5 @@ export interface CommentDTO {
   createdAt: string
   updatedAt: string
   replies: CommentDTO[]
+  reactions: CommentReactionDTO[]
 }

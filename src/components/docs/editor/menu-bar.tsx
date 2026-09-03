@@ -64,7 +64,7 @@ export function MenuBar({ api }: { api: EditorApi }) {
         <DropdownMenuItem onClick={() => api.exec("selectAll")}><ClipboardCopy className="h-4 w-4" /> Select all <DropdownMenuShortcut>⌘A</DropdownMenuShortcut></DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("find")}>
-          <Replace className="h-4 w-4" /> Find and replace <DropdownMenuShortcut>⌘F</DropdownMenuShortcut>
+          <Replace className="h-4 w-4" /> Find and replace <DropdownMenuShortcut>⌘H</DropdownMenuShortcut>
         </DropdownMenuItem>
       </Menu>
 

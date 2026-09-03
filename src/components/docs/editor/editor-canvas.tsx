@@ -4,6 +4,7 @@ import * as React from "react"
 import { MessageSquareMore } from "lucide-react"
 import type { RemoteCursor, CommentDTO } from "@/lib/docs-types"
 import { rangeFromOffsets, selectionOffsets, setSelectionFromOffsets, findQuoteRange } from "@/lib/editor-dom"
+import type { TextMatch } from "@/lib/editor-dom"
 import { TableResizeOverlay } from "@/components/docs/editor/table-resize"
 import { cn } from "@/lib/utils"
 
@@ -44,6 +45,9 @@ interface EditorCanvasProps {
   onCommentClick?: (id: string) => void
   activeTable?: HTMLTableElement | null
   onColumnResize?: () => void
+  /* find & replace highlight state (null/empty = no search active) */
+  findMatches?: TextMatch[]
+  findActiveIndex?: number
 }
 
 export function EditorCanvas({
@@ -62,10 +66,52 @@ export function EditorCanvas({
   onCommentClick,
   activeTable = null,
   onColumnResize,
+  findMatches = [],
+  findActiveIndex = -1,
 }: EditorCanvasProps) {
   const [dims, setDims] = React.useState({ w: 816, h: 1056 })
   const [caretViews, setCaretViews] = React.useState<CaretView[]>([])
   const [highlightViews, setHighlightViews] = React.useState<CommentHighlightView[]>([])
+  const [findRects, setFindRects] = React.useState<{
+    key: string
+    rects: { left: number; top: number; width: number; height: number }[]
+    active: boolean
+  }[]>([])
+
+  // Render find-highlight rects from live match ranges (canvas coordinates,
+  // same offset math as remote cursors). Re-runs when the search changes or
+  // when the document content/zoom changes so highlights stay glued to text.
+  React.useEffect(() => {
+    if (findMatches.length === 0) {
+      setFindRects([])
+      return
+    }
+    const el = pageRef.current
+    if (!el) return
+    const pageRect = el.getBoundingClientRect()
+    const offX = el.offsetLeft
+    const offY = el.offsetTop
+    const views: typeof findRects = []
+    for (let m = 0; m < findMatches.length; m++) {
+      try {
+        const rects = Array.from(findMatches[m].range.getClientRects())
+        if (rects.length === 0) continue
+        views.push({
+          key: `fr-${m}`,
+          rects: rects.map((r) => ({
+            left: (r.left - pageRect.left + offX) / zoom,
+            top: (r.top - pageRect.top + offY) / zoom,
+            width: Math.max(r.width / zoom, 2),
+            height: r.height / zoom,
+          })),
+          active: m === findActiveIndex,
+        })
+      } catch {
+        // detached range — skip
+      }
+    }
+    setFindRects(views)
+  }, [findMatches, findActiveIndex, zoom, contentTick, remoteContent])
 
   // Mount: set initial content & editor defaults
   React.useEffect(() => {
@@ -291,6 +337,22 @@ export function EditorCanvas({
                     ...(h.active ? { backgroundColor: h.color + "40" } : undefined),
                   }}
                   data-comment-hl={h.id}
+                />
+              ))
+            )}
+          </div>
+
+          {/* Find-match highlights (under everything clickable) */}
+          <div className="no-print pointer-events-none absolute inset-0 z-[8]">
+            {findRects.map((v) =>
+              v.rects.map((r, i) => (
+                <div
+                  key={`${v.key}-${i}`}
+                  className={cn(
+                    "find-highlight absolute rounded-[2px]",
+                    v.active && "find-highlight-active"
+                  )}
+                  style={{ left: r.left, top: r.top, width: r.width, height: r.height }}
                 />
               ))
             )}

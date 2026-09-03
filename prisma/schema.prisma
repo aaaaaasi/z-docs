@@ -70,9 +70,25 @@ model Comment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  doc         Document      @relation(fields: [docId], references: [id], onDelete: Cascade)
-  parent      Comment?      @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
-  replies     Comment[]     @relation("CommentThread")
+  doc         Document          @relation(fields: [docId], references: [id], onDelete: Cascade)
+  parent      Comment?          @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies     Comment[]         @relation("CommentThread")
+  reactions   CommentReaction[]
 
   @@index([docId, createdAt])
+}
+
+/// emoji reaction on a comment (one per user+emoji; toggle = delete)
+model CommentReaction {
+  id        String   @id @default(cuid())
+  commentId String
+  userId    String
+  userName  String
+  /// the emoji character itself (e.g. "👍")
+  emoji     String
+  createdAt DateTime @default(now())
+
+  comment   Comment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId, emoji])
 }

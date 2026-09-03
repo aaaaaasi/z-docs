@@ -323,3 +323,47 @@ Stage Summary:
 - State: dev server fresh (setsid), lint clean, 0 console/page errors on fresh load, all routes 200, user data intact.
 - Known non-issues: HMR-only hydration warning (dev artifact); column resize is not undoable (execCommand can't record colgroup writes — acceptable v1, documented); touch drag not enabled (scroll-safe by design, menu "Move to" covers mobile).
 - Next-phase ideas: table cell merge/split, comment emoji reactions, doc tags, PDF export, offline support, folder reorder, "open in new tab" deep-link polish.
+
+---
+Task ID: 13
+Agent: main (Z.ai Code)
+Task: Round 13 — QA + two new features (full Find & Replace engine, comment emoji reactions) + mandatory styling detail polish
+
+Work Log:
+- Health check: dev :3000 200, collab :3003 200, lint clean, dev.log clean, menuTableInfo state verified fine (Task 12's sed/ANSI artifact lesson re-confirmed via Read tool).
+- QA (agent-browser): home + editor zero console/page errors; created sandbox doc cmtls37vd (typed test text) so user data stayed untouched.
+- NEW FEATURE 1 — Full Google-Docs-style Find & Replace (replaces the old replace-all-only dialog):
+  - editor-dom.ts: findTextMatches (single-text-node matches with live Ranges + global offsets), scrollRangeIntoCanvasView (centers match in .doc-canvas-bg scroll space).
+  - find-replace.tsx (NEW component): floating top-right panel — find input, "1 of 3" tnum counter (aria-live), Aa case toggle, prev/next, close; chevron expands replace row with Replace / Replace all buttons. Enter/Shift+Enter = next/prev in find input, Escape closes, auto-focus on open. Slides left when comments sidebar opens (hidden on mobile). animate-fade-in, elev-1, rounded-lg, all icons strokeWidth 1.75.
+  - editor-view.tsx: findOpen/findReplaceMode/findQuery/findCase/findMatches/findActiveIndex state; runFind (re-runs against live DOM, keeps active match by global offset across re-scans); debounced query effect (130ms); contentTick/remoteContent effect re-glues highlights after edits; goToMatch selects the range + scrolls into view; wraparound next/prev; openFindPanel seeds query from current selection (≤60 chars, single line); plain-Escape closes panel (guarded: only when no Radix menu/dialog open). Ctrl+F = find mode, Ctrl+H = replace mode; menu-bar "Find and replace" opens replace mode (hint ⌘F→⌘H).
+  - replaceCurrent + replaceAllMatches go through document.execCommand("insertText") with the match selected: every replacement lands in the browser undo stack (Ctrl+Z/Shift+Z verified working, one undo step per replacement) AND inherits surrounding formatting. replaceAll walks matches right-to-left with range validation guards (slice must still equal the needle).
+  - editor-canvas.tsx: findMatches/findActiveIndex props; highlight rects overlay z-[8] (under comment highlights z-[9], markers z-[11]), same offset math as remote cursors, recomputed on zoom/contentTick/remoteContent. pointer-events-none + no-print.
+  - globals.css: .find-highlight (teal rgba(11,107,98,·) light / rgba(94,158,150,·) dark) + .find-highlight-active (stronger bg + 1.5px ring).
+  - dialogs-basic.tsx: old FindReplaceDialog component deleted (~3KB).
+  - info-dialogs.tsx: shortcuts list now documents ⌘F (find), ⌘H (replace), Enter/Shift+Enter (navigate matches), "No results" counter state.
+  - End-to-end verified: 3-matches highlight+selection; next/prev wraparound; case toggle 3→2; single replace (fox→cat, counter 1 of 2, selection advances); replace-all; UNDO/REDO restore replacements step-by-step; selection seeding ("dog" selected → Ctrl+F → query pre-filled); live re-scan while typing (1 of 3 → 1 of 4 + 4 highlights); persistence via autosave; Escape close; "No results" state; VLM reviews 4× (light find 8/10-style pass, dark find pass, no defects).
+  - BUGFIX during impl: initial string-surgery replace wasn't undoable (bypassed execCommand undo stack) → refactored both replace paths to execCommand. Also fixed stale-closure bug in replaceCurrent (runFind now returns {matches, idx}).
+- NEW FEATURE 2 — Comment thread emoji reactions:
+  - prisma: CommentReaction model (commentId/userId/userName/emoji, @@unique([commentId,userId,emoji]), cascade on comment delete); db:push applied; Comment.reactions relation added.
+  - API: POST /api/comments/:id/reactions (toggle add/remove, 6-emoji allowlist 👍❤️😂🎉✅👀); GET/POST comments routes now include reactions (serialize extended, replies+reactions nested).
+  - types: CommentReactionDTO; CommentDTO.reactions.
+  - collab: CommentAction += "react" (both use-collab.ts and collab-service interface; service auto-restarted via bun --hot). Remote reactions refresh comments without toasting.
+  - comments-sidebar.tsx: ReactionRow — grouped chips (emoji + tnum count + tooltip "names reacted with X", own reaction = primary/10 highlight + aria-pressed), SmilePlus add button reveals 6-emoji picker (role=menu, mousedown-outside close, hover:scale-125). Top-level comments always show the row; replies show it when non-empty, hover-revealed when empty (opacity-0 → group-hover/focus-within).
+  - editor-view.tsx: toggleReaction — optimistic deep toggle (works on comments and nested replies), no busy spinner (snappy multi-react), rollback + refresh on failure, emits "react" collab event.
+  - End-to-end verified: comment created → picker → 👍 chip (aria-pressed=true, persisted in DB) → toggle-off removes; two emoji on one comment group correctly; reply ✅ reaction persists; VLM light + dark reviews: "clean, accessible, visually balanced".
+  - NOTE: db push required dev-server restart — running next-server held the old Prisma client in memory ("Unknown field reactions" 500). Fixed with the documented kill-tree + setsid relaunch. Lesson: after schema changes, restart dev server before testing.
+- STYLING (mandatory detail polish):
+  - Version-history diff stat pills + legend swatches: hardcoded rgba classes → token classes .diff-pill-ins/.diff-pill-del/.diff-swatch-ins/.diff-swatch-del in globals.css WITH dark variants (light values identical to before; dark previously unthemed → now mint/rose legible). LATEST timeline dot halo: fixed rgba(11,107,98,0.15) → color-mix(in oklab, var(--primary) 15%, transparent) (adapts to theme).
+  - Find panel: "No results" state (destructive-colored counter text), animate-fade-in open animation, focus borders primary/50.
+  - Shortcuts dialog + menu-bar hint updated for ⌘H; Esc now documented as closing find bar.
+  - Turbopack stale-CSS struck again after the diff-pill globals.css edit (diffPillRules: 0 served while find-highlight: 4 served) → applied Task 10 remedy (kill tree + rm -rf .next + setsid relaunch); then verified 8 diff-pill rules served and computed styles exact in BOTH themes (ins rgba(58,125,68,.12)/rgb(58,125,68) light, rgba(52,211,153,.16)/rgb(110,231,183) dark).
+- Cleanup + final state: QA sandbox doc deleted (cascade removed comment/reply/reactions/versions); user data intact: 8 docs (7 from Task 12 + 1 user-created during this round), 0 comments on user docs, Projects folder, light mode restored, viewport 1440x900. Final regression: home + Welcome doc open (950 chars, 173 words), 0 console errors, lint clean, dev.log clean, collab 200.
+
+Stage Summary:
+- Z-Docs now: home (templates/folders/dnd/stars/trash) + editor (full toolbar, autosave, versions w/ diff, share, print/export, dark mode, tables w/ resize + structural ops, comments w/ edit + REACTIONS, outline, emoji, AI write + polish, FIND & REPLACE w/ live highlights + undoable replace) + realtime collab + AI.
+- New reusable assets: src/lib findTextMatches/scrollRangeIntoCanvasView, find-replace.tsx panel, /api/comments/[id]/reactions route, CommentReaction model, diff pill/swatch tokens.
+- Design system additions: .find-highlight (+dark), .diff-pill-* / .diff-swatch-* (+dark), theme-aware LATEST halo.
+- State: dev server fresh (Task 10 restart procedure, .next cleared), collab running with "react" action, lint clean, user data byte-clean.
+- Known limitations: find matches must live within a single text node (cross-boundary matches skipped by design); replace-all = N undo steps (not one grouped step); reactions allowlist is 6 curated emoji (no free picker — deliberate anti-slop choice); optimistic reaction ids are synthetic until refresh.
+- Next-phase ideas: table cell merge/split, doc tags, PDF export, folder reordering, offline support, reaction picker could open on hover after selection ("quick react"), find-in-replace of HTML attributes never (content-only by design).
+

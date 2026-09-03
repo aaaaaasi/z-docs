@@ -9,10 +9,11 @@ import { useLocalUser } from "@/lib/identity"
 import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@/hooks/use-collab"
 import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
 import {
-  selectionOffsets, selectedBlocks, escapeRegex, findQuoteRange,
+  selectionOffsets, selectedBlocks, findQuoteRange,
   getTableContext, describeTableAt, insertTableRow, insertTableColumn, deleteTableRow,
   deleteTableColumn, deleteTableEl, toggleTableHeader, ensureParagraph, placeCaretInCell,
-  caretRangeFromPoint, pointInSelection, type TableInfo,
+  caretRangeFromPoint, pointInSelection, findTextMatches, scrollRangeIntoCanvasView,
+  type TableInfo, type TextMatch,
 } from "@/lib/editor-dom"
 import type { DocumentDTO, CommentDTO } from "@/lib/docs-types"
 import { EditorCanvas } from "./editor-canvas"
@@ -22,13 +23,14 @@ import { Toolbar } from "./toolbar"
 import { StatusPill } from "./status-pill"
 import { CommentsSidebar, CommentBubble, type PendingQuote } from "./comments-sidebar"
 import { DEFAULT_FORMAT, type EditorApi, type FormatState, type TableOp } from "./editor-types"
-import { LinkDialog, ImageDialog, FindReplaceDialog, TableDialog } from "./dialogs-basic"
+import { LinkDialog, ImageDialog, TableDialog } from "./dialogs-basic"
 import { ShareDialog } from "./share-dialog"
 import { VersionHistorySheet } from "./version-history"
 import { HelpWriteDialog } from "./help-write-dialog"
 import { WordCountDialog, ShortcutsDialog, AboutDialog } from "./info-dialogs"
 import { OutlineSidebar, type OutlineItem } from "./outline-sidebar"
 import { EmojiDialog } from "./emoji-dialog"
+import { FindReplacePanel } from "./find-replace"
 import { AiToolsDialog, type AiSource } from "./ai-tools-dialog"
 import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2 } from "lucide-react"
 import {
@@ -65,6 +67,14 @@ export function EditorView() {
   const [dialog, setDialog] = React.useState<string | null>(null)
   const [linkHasSelection, setLinkHasSelection] = React.useState(false)
   const [aiSource, setAiSource] = React.useState<AiSource | null>(null)
+
+  /* ---------------- find & replace state ---------------- */
+  const [findOpen, setFindOpen] = React.useState(false)
+  const [findReplaceMode, setFindReplaceMode] = React.useState(false)
+  const [findQuery, setFindQuery] = React.useState("")
+  const [findCase, setFindCase] = React.useState(false)
+  const [findMatches, setFindMatches] = React.useState<TextMatch[]>([])
+  const [findActiveIndex, setFindActiveIndex] = React.useState(-1)
 
   /* ---------------- comments state ---------------- */
   const [comments, setComments] = React.useState<CommentDTO[]>([])
@@ -738,6 +748,45 @@ export function EditorView() {
     [emitCommentsChanged, toast]
   )
 
+  /** Toggle an emoji reaction on a comment or reply (optimistic, no busy
+   *  spinner so quick multi-reactions stay snappy). */
+  const toggleReaction = React.useCallback(
+    async (commentId: string, emoji: string) => {
+      if (!user) return
+      // optimistic toggle on a deep-copied list
+      const apply = (list: CommentDTO[]): CommentDTO[] =>
+        list.map((c) => {
+          if (c.id === commentId) {
+            const mine = (c.reactions ?? []).some((rx) => rx.userId === user.id && rx.emoji === emoji)
+            const next = mine
+              ? (c.reactions ?? []).filter((rx) => !(rx.userId === user.id && rx.emoji === emoji))
+              : [
+                  ...(c.reactions ?? []),
+                  { id: `optimistic-${emoji}`, commentId, userId: user.id, userName: user.name, emoji },
+                ]
+            return { ...c, reactions: next }
+          }
+          const replies = c.replies ? apply(c.replies) : c.replies
+          if (replies !== c.replies) return { ...c, replies }
+          return c
+        })
+      setComments((prev) => apply(prev))
+      try {
+        const res = await fetch(`/api/comments/${commentId}/reactions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ emoji, userId: user.id, userName: user.name }),
+        })
+        if (!res.ok) throw new Error("failed")
+        emitCommentsChanged("react", commentId)
+      } catch {
+        toast({ title: "Couldn’t save the reaction", variant: "destructive" })
+        void refreshComments()
+      }
+    },
+    [user, emitCommentsChanged, toast, refreshComments]
+  )
+
   const editComment = React.useCallback(
     async (id: string, content: string) => {
       setCommentBusy(true)
@@ -920,45 +969,192 @@ export function EditorView() {
     [plainTextToHtml, insertHtmlAtCursor]
   )
 
-  /* ---------------- find & replace ---------------- */
-  const countMatches = React.useCallback((find: string, caseSensitive: boolean) => {
-    const el = pageRef.current
-    if (!el || !find) return 0
-    const re = new RegExp(escapeRegex(find), caseSensitive ? "g" : "gi")
-    let count = 0
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-    while (walker.nextNode()) {
-      const t = walker.currentNode.textContent ?? ""
-      const m = t.match(re)
-      if (m) count += m.length
+  /* ---------------- find & replace engine ---------------- */
+
+  /** Re-run the search against the live DOM. Keeps the active match pointed
+   *  at the same content position (by global offset) when possible.
+   *  Returns the fresh matches + the index runFind selected. */
+  const runFind = React.useCallback(
+    (query: string, caseSensitive: boolean, keepOffset?: number | null): { matches: TextMatch[]; idx: number } => {
+      const el = pageRef.current
+      if (!el || !query) {
+        setFindMatches([])
+        setFindActiveIndex(-1)
+        return { matches: [], idx: -1 }
+      }
+      const matches = findTextMatches(el, query, caseSensitive)
+      let idx = 0
+      if (keepOffset != null && matches.length > 0) {
+        idx = matches.findIndex((m) => m.start >= keepOffset)
+        if (idx === -1) idx = 0 // wrapped past the end — restart from the top
+      }
+      setFindMatches(matches)
+      setFindActiveIndex(matches.length > 0 ? idx : -1)
+      return { matches, idx: matches.length > 0 ? idx : -1 }
+    },
+    []
+  )
+
+  /** Debounced re-run whenever the query / case flag changes. */
+  React.useEffect(() => {
+    if (!findOpen) return
+    const t = setTimeout(() => runFind(findQuery, findCase), 130)
+    return () => clearTimeout(t)
+  }, [findOpen, findQuery, findCase, runFind])
+
+  /** Re-run after local edits so highlights stay glued to the text. */
+  React.useEffect(() => {
+    if (!findOpen || !findQuery) return
+    const keep = findActiveIndex >= 0 && findMatches[findActiveIndex]?.start
+    runFind(findQuery, findCase, keep ?? null)
+  }, [contentTick, remoteContent])
+
+  /** Jump to a match: highlight, select it in the document, scroll into view. */
+  const goToMatch = React.useCallback(
+    (index: number) => {
+      const m = findMatches[index]
+      if (!m) return
+      setFindActiveIndex(index)
+      const el = pageRef.current
+      if (!el) return
+      try {
+        const sel = window.getSelection()
+        sel?.removeAllRanges()
+        sel?.addRange(m.range.cloneRange())
+        scrollRangeIntoCanvasView(el, m.range)
+      } catch {
+        // range detached — ignore
+      }
+    },
+    [findMatches]
+  )
+
+  const findNext = React.useCallback(() => {
+    if (findMatches.length === 0) return
+    goToMatch((findActiveIndex + 1) % findMatches.length)
+  }, [findMatches, findActiveIndex, goToMatch])
+
+  const findPrev = React.useCallback(() => {
+    if (findMatches.length === 0) return
+    goToMatch((findActiveIndex - 1 + findMatches.length) % findMatches.length)
+  }, [findMatches, findActiveIndex, goToMatch])
+
+  /** Auto-select the first match whenever a fresh search produces results. */
+  React.useEffect(() => {
+    if (findOpen && findMatches.length > 0 && findActiveIndex === 0) {
+      const el = pageRef.current
+      const m = findMatches[0]
+      if (el && m) {
+        try {
+          const sel = window.getSelection()
+          sel?.removeAllRanges()
+          sel?.addRange(m.range.cloneRange())
+          scrollRangeIntoCanvasView(el, m.range)
+        } catch {
+          // ignore
+        }
+      }
     }
-    return count
+  }, [findMatches])
+
+  const openFindPanel = React.useCallback(
+    (withReplace: boolean) => {
+      setFindOpen(true)
+      setFindReplaceMode(withReplace)
+      // seed the query with the current selection when it is short & plain
+      const el = pageRef.current
+      const sel = window.getSelection()
+      if (el && sel && !sel.isCollapsed && el.contains(sel.anchorNode)) {
+        const text = sel.toString()
+        if (text && text.length <= 60 && !text.includes("\n")) {
+          setFindQuery(text)
+          runFind(text, findCase)
+        }
+      }
+    },
+    [findCase, runFind]
+  )
+
+  const closeFindPanel = React.useCallback(() => {
+    setFindOpen(false)
+    setFindMatches([])
+    setFindActiveIndex(-1)
+    window.getSelection()?.removeAllRanges()
   }, [])
 
-  const replaceAllMatches = React.useCallback(
-    (find: string, replace: string, caseSensitive: boolean) => {
+  /** Replace the currently active match. Uses execCommand("insertText")
+   *  with the match selected so the change lands in the browser's undo
+   *  stack and inherits the surrounding formatting. */
+  const replaceCurrent = React.useCallback(
+    (replacement: string) => {
+      const m = findMatches[findActiveIndex]
       const el = pageRef.current
-      if (!el || !find) return 0
-      const re = new RegExp(escapeRegex(find), caseSensitive ? "g" : "gi")
+      if (!m || !el) return
+      try {
+        el.focus()
+        const sel = window.getSelection()
+        sel?.removeAllRanges()
+        sel?.addRange(m.range.cloneRange())
+        document.execCommand("insertText", false, replacement)
+      } catch {
+        return
+      }
+      // re-run the search starting just after this replacement
+      const keep = m.start + replacement.length
+      const { matches: next, idx } = runFind(findQuery, findCase, keep)
+      if (idx >= 0 && next[idx]) {
+        const nm = next[idx]
+        try {
+          const sel = window.getSelection()
+          sel?.removeAllRanges()
+          sel?.addRange(nm.range.cloneRange())
+          scrollRangeIntoCanvasView(el, nm.range)
+        } catch {
+          // ignore
+        }
+      } else {
+        toast({ title: "No more matches" })
+      }
+    },
+    [findMatches, findActiveIndex, findQuery, findCase, runFind, toast]
+  )
+
+  /** Replace every match. Walks the matches right-to-left (earlier offsets
+   *  stay valid), re-selecting each range and going through execCommand so
+   *  each replacement is undoable and formatting-preserving. */
+  const replaceAllMatches = React.useCallback(
+    (replacement: string) => {
+      const el = pageRef.current
+      if (!el || !findQuery || findMatches.length === 0) return 0
+      el.focus()
       let count = 0
-      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-      const nodes: Text[] = []
-      while (walker.nextNode()) nodes.push(walker.currentNode as Text)
-      for (const n of nodes) {
-        const t = n.textContent ?? ""
-        const m = t.match(re)
-        if (m) {
-          count += m.length
-          n.textContent = t.replace(re, replace)
+      const needle = findCase ? findQuery : findQuery.toLowerCase()
+      for (let i = findMatches.length - 1; i >= 0; i--) {
+        const m = findMatches[i]
+        const c = m.range.startContainer
+        if (c.nodeType !== Node.TEXT_NODE || m.range.startContainer !== m.range.endContainer) continue
+        // validate the range still covers the query (guards against drift)
+        const data = c.textContent ?? ""
+        const s = m.range.startOffset
+        const e = m.range.endOffset
+        const slice = findCase ? data.slice(s, e) : data.slice(s, e).toLowerCase()
+        if (slice !== needle) continue
+        try {
+          const sel = window.getSelection()
+          sel?.removeAllRanges()
+          sel?.addRange(m.range.cloneRange())
+          if (document.execCommand("insertText", false, replacement)) count++
+        } catch {
+          // skip this one — the final re-scan reports the true state
         }
       }
       if (count > 0) {
-        handleInput()
         toast({ title: `Replaced ${count} ${count === 1 ? "match" : "matches"}` })
       }
+      runFind(findQuery, findCase)
       return count
     },
-    [handleInput, toast]
+    [findQuery, findMatches, runFind, toast]
   )
 
   /* ---------------- export & print ---------------- */
@@ -1108,7 +1304,7 @@ img { max-width: 100%; }
         void performSave(true)
       } else if (k === "f" || k === "h") {
         e.preventDefault()
-        setDialog("find")
+        openFindPanel(k === "h")
       } else if (k === "k") {
         e.preventDefault()
         const el = pageRef.current
@@ -1138,7 +1334,20 @@ img { max-width: 100%; }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [performSave, printDoc, clearFormatting, openCommentComposer, openAiTools])
+  }, [performSave, printDoc, clearFormatting, openCommentComposer, openAiTools, openFindPanel])
+
+  // Plain Escape closes the find bar — but only when no Radix menu/dialog is
+  // open (those must consume Escape first to close themselves).
+  React.useEffect(() => {
+    if (!findOpen) return
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.ctrlKey || e.metaKey || e.altKey) return
+      if (document.querySelector('[data-state="open"][role="menu"], [data-state="open"][role="dialog"], [data-state="open"][role="listbox"], [data-state="open"][role="tooltip"]')) return
+      closeFindPanel()
+    }
+    window.addEventListener("keydown", onEsc)
+    return () => window.removeEventListener("keydown", onEsc)
+  }, [findOpen, closeFindPanel])
 
   /* ---------------- document outline ---------------- */
   /** Re-scan the live DOM for h1–h4 and stamp stable data-oid attributes. */
@@ -1268,6 +1477,11 @@ img { max-width: 100%; }
         setLinkHasSelection(!!el && !!sel && !sel.isCollapsed && el.contains(sel.anchorNode))
       }
       if (d === "aitools") openAiTools()
+      if (d === "find") {
+        // the menu entry reads "Find and replace" — open with the replace row
+        openFindPanel(true)
+        return
+      }
       setDialog(d)
     },
     presence: others,
@@ -1335,6 +1549,23 @@ img { max-width: 100%; }
 
       {doc ? (
         <div className="relative flex min-h-0 flex-1">
+          <FindReplacePanel
+            open={findOpen}
+            replaceMode={findReplaceMode}
+            query={findQuery}
+            caseSensitive={findCase}
+            matchCount={findMatches.length}
+            activeIndex={findActiveIndex}
+            commentsOpen={commentsOpen}
+            onQueryChange={setFindQuery}
+            onCaseToggle={() => setFindCase((c) => !c)}
+            onToggleReplaceMode={() => setFindReplaceMode((r) => !r)}
+            onNext={findNext}
+            onPrev={findPrev}
+            onReplace={replaceCurrent}
+            onReplaceAll={replaceAllMatches}
+            onClose={closeFindPanel}
+          />
           <OutlineSidebar
             open={outlineOpen}
             onClose={() => toggleOutline(false)}
@@ -1362,6 +1593,8 @@ img { max-width: 100%; }
                   activeCommentId={activeCommentId}
                   contentTick={contentTick}
                   activeTable={activeTableEl}
+                  findMatches={findMatches}
+                  findActiveIndex={findActiveIndex}
                   onColumnResize={() => {
                     // colgroup widths live in the document HTML: recompute
                     // stats/outline so dependent views stay in sync
@@ -1431,6 +1664,7 @@ img { max-width: 100%; }
             onToggleResolve={(c) => void toggleResolveComment(c)}
             onDelete={(c) => void deleteComment(c)}
             onFocusComment={focusComment}
+            onToggleReaction={(commentId, emoji) => void toggleReaction(commentId, emoji)}
           />
         </div>
       ) : (
@@ -1465,12 +1699,6 @@ img { max-width: 100%; }
       <ImageDialog open={dialog === "image"} onOpenChange={onDialogChange} onInsert={insertImage} />
       <TableDialog open={dialog === "table"} onOpenChange={onDialogChange} onInsert={insertTable} />
       <EmojiDialog open={dialog === "emoji"} onOpenChange={onDialogChange} onInsert={insertEmoji} />
-      <FindReplaceDialog
-        open={dialog === "find"}
-        onOpenChange={onDialogChange}
-        onCountMatches={countMatches}
-        onReplaceAll={replaceAllMatches}
-      />
       <ShareDialog
         open={dialog === "share"}
         onOpenChange={onDialogChange}

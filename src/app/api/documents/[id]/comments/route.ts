@@ -17,6 +17,7 @@ function serialize(c: {
   createdAt: Date
   updatedAt: Date
   replies?: unknown[]
+  reactions?: { id: string; commentId: string; userId: string; userName: string; emoji: string }[]
 }) {
   return {
     id: c.id,
@@ -32,6 +33,13 @@ function serialize(c: {
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
     replies: (c.replies ?? []).map((r) => serialize(r as typeof c)),
+    reactions: (c.reactions ?? []).map((rx) => ({
+      id: rx.id,
+      commentId: rx.commentId,
+      userId: rx.userId,
+      userName: rx.userName,
+      emoji: rx.emoji,
+    })),
   }
 }
 
@@ -45,7 +53,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const comments = await db.comment.findMany({
       where: { docId: id, parentId: null },
       orderBy: { createdAt: "asc" },
-      include: { replies: { orderBy: { createdAt: "asc" } } },
+      include: {
+        replies: { orderBy: { createdAt: "asc" }, include: { reactions: true } },
+        reactions: { orderBy: { createdAt: "asc" } },
+      },
     })
 
     return NextResponse.json({ comments: comments.map(serialize) })
@@ -100,7 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         anchorOffset: Math.max(0, Math.floor(body.anchorOffset ?? 0)),
         content: text,
       },
-      include: { replies: true },
+      include: { replies: { include: { reactions: true } }, reactions: true },
     })
 
     return NextResponse.json({ comment: serialize(created) }, { status: 201 })

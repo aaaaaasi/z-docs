@@ -85,7 +85,7 @@ export function VersionHistorySheet({
                     <span
                       className={cn(
                         "absolute -left-[27px] top-4 h-2.5 w-2.5 rounded-full border-2 border-primary",
-                        i === 0 ? "bg-primary shadow-[0_0_0_3px_rgba(11,107,98,0.15)]" : "bg-background"
+                        i === 0 ? "bg-primary shadow-[0_0_0_3px_color-mix(in_oklab,var(--primary)_15%,transparent)]" : "bg-background"
                       )}
                     />
                     <div className="rounded-lg border p-3 transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-sm">
@@ -236,12 +236,12 @@ export function VersionDiffDialog({
           </Select>
           <div className="ml-auto flex items-center gap-1.5 text-xs font-medium">
             {stats && stats.addedWords > 0 && (
-              <span className="tnum inline-flex items-center gap-1 rounded-md bg-[rgba(58,125,68,0.12)] px-2.5 py-1 text-[#3a7d44]">
+              <span className="diff-pill-ins tnum inline-flex items-center gap-1 rounded-md px-2.5 py-1">
                 <TrendingUp className="h-3 w-3" />+{stats.addedWords} {stats.addedWords === 1 ? "word" : "words"}
               </span>
             )}
             {stats && stats.removedWords > 0 && (
-              <span className="tnum inline-flex items-center gap-1 rounded-md bg-[rgba(176,67,43,0.10)] px-2.5 py-1 text-[#b0432b]">
+              <span className="diff-pill-del tnum inline-flex items-center gap-1 rounded-md px-2.5 py-1">
                 <TrendingDown className="h-3 w-3" />−{stats.removedWords} {stats.removedWords === 1 ? "word" : "words"}
               </span>
             )}
@@ -273,10 +273,10 @@ export function VersionDiffDialog({
 
         <div className="flex items-center gap-4 border-t bg-background px-4 py-2.5 text-xs text-foreground/70">
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded-[3px] bg-[rgba(58,125,68,0.30)]" /> added
+            <span className="diff-swatch-ins inline-block h-3 w-3 rounded-[3px]" /> added
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded-[3px] bg-[rgba(176,67,43,0.22)]" /> removed
+            <span className="diff-swatch-del inline-block h-3 w-3 rounded-[3px]" /> removed
           </span>
         </div>
       </div>
