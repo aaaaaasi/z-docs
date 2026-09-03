@@ -139,6 +139,69 @@ export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
+/* ------------------------------------------------------------------ find */
+
+export interface TextMatch {
+  /** global text offset (within root) of the match start */
+  start: number
+  end: number
+  /** live range spanning the matched text (valid until the DOM changes) */
+  range: Range
+}
+
+/**
+ * Find every occurrence of `query` inside root's text content.
+ * A match must live within a single text node (v1 simplification —
+ * matches spanning element boundaries are skipped, which covers the
+ * overwhelming majority of real documents).
+ */
+export function findTextMatches(root: HTMLElement, query: string, caseSensitive: boolean): TextMatch[] {
+  if (!query) return []
+  const matches: TextMatch[] = []
+  const needle = caseSensitive ? query : query.toLowerCase()
+  let base = 0
+  for (const t of textNodesOf(root)) {
+    const text = t.textContent ?? ""
+    if (text.length >= query.length) {
+      const scan = caseSensitive ? text : text.toLowerCase()
+      let i = scan.indexOf(needle)
+      while (i !== -1) {
+        const range = document.createRange()
+        try {
+          range.setStart(t, i)
+          range.setEnd(t, i + query.length)
+          matches.push({ start: base + i, end: base + i + query.length, range })
+        } catch {
+          // detached node — skip
+        }
+        i = scan.indexOf(needle, i + query.length)
+      }
+    }
+    base += text.length
+  }
+  return matches
+}
+
+/**
+ * Center a live Range inside the document canvas' scroll container
+ * (visual pixels — the canvas' scroll space is the zoomed space).
+ */
+export function scrollRangeIntoCanvasView(root: HTMLElement, range: Range): void {
+  try {
+    const rect = range.getBoundingClientRect()
+    if (!rect.height && !rect.width) return
+    const canvas = root.closest(".doc-canvas-bg")
+    if (!(canvas instanceof HTMLElement)) return
+    const cRect = canvas.getBoundingClientRect()
+    const margin = 60
+    if (rect.bottom > cRect.bottom - margin || rect.top < cRect.top + margin) {
+      canvas.scrollTop += rect.top + rect.height / 2 - (cRect.top + cRect.height / 2)
+    }
+  } catch {
+    // range detached — ignore
+  }
+}
+
 /* ------------------------------------------------------------------ tables */
 
 export interface TableContext {
