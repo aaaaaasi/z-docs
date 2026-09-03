@@ -31,6 +31,7 @@ import { WordCountDialog, ShortcutsDialog, AboutDialog } from "./info-dialogs"
 import { OutlineSidebar, type OutlineItem } from "./outline-sidebar"
 import { EmojiDialog } from "./emoji-dialog"
 import { FindReplacePanel } from "./find-replace"
+import { useVoiceTyping, VoicePill } from "./voice-typing"
 import { AiToolsDialog, type AiSource } from "./ai-tools-dialog"
 import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2 } from "lucide-react"
 import {
@@ -1009,24 +1010,37 @@ export function EditorView() {
     runFind(findQuery, findCase, keep ?? null)
   }, [contentTick, remoteContent])
 
+  /** Select a match range in the document WITHOUT losing the panel's focus.
+   *  Chrome moves DOM focus to a contentEditable when a range inside it is
+   *  added to the selection — for a user typing in the find field that would
+   *  divert subsequent keystrokes into the document (overwriting the selected
+   *  match). Capture the focused element first and hand focus back after. */
+  const selectMatchKeepFocus = React.useCallback((m: TextMatch) => {
+    const el = pageRef.current
+    if (!el) return
+    const prior = document.activeElement
+    try {
+      const sel = window.getSelection()
+      sel?.removeAllRanges()
+      sel?.addRange(m.range.cloneRange())
+      scrollRangeIntoCanvasView(el, m.range)
+    } catch {
+      // range detached — ignore
+    }
+    if (prior instanceof HTMLElement && prior !== el && !el.contains(prior)) {
+      prior.focus()
+    }
+  }, [])
+
   /** Jump to a match: highlight, select it in the document, scroll into view. */
   const goToMatch = React.useCallback(
     (index: number) => {
       const m = findMatches[index]
       if (!m) return
       setFindActiveIndex(index)
-      const el = pageRef.current
-      if (!el) return
-      try {
-        const sel = window.getSelection()
-        sel?.removeAllRanges()
-        sel?.addRange(m.range.cloneRange())
-        scrollRangeIntoCanvasView(el, m.range)
-      } catch {
-        // range detached — ignore
-      }
+      selectMatchKeepFocus(m)
     },
-    [findMatches]
+    [findMatches, selectMatchKeepFocus]
   )
 
   const findNext = React.useCallback(() => {
@@ -1042,18 +1056,8 @@ export function EditorView() {
   /** Auto-select the first match whenever a fresh search produces results. */
   React.useEffect(() => {
     if (findOpen && findMatches.length > 0 && findActiveIndex === 0) {
-      const el = pageRef.current
       const m = findMatches[0]
-      if (el && m) {
-        try {
-          const sel = window.getSelection()
-          sel?.removeAllRanges()
-          sel?.addRange(m.range.cloneRange())
-          scrollRangeIntoCanvasView(el, m.range)
-        } catch {
-          // ignore
-        }
-      }
+      if (m) selectMatchKeepFocus(m)
     }
   }, [findMatches])
 
@@ -1103,20 +1107,12 @@ export function EditorView() {
       const keep = m.start + replacement.length
       const { matches: next, idx } = runFind(findQuery, findCase, keep)
       if (idx >= 0 && next[idx]) {
-        const nm = next[idx]
-        try {
-          const sel = window.getSelection()
-          sel?.removeAllRanges()
-          sel?.addRange(nm.range.cloneRange())
-          scrollRangeIntoCanvasView(el, nm.range)
-        } catch {
-          // ignore
-        }
+        selectMatchKeepFocus(next[idx])
       } else {
         toast({ title: "No more matches" })
       }
     },
-    [findMatches, findActiveIndex, findQuery, findCase, runFind, toast]
+    [findMatches, findActiveIndex, findQuery, findCase, runFind, selectMatchKeepFocus, toast]
   )
 
   /** Replace every match. Walks the matches right-to-left (earlier offsets
@@ -1156,6 +1152,60 @@ export function EditorView() {
     },
     [findQuery, findMatches, runFind, toast]
   )
+
+  /* ---------------- voice typing ---------------- */
+  /** Insert a finalized dictation chunk at the caret. Goes through
+   *  execCommand so each spoken chunk lands on the undo stack and inherits
+   *  the surrounding formatting, exactly like typed text. */
+  const insertSpokenText = React.useCallback(
+    (text: string) => {
+      const el = pageRef.current
+      if (!el) return
+      const sel = window.getSelection()
+      const caretInDoc = sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)
+      if (!caretInDoc) {
+        // restore the last known caret, or fall back to the document end
+        const r = savedRangeRef.current
+        if (r && el.contains(r.startContainer)) {
+          sel?.removeAllRanges()
+          sel?.addRange(r)
+        } else {
+          const rg = document.createRange()
+          rg.selectNodeContents(el)
+          rg.collapse(false)
+          sel?.removeAllRanges()
+          sel?.addRange(rg)
+          savedRangeRef.current = rg.cloneRange()
+        }
+      }
+      el.focus()
+      try {
+        document.execCommand("insertText", false, text + " ")
+      } catch {
+        // ignore — next chunk will retry
+      }
+      handleInput()
+    },
+    [handleInput]
+  )
+
+  const voice = useVoiceTyping(insertSpokenText)
+
+  /** Surface recognizer errors once (mic denied / network / unsupported). */
+  React.useEffect(() => {
+    if (!voice.error) return
+    if (voice.error === "unsupported") {
+      toast({ title: "Voice typing isn’t supported in this browser", description: "Try a Chromium-based browser." })
+    } else if (voice.error === "not-allowed" || voice.error === "service-not-allowed") {
+      toast({ title: "Microphone access was denied", description: "Allow microphone access in your browser settings to dictate." })
+    } else if (voice.error !== "start-failed") {
+      toast({ title: "Voice typing stopped", description: `Reason: ${voice.error}` })
+    }
+  }, [voice.error, toast])
+
+  const toggleVoiceTyping = React.useCallback(() => {
+    voice.toggle()
+  }, [voice])
 
   /* ---------------- export & print ---------------- */
   const buildExportHtml = React.useCallback(() => {
@@ -1298,7 +1348,11 @@ img { max-width: 100%; }
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
       const k = e.key.toLowerCase()
-      if (k === "s") {
+      if (k === "s" && e.shiftKey) {
+        // ⌘⇧S — voice typing (plain ⌘S below stays "save")
+        e.preventDefault()
+        toggleVoiceTyping()
+      } else if (k === "s") {
         e.preventDefault()
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
         void performSave(true)
@@ -1334,7 +1388,7 @@ img { max-width: 100%; }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [performSave, printDoc, clearFormatting, openCommentComposer, openAiTools, openFindPanel])
+  }, [performSave, printDoc, clearFormatting, openCommentComposer, openAiTools, openFindPanel, toggleVoiceTyping])
 
   // Plain Escape closes the find bar — but only when no Radix menu/dialog is
   // open (those must consume Escape first to close themselves).
@@ -1499,6 +1553,9 @@ img { max-width: 100%; }
     /* document outline */
     outlineOpen,
     toggleOutline,
+    /* voice typing */
+    voiceListening: voice.listening,
+    toggleVoiceTyping,
   }
 
   const openDialog = (d: string | null) => setDialog(d)
@@ -1565,6 +1622,11 @@ img { max-width: 100%; }
             onReplace={replaceCurrent}
             onReplaceAll={replaceAllMatches}
             onClose={closeFindPanel}
+          />
+          <VoicePill
+            listening={voice.listening}
+            interim={voice.interim}
+            onStop={voice.stop}
           />
           <OutlineSidebar
             open={outlineOpen}

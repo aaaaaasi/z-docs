@@ -367,3 +367,30 @@ Stage Summary:
 - Known limitations: find matches must live within a single text node (cross-boundary matches skipped by design); replace-all = N undo steps (not one grouped step); reactions allowlist is 6 curated emoji (no free picker — deliberate anti-slop choice); optimistic reaction ids are synthetic until refresh.
 - Next-phase ideas: table cell merge/split, doc tags, PDF export, folder reordering, offline support, reaction picker could open on hover after selection ("quick react"), find-in-replace of HTML attributes never (content-only by design).
 
+
+---
+Task ID: 13
+Agent: Z.ai Code (main session, round 13)
+Task: Continuation round — QA first (agent-browser), fix bugs, then mandatory new features + styling detail polish; handover doc update.
+
+Work Log:
+- Read worklog + verified code state: Find & Replace engine/panel/canvas-overlay/wiring and comment reactions were in place from Round 12; re-validated everything from scratch this round.
+- Health check: dev :3000 OK (200); collab :3003 was DOWN (process not running) → restarted via `cd mini-services/collab-service && bun run dev` (background, collab.log) → polling endpoint 200. Add to routine: collab service does NOT auto-restart after machine/service resets.
+- agent-browser QA of Find & Replace (fox-text doc): Ctrl+F opens panel, typing updates counter "1 of 3", 3 highlights + 1 active.
+- BUG FOUND & FIXED (real, user-facing): `sel.addRange()` on a range inside the contentEditable STEALS DOM focus in Chromium — after the auto-select-first effect, keystrokes meant for the find field landed in the document and OVERWROTE the selected match (matched: "fox" deleted + paragraph splits). Fix: `selectMatchKeepFocus(m)` helper in editor-view.tsx — captures document.activeElement before addRange, restores it after (if focus was outside the doc). Applied at all 4 selection sites: goToMatch, auto-select-first effect, replaceCurrent re-selection, (replaceAll unaffected). After fix: focus stays in "Find in document", Enter cycles 1→2→3→1 of 3 with doc length unchanged (115).
+- Find & Replace full QA re-run: Enter/Shift+Enter nav ✓, case toggle (3→2 matches, "Foxes" excluded) ✓, single Replace (fox→cat, counter advances) ✓, Replace all (both, toast, "No results" after) ✓, Escape close ✓, Ctrl+Z ×2 undoes replacements (execCommand undo stack) ✓, focus retained in panel throughout ✓. Cleaned test text via Ctrl+H → replace-all-empty (doubles as regression test).
+- Comment emoji reactions re-verified end-to-end: Ctrl+Alt+M composer → comment created (highlight + marker + card) → picker 🎉 → chip "🎉 reaction, 1. Click to remove yours" → toggle-off removes chip + DB row deleted (prisma count 0) → re-added 👍 persisted.
+- NEW FEATURE — Voice typing (Google Docs parity, Web Speech API): src/components/docs/editor/voice-typing.tsx (typed SpeechRecognition shims, useVoiceTyping hook with continuous auto-restart across Chrome silence-cuts + intentRef pattern, VoicePill floating indicator with ping animation + live interim transcript + stop button).
+- editor-view.tsx wiring: insertSpokenText (caret restore via savedRangeRef or doc-end fallback, el.focus(), execCommand insertText → undoable + formatting-preserving, handleInput), error → toast effect (unsupported / not-allowed / other), Ctrl+Shift+S shortcut (ordered BEFORE plain ⌘S branch), VoicePill rendered beside FindReplacePanel, api.voiceListening + api.toggleVoiceTyping.
+- Integration: editor-types.ts EditorApi + voice fields; menu-bar Tools → "Voice typing / Stop voice typing" with pulsing mic + ⇧⌘S hint; toolbar mic toggle button (aria-pressed, listening state = primary tint + ping dot); shortcuts dialog row added.
+- Verified with injected FakeSR stub (headless denies real mic → "not-allowed" toast path verified live): pill renders, interim "hello dictation" shows in pill, final transcript inserted at caret into doc (autosaved to server), stop button closes, Ctrl+Shift+S toggles on/off. Real-browser dictation works when mic permission granted.
+- STYLING polish (mandatory): find panel elev-1→elev-2 + bg-background/95 + backdrop-blur-md, replace row animate-in slide-from-top, inputs focus:border-primary/60 + focus ring glow rgba(11,107,98,0.1), all buttons active:scale-90/95 press feedback, Aa title tooltip. Reactions: picker zoom-in-95 + origin-bottom-left + backdrop-blur + Escape-close + elev-2, chips zoom-in-75 pop-in + shadow-sm + active:scale-90, SmilePlus → primary tint while picking.
+- Regression: lint clean, dev.log 0 errors, collab 200, homepage renders 9 doc cards, editor loads, screenshot saved download/editor-final-qa.png.
+
+Stage Summary:
+- Z-Docs now ALSO has: voice typing (⇧⌘S / Tools / toolbar mic; continuous dictation, interim pill, undoable insertion) on top of Round 12's find & replace + reactions.
+- Critical fix this round: focus-steal during find navigation (selectMatchKeepFocus) — Chrome-specific addRange behavior that corrupted docs while typing in the find field.
+- Polish: floating panels (find, reaction picker) unified to elev-2 + backdrop-blur + press feedback; animated reveals.
+- State: dev :3000 healthy, collab :3003 restarted & healthy, lint clean, user data intact (9 docs, Projects folder).
+- Known limitations: find matches must live within one text node (v1); replace-all = N undo steps; reactions = 6 curated emoji; voice typing needs Chromium + mic permission (graceful toast otherwise); headless QA can't do real audio (stub-verified).
+- Next-phase priorities: (1) group replace-all into ONE undo step (beforeinput custom or execCommand batching), (2) cross-node find matching, (3) table cell merge/split, (4) PDF export, (5) doc tags, (6) reaction quick-picker on selection hover, (7) taste-skill repo de-AI-flavor research (parked from earlier round).

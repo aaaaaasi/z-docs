@@ -65,14 +65,14 @@ export function FindReplacePanel({
   const counter = hasQuery ? `${noResults ? 0 : activeIndex + 1} of ${matchCount}` : ""
 
   const iconBtn =
-    "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 
   return (
     <div
       role="dialog"
       aria-label="Find and replace"
       className={cn(
-        "no-print elev-1 animate-fade-in absolute top-2 z-20 w-[320px] rounded-lg border bg-background p-2.5",
+        "no-print elev-2 animate-fade-in absolute top-2 z-20 w-[320px] rounded-lg border bg-background/95 p-2.5 backdrop-blur-md",
         "transition-[right] duration-200",
         "max-lg:left-2 max-lg:w-[calc(100%-1rem)]",
         commentsOpen ? "hidden lg:block lg:right-[352px]" : "right-2"
@@ -110,7 +110,7 @@ export function FindReplacePanel({
           }}
           placeholder="Find"
           aria-label="Find in document"
-          className="h-8 min-w-0 flex-1 rounded-md border bg-transparent px-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary/50"
+          className="h-8 min-w-0 flex-1 rounded-md border bg-transparent px-2.5 text-sm outline-none transition-all placeholder:text-muted-foreground/70 focus:border-primary/60 focus:shadow-[0_0_0_3px_rgba(11,107,98,0.1)]"
         />
         <span
           className={cn(
@@ -127,12 +127,13 @@ export function FindReplacePanel({
           type="button"
           className={iconBtn}
           aria-label="Match case"
+          title="Match case"
           aria-pressed={caseSensitive}
           onClick={onCaseToggle}
         >
           <span
             className={cn(
-              "text-[11px] font-semibold tracking-tight",
+              "text-[11px] font-semibold tracking-tight transition-colors",
               caseSensitive && "text-foreground"
             )}
           >
@@ -151,7 +152,7 @@ export function FindReplacePanel({
       </div>
 
       {replaceMode && (
-        <div className="mt-1.5 flex items-center gap-1.5">
+        <div className="animate-in fade-in-0 slide-in-from-top-1 mt-1.5 flex items-center gap-1.5 duration-150">
           <input
             ref={replaceRef}
             value={replacement}
@@ -168,7 +169,7 @@ export function FindReplacePanel({
             }}
             placeholder="Replace with"
             aria-label="Replace with"
-            className="h-8 min-w-0 flex-1 rounded-md border bg-transparent px-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 focus:border-primary/50"
+            className="h-8 min-w-0 flex-1 rounded-md border bg-transparent px-2.5 text-sm outline-none transition-all placeholder:text-muted-foreground/70 focus:border-primary/60 focus:shadow-[0_0_0_3px_rgba(11,107,98,0.1)]"
           />
           <button
             type="button"
@@ -177,7 +178,7 @@ export function FindReplacePanel({
               onReplace(replacement)
               requestAnimationFrame(() => replaceRef.current?.focus())
             }}
-            className="h-8 shrink-0 rounded-md border px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            className="h-8 shrink-0 rounded-md border px-2.5 text-xs font-medium text-foreground transition-all hover:bg-accent active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
           >
             Replace
           </button>
@@ -188,7 +189,7 @@ export function FindReplacePanel({
               onReplaceAll(replacement)
               requestAnimationFrame(() => replaceRef.current?.focus())
             }}
-            className="h-8 shrink-0 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            className="h-8 shrink-0 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground transition-all hover:bg-primary/90 hover:shadow-sm active:scale-95 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
           >
             Replace all
           </button>

@@ -14,7 +14,7 @@ import {
   Minus, CalendarDays, Sparkles, Bold, Italic, Underline, Strikethrough, Superscript,
   Subscript, RemoveFormatting, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, TextQuote, Calculator, Keyboard, Info, MessageSquarePlus, Table,
-  Rows3, Columns3, Heading, ChevronRight, ListTree, Smile
+  Rows3, Columns3, Heading, ChevronRight, ListTree, Smile, Mic
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -183,6 +183,21 @@ export function MenuBar({ api }: { api: EditorApi }) {
         <DropdownMenuItem onClick={() => api.openDialog("aitools")}>
           <Sparkles className="h-4 w-4 text-primary" /> AI polish
           <DropdownMenuShortcut>⌥⌘A</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={api.toggleVoiceTyping}>
+          <span className="relative flex h-4 w-4 shrink-0 items-center justify-center">
+            <Mic className={cn("h-4 w-4", api.voiceListening && "text-primary")} strokeWidth={1.75} />
+            {api.voiceListening && (
+              <span aria-hidden className="absolute -right-1 -top-1 flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+              </span>
+            )}
+          </span>
+          <span className={api.voiceListening ? "text-primary" : undefined}>
+            {api.voiceListening ? "Stop voice typing" : "Voice typing"}
+          </span>
+          <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("wordcount")}><Calculator className="h-4 w-4" /> Word count</DropdownMenuItem>

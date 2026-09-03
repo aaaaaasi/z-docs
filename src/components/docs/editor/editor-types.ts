@@ -103,4 +103,7 @@ export interface EditorApi {
   tableOp: (op: TableOp) => void
   /** live table descriptor at the caret — null when not inside a table */
   tableInfo: TableInfo | null
+  /* voice typing (Web Speech dictation into the caret) */
+  voiceListening: boolean
+  toggleVoiceTyping: () => void
 }

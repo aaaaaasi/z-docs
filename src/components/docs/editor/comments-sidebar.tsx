@@ -244,8 +244,15 @@ function ReactionRow({
     const close = (e: MouseEvent) => {
       if (!(e.target as HTMLElement).closest?.("[data-reaction-picker]")) setPicking(false)
     }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPicking(false)
+    }
     window.addEventListener("mousedown", close)
-    return () => window.removeEventListener("mousedown", close)
+    window.addEventListener("keydown", onKey)
+    return () => {
+      window.removeEventListener("mousedown", close)
+      window.removeEventListener("keydown", onKey)
+    }
   }, [picking])
 
   return (
@@ -260,7 +267,7 @@ function ReactionRow({
               disabled={busy}
               onClick={() => onToggle(g.emoji)}
               className={cn(
-                "flex h-6 items-center gap-1 rounded-md border px-1.5 text-xs transition-colors disabled:opacity-50",
+                "animate-in zoom-in-75 flex h-6 items-center gap-1 rounded-md border px-1.5 text-xs shadow-sm transition-all duration-150 active:scale-90 disabled:opacity-50",
                 g.mine
                   ? "border-primary/40 bg-primary/10 text-foreground"
                   : "border-border bg-background text-muted-foreground hover:border-border/80 hover:bg-accent hover:text-foreground"
@@ -283,15 +290,15 @@ function ReactionRow({
           aria-expanded={picking}
           disabled={busy}
           onClick={() => setPicking((p) => !p)}
-          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 transition-all hover:bg-accent hover:text-foreground active:scale-90 disabled:opacity-50"
         >
-          <SmilePlus className="h-3.5 w-3.5" strokeWidth={1.75} />
+          <SmilePlus className={cn("h-3.5 w-3.5 transition-colors", picking && "text-primary")} strokeWidth={1.75} />
         </button>
         {picking && (
           <div
             role="menu"
             aria-label="Pick a reaction"
-            className="elev-1 absolute bottom-8 left-0 z-10 flex items-center gap-0.5 rounded-lg border bg-background p-1"
+            className="elev-2 animate-in fade-in-0 zoom-in-95 absolute bottom-8 left-0 z-10 flex origin-bottom-left items-center gap-0.5 rounded-lg border bg-background/95 p-1 backdrop-blur-md duration-150"
           >
             {REACTION_EMOJI.map((emoji) => (
               <button
@@ -303,7 +310,7 @@ function ReactionRow({
                   onToggle(emoji)
                   setPicking(false)
                 }}
-                className="flex h-7 w-7 items-center justify-center rounded-md text-sm transition-transform hover:scale-125 hover:bg-accent"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-sm transition-all hover:scale-125 hover:bg-accent active:scale-90"
               >
                 {emoji}
               </button>

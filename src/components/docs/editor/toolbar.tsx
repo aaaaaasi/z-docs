@@ -15,7 +15,7 @@ import { FONT_FAMILIES, FONT_SIZES, TEXT_COLOR_PALETTE } from "@/lib/doc-utils"
 import {
   Undo2, Redo2, Printer, Bold, Italic, Underline, Strikethrough, Link, ImagePlus,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Indent,
-  Outdent, RemoveFormatting, Sparkles, Wand2, Text, Highlighter, ChevronDown, Baseline, MessageSquarePlus
+  Outdent, RemoveFormatting, Sparkles, Wand2, Text, Highlighter, ChevronDown, Baseline, MessageSquarePlus, Mic
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -372,6 +372,38 @@ export function Toolbar({ api }: { api: EditorApi }) {
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">
           AI polish: improve, fix grammar, shorten (⌥⌘A)
+        </TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={api.toggleVoiceTyping}
+            aria-label={api.voiceListening ? "Stop voice typing" : "Voice typing (Ctrl+Shift+S)"}
+            aria-pressed={api.voiceListening}
+            className={cn(
+              "relative h-9 shrink-0 gap-1.5 rounded-md border-border bg-background text-muted-foreground transition-all active:scale-95",
+              api.voiceListening
+                ? "border-primary/40 bg-primary/5 text-primary hover:bg-primary/10"
+                : "hover:border-border hover:bg-accent/60 hover:text-foreground"
+            )}
+          >
+            <Mic className="h-4 w-4" strokeWidth={1.75} />
+            <span className="hidden text-xs font-medium sm:inline">
+              {api.voiceListening ? "Listening" : "Voice"}
+            </span>
+            {api.voiceListening && (
+              <span aria-hidden className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/60" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary" />
+              </span>
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-xs">
+          Voice typing — dictate into the document (⇧⌘S)
         </TooltipContent>
       </Tooltip>
 

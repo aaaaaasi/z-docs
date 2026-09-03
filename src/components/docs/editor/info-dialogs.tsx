@@ -51,6 +51,7 @@ const SHORTCUTS: [string, string][] = [
   ["Enter / Shift + Enter", "Next / previous match (in find bar)"],
   ["Ctrl / ⌘ + Alt / ⌥ + M", "Add comment on selection"],
   ["Ctrl / ⌘ + Alt / ⌥ + A", "AI polish: selection or whole document"],
+  ["Ctrl / ⌘ + Shift + S", "Voice typing (start / stop)"],
   ["Ctrl / ⌘ + S", "Save now"],
   ["Ctrl / ⌘ + P", "Print"],
   ["Ctrl / ⌘ + Z", "Undo"],
