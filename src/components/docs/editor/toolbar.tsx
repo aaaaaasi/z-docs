@@ -15,7 +15,7 @@ import { FONT_FAMILIES, FONT_SIZES, TEXT_COLOR_PALETTE } from "@/lib/doc-utils"
 import {
   Undo2, Redo2, Printer, Bold, Italic, Underline, Strikethrough, Link, ImagePlus,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Indent,
-  Outdent, RemoveFormatting, Sparkles, Text, Highlighter, ChevronDown, Baseline, MessageSquarePlus
+  Outdent, RemoveFormatting, Sparkles, Wand2, Text, Highlighter, ChevronDown, Baseline, MessageSquarePlus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -355,6 +355,24 @@ export function Toolbar({ api }: { api: EditorApi }) {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">Draft content with AI</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => api.openDialog("aitools")}
+            aria-label="AI polish"
+            className="h-9 shrink-0 gap-1.5 rounded-full border-border bg-background text-muted-foreground transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+          >
+            <Wand2 className="h-4 w-4" />
+            <span className="hidden text-xs font-medium sm:inline">Polish</span>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-xs">
+          AI polish — improve, fix grammar, shorten (⌥⌘A)
+        </TooltipContent>
       </Tooltip>
 
       <div className="ml-auto hidden shrink-0 items-center gap-1 pr-1 text-xs text-muted-foreground lg:flex">

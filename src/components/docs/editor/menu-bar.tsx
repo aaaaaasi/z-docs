@@ -180,6 +180,11 @@ export function MenuBar({ api }: { api: EditorApi }) {
       </Menu>
 
       <Menu label="Tools">
+        <DropdownMenuItem onClick={() => api.openDialog("aitools")}>
+          <Sparkles className="h-4 w-4 text-primary" /> AI polish
+          <DropdownMenuShortcut>⌥⌘A</DropdownMenuShortcut>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("wordcount")}><Calculator className="h-4 w-4" /> Word count</DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.openDialog("versions")}><History className="h-4 w-4" /> Version history</DropdownMenuItem>
       </Menu>

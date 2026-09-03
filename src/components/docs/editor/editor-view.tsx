@@ -29,6 +29,7 @@ import { HelpWriteDialog } from "./help-write-dialog"
 import { WordCountDialog, ShortcutsDialog, AboutDialog } from "./info-dialogs"
 import { OutlineSidebar, type OutlineItem } from "./outline-sidebar"
 import { EmojiDialog } from "./emoji-dialog"
+import { AiToolsDialog, type AiSource } from "./ai-tools-dialog"
 import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2 } from "lucide-react"
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
@@ -62,6 +63,7 @@ export function EditorView() {
   const [remoteContent, setRemoteContent] = React.useState<string | null>(null)
   const [dialog, setDialog] = React.useState<string | null>(null)
   const [linkHasSelection, setLinkHasSelection] = React.useState(false)
+  const [aiSource, setAiSource] = React.useState<AiSource | null>(null)
 
   /* ---------------- comments state ---------------- */
   const [comments, setComments] = React.useState<CommentDTO[]>([])
@@ -78,6 +80,7 @@ export function EditorView() {
   const pageRef = React.useRef<HTMLDivElement | null>(null)
   const titleInputRef = React.useRef<HTMLInputElement | null>(null)
   const savedRangeRef = React.useRef<Range | null>(null)
+  const aiRangeRef = React.useRef<Range | null>(null)
   const contentRef = React.useRef("")
   const latestTitleRef = React.useRef("")
   const dirtyRef = React.useRef(false)
@@ -844,6 +847,75 @@ export function EditorView() {
     [handleInput]
   )
 
+  /* ---------------- AI quick actions (polish) ---------------- */
+  /** Plain text → paragraph HTML (blank-line paragraphs, single newlines as <br>). */
+  const plainTextToHtml = React.useCallback((text: string): string => {
+    const paras = text
+      .split(/\n{2,}/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+    if (paras.length === 0) return ""
+    return paras
+      .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
+      .join("")
+  }, [])
+
+  /** Replace the captured selection (or the whole document) with AI output.
+   *  Runs AFTER the dialog closes (240ms delay in the dialog), so execCommand
+   *  is usable — the edit lands on the browser undo stack (⌘Z works). Falls
+   *  back to direct Range manipulation if execCommand is unavailable. */
+  const replaceAiResult = React.useCallback(
+    (text: string) => {
+      const el = pageRef.current
+      if (!el) return
+      const html = plainTextToHtml(text)
+      if (!html) {
+        toast({ title: "Nothing to apply", description: "The AI result is empty." })
+        return
+      }
+      const range = aiRangeRef.current
+      if (aiSource?.isSelection && range && el.contains(range.startContainer)) {
+        el.focus()
+        const sel = window.getSelection()
+        let applied = false
+        try {
+          sel?.removeAllRanges()
+          sel?.addRange(range.cloneRange())
+          applied = document.execCommand("insertHTML", false, html)
+        } catch {
+          applied = false
+        }
+        if (!applied) {
+          // fallback: direct Range surgery (NOT undoable, but always works)
+          try {
+            range.deleteContents()
+            const frag = range.createContextualFragment(html)
+            range.insertNode(frag)
+          } catch {
+            el.insertAdjacentHTML("beforeend", html)
+          }
+        }
+        const after = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null
+        if (after) savedRangeRef.current = after
+        handleInput()
+        toast({ title: "Selection updated", description: "AI result applied to the selected text." })
+      } else {
+        replaceDocumentHtml(html)
+        toast({ title: "Document updated", description: "AI result replaced the document." })
+      }
+    },
+    [aiSource, plainTextToHtml, handleInput, replaceDocumentHtml, toast]
+  )
+
+  /** Insert AI output as new paragraphs at the caret. */
+  const insertAiResult = React.useCallback(
+    (text: string) => {
+      const html = plainTextToHtml(text)
+      if (html) insertHtmlAtCursor(html)
+    },
+    [plainTextToHtml, insertHtmlAtCursor]
+  )
+
   /* ---------------- find & replace ---------------- */
   const countMatches = React.useCallback((find: string, caseSensitive: boolean) => {
     const el = pageRef.current
@@ -1005,6 +1077,22 @@ img { max-width: 100%; }
     [handleInput]
   )
 
+  /* ---------------- AI quick actions (polish) ---------------- */
+  /** Capture the current selection (or fall back to the whole document) and
+   *  open the AI polish dialog. Usable from the menu and the ⌥⌘A shortcut. */
+  const openAiTools = React.useCallback(() => {
+    const el = pageRef.current
+    const sel = window.getSelection()
+    const selText = sel ? sel.toString().trim() : ""
+    if (el && sel && !sel.isCollapsed && selText.length > 0 && el.contains(sel.anchorNode)) {
+      aiRangeRef.current = sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null
+      setAiSource({ text: sel.toString(), isSelection: true })
+    } else {
+      aiRangeRef.current = null
+      setAiSource({ text: htmlToText(contentRef.current), isSelection: false })
+    }
+  }, [])
+
   /* ---------------- keyboard shortcuts ---------------- */
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -1035,13 +1123,18 @@ img { max-width: 100%; }
       } else if (k === "m" && e.altKey) {
         e.preventDefault()
         openCommentComposer()
+      } else if (k === "a" && e.altKey) {
+        // ⌥⌘A — AI polish on the selection (or whole document)
+        e.preventDefault()
+        openAiTools()
+        setDialog("aitools")
       } else if (k === "escape") {
         setBubble(null)
       }
     }
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
-  }, [performSave, printDoc, clearFormatting, openCommentComposer])
+  }, [performSave, printDoc, clearFormatting, openCommentComposer, openAiTools])
 
   /* ---------------- document outline ---------------- */
   /** Re-scan the live DOM for h1–h4 and stamp stable data-oid attributes. */
@@ -1170,6 +1263,7 @@ img { max-width: 100%; }
         const sel = window.getSelection()
         setLinkHasSelection(!!el && !!sel && !sel.isCollapsed && el.contains(sel.anchorNode))
       }
+      if (d === "aitools") openAiTools()
       setDialog(d)
     },
     presence: others,
@@ -1382,6 +1476,14 @@ img { max-width: 100%; }
         onReplace={replaceDocumentHtml}
         docTitle={title}
       />
+      <AiToolsDialog
+        open={dialog === "aitools"}
+        onOpenChange={onDialogChange}
+        docTitle={title}
+        source={aiSource}
+        onReplace={replaceAiResult}
+        onInsert={insertAiResult}
+      />
       <WordCountDialog open={dialog === "wordcount"} onOpenChange={onDialogChange} stats={stats} />
       <ShortcutsDialog open={dialog === "shortcuts"} onOpenChange={onDialogChange} />
       <AboutDialog open={dialog === "about"} onOpenChange={onDialogChange} />
@@ -1390,6 +1492,7 @@ img { max-width: 100%; }
         onOpenChange={onDialogChange}
         docId={docId}
         onRestore={restoreVersion}
+        getCurrentContent={() => contentRef.current}
       />
     </div>
   )

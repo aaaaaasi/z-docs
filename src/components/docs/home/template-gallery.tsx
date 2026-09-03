@@ -47,8 +47,8 @@ export function TemplateGallery() {
           <div>
             <h2 className="text-sm font-semibold text-muted-foreground">Start a new document</h2>
           </div>
-          <span className="hidden items-center gap-1 text-sm text-muted-foreground hover:text-foreground sm:flex">
-            Template gallery <ChevronRight className="h-4 w-4" />
+          <span className="group hidden items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground sm:flex">
+            Template gallery <ChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" />
           </span>
         </div>
 

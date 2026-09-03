@@ -207,3 +207,40 @@ Stage Summary:
 - Key architectural lesson recorded: inserts from open Radix dialogs must use direct Range manipulation, not execCommand (insertEmoji pattern is the template for future "insert while dialog open" features).
 - State: dev server healthy (no restart needed — no schema changes this round), collab-service running, lint clean, all endpoints 200, DB: Welcome + user's Meeting notes docs + "Projects" folder.
 - Known limitations / next-phase ideas: table cell merge/split + column width drag, folder drag-and-drop, comment emoji reactions, doc tags, OAuth identities, offline support, version diff view, export to PDF (currently .doc/HTML/txt only).
+
+---
+Task ID: 10
+Agent: main (Z.ai Code) — scheduled webDevReview round
+Task: Assess status, QA via agent-browser, add version-diff view + AI polish quick actions, styling polish
+
+Work Log:
+- Health check: dev :3000 (pid 18018) 200, collab :3003 200 via gateway, lint clean, dev.log clean.
+- QA regression (agent-browser): home (folders/templates render, 0 console errors), editor (title/canvas/save pill OK), click-to-text lands in H1 and typing+delete works (Task 8 pointer-events fix intact), outline toggle works, version history sheet loads. No bugs found → proceeded to features.
+- IMPORTANT: user is ACTIVELY using the app during this round — 4 new "Untitled document" docs appeared mid-session and the Meeting notes doc grew 523→633 chars (data-oid attrs from outline stamping). Treated all as user data; every QA PATCH to the user's doc was restored to the exact user state afterwards (md5-verified); temp QA doc created for diff screenshots was deleted.
+- NEW FEATURE — version history diff ("Changes" per version):
+  - src/lib/text-diff.ts (new): two-pass diff — LCS over lines (paragraph-scale, size-guarded 4M cells w/ trivial fallback) + word-level LCS refinement inside paired del/add runs; tokenizeWords keeps whitespace tokens; collapseNoise merges whitespace-only seams; reconstruction property verified (21/21 tests: old/new reconstruct, edge cases empty/identical/single-word, stats sanity).
+  - version-history.tsx: "Changes" button per version card → VersionDiffDialog: "Compare with" Select (Current document + all other versions, default current), stats pills (+N words green / −M words red / "No word changes"), diff body (whitespace-pre-wrap, ins.diff-ins green / del.diff-del red strikethrough w/ box-decoration-break clone for clean multi-line wraps), added/removed legend footer, Escape closes.
+  - editor-view: VersionHistorySheet gains getCurrentContent prop (reads live contentRef).
+  - globals.css: .diff-body/.diff-ins/.diff-del + dark-mode variants.
+  - Verified: word-level precision (only changed phrases light up, e.g. "brown"→"red" in a line), stats (+19/−1 and +14/−4 on real edits), select target switching, "No word changes" when contents match (all 5 meeting-doc snapshots were textually identical — only data-oid attr diffs, correctly invisible to the diff).
+- NEW FEATURE — AI polish (one-click transforms):
+  - /api/ai/transform (new route): POST {text, action, title?} with 6 actions (summarize/improve/proofread/shorten/lengthen/simplify), per-action system prompts, 12k-char input cap, z-ai-web-dev-sdk backend-only. curl smoke test passed (proofread).
+  - ai-tools-dialog.tsx (new): 6 action chips (2-col mobile / 3-col desktop, radiogroup semantics, selected ring, focus-visible rings), collapsible source preview (chevron + words count, controlled details via showSource state), Run button, editable result textarea with word-delta indicator, Replace selection / Insert below cursor / Retry / Copy actions (dialog closes 240ms before applying — Radix focus-trap lesson).
+  - editor-view: openAiTools callback captures selection + clones Range into aiRangeRef (falls back to whole-doc text via htmlToText); replaceAiResult uses execCommand("insertHTML") on the captured range so AI edits are UNDOABLE (⌘Z verified working — first implementation via raw Range surgery was NOT undoable, caught in QA and rewritten); insertAiResult inserts paragraphs at caret; ⌥⌘A shortcut (openAiTools is a stable useCallback, added to keydown deps); shortcuts dialog updated.
+  - Entry points: Tools menu → "AI polish" (⌥⌘A hint), toolbar "Polish" pill button (Wand2 icon) next to "Help me write".
+  - Verified end-to-end: selection capture (6 words), AI run, replace applied + toast, undo restores exactly; whole-doc mode (53 words, 6 chips); mobile 390px: dialog fits, 2-col chips, no horizontal scroll.
+- BUG FOUND & FIXED (this round's own code): Turbopack served a STALE CSS chunk — globals.css edits (diff styles) were in the file but not in the served stylesheet (other rules from Task 9 were). touch + recompile didn't help; fixed by killing the dev-server process tree (parent bun 18003, bash 18004, node 18005, next-server 18018), rm -rf .next, orphaned relaunch (next-server pid 32261). diff rules then served (5 occurrences) and ins/del computed styles verified in BOTH light (teal/red) and dark (emerald/rose) modes. LESSON: after globals.css edits, verify rules actually served via styleSheets cssRules scan, not just file content.
+- Styling polish (mandatory):
+  - Version history: gradient timeline spine (primary→border→transparent), first dot filled primary with soft halo + "LATEST" pill on newest card, cards hover:shadow-sm.
+  - Diff legend: text-xs text-foreground/70, h-3 swatches (VLM contrast nit).
+  - AI chips: hint text 10px→10.5px muted→foreground/60 (contrast), icons shrink-0, chevron affordance on source preview.
+  - Toolbar: "Polish" button (muted pill → primary hover, distinct from filled "Help me write" CTA).
+  - Home: storage bar track bg-muted→bg-border/70 (contrast), template-gallery header chevron gap 4→6px + group-hover translate-x micro-interaction.
+- QA (agent-browser + VLM): VLM reviews — versions panel 8/10 (zero concrete issues), AI dialog 8/10 (2 real fixes applied: hint contrast + chevron), diff dialog 8/10 (all flagged "issues" verified programmatically as false positives: no overflow — scrollWidth==clientWidth; select text near-black; pills centered; "truncation" = literal doc ellipsis char / crop artifacts). Final home + editor: 0 console errors, 0 page errors, lint clean, all endpoints 200.
+- Cleanup: temp QA doc deleted; user's 6 docs + "Projects" folder intact; Meeting notes doc byte-identical to user's live state; light mode restored; desktop viewport restored.
+
+Stage Summary:
+- Z-Docs now: home (templates, folders, grid/list, search, stars, trash) + editor (full toolbar, autosave, versions w/ inline word-level diff, share, print/export, dark mode, tables w/ structural ops, comments w/ edit, document outline, emoji picker, AI write + AI polish) + realtime collab + AI assistant.
+- New reusable assets: src/lib/text-diff.ts (drop-in diff engine), /api/ai/transform route, AI-tools dialog pattern (stable capture callback + undoable execCommand apply).
+- State: dev server restarted with fresh cache (next-server pid 32261, .next cleared), collab-service running (pid 3594), lint clean, DB: user's 6 docs + Projects folder (user actively creating docs — do not delete "Untitled document" docs).
+- Known limitations / next-phase ideas: table cell merge/split + column width drag, folder drag-and-drop reordering, comment emoji reactions, doc tags, OAuth identities, offline support, PDF export, diff view could anchor to HTML structure (currently text-only, by design), AI polish on very large docs (12k char cap).

@@ -290,6 +290,41 @@
 .doc-content table.zdocs-table th:hover {
   background: #eceef0;
 }
+/* Version-diff rendering (version history → Changes) */
+.diff-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.75;
+}
+.diff-body .diff-ins {
+  background: rgba(18, 156, 88, 0.14);
+  color: #0b7a4b;
+  border-radius: 3px;
+  padding: 0.5px 2px;
+  text-decoration: none;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.diff-body .diff-del {
+  background: rgba(217, 48, 37, 0.10);
+  color: #b3261e;
+  border-radius: 3px;
+  padding: 0.5px 2px;
+  text-decoration: line-through;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: rgba(179, 38, 30, 0.65);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.dark .diff-body .diff-ins {
+  background: rgba(52, 211, 153, 0.18);
+  color: #6ee7b7;
+}
+.dark .diff-body .diff-del {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+  text-decoration-color: rgba(252, 165, 165, 0.7);
+}
 .doc-content pre {
   font-family: "Courier New", monospace;
   background: #f1f3f4;

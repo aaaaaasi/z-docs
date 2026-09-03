@@ -48,6 +48,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl / ⌘ + Shift + T", "Insert table"],
   ["Ctrl / ⌘ + F", "Find and replace"],
   ["Ctrl / ⌘ + Alt / ⌥ + M", "Add comment on selection"],
+  ["Ctrl / ⌘ + Alt / ⌥ + A", "AI polish — selection or whole document"],
   ["Ctrl / ⌘ + S", "Save now"],
   ["Ctrl / ⌘ + P", "Print"],
   ["Ctrl / ⌘ + Z", "Undo"],

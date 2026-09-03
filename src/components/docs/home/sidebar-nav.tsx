@@ -278,8 +278,8 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
             <Cloud className="h-4 w-4" />
             Storage
           </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-            <div className="h-full w-[12%] rounded-full bg-primary" />
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/70">
+            <div className="h-full w-[12%] rounded-full bg-primary transition-[width] duration-500" />
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">1.8 GB of 15 GB used</p>
         </div>
