@@ -1,0 +1,12 @@
+{
+  "name": "collab-service",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Socket.io realtime collaboration mini-service for Z-Docs (presence, doc-change sync, remote cursors)",
+  "scripts": {
+    "dev": "bun --hot index.ts"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.3"
+  }
+}

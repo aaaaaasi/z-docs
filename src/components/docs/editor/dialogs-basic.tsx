@@ -1,0 +1,281 @@
+"use client"
+
+import * as React from "react"
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useToast } from "@/hooks/use-toast"
+import { Link2 } from "lucide-react"
+
+/* ---------------- Link dialog ---------------- */
+
+export function LinkDialog({
+  open, onOpenChange, onInsert, hasSelection,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onInsert: (url: string, text: string) => void
+  hasSelection: boolean
+}) {
+  const [text, setText] = React.useState("")
+  const [url, setUrl] = React.useState("")
+
+  React.useEffect(() => {
+    if (open) {
+      setText("")
+      setUrl("")
+    }
+  }, [open])
+
+  const valid = /^https?:\/\/\S+$/i.test(url.trim()) || /^mailto:\S+@\S+$/i.test(url.trim())
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Insert link</DialogTitle>
+        </DialogHeader>
+        {!hasSelection && (
+          <div className="space-y-2">
+            <Label htmlFor="link-text">Text</Label>
+            <Input
+              id="link-text"
+              autoFocus
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="Text to display"
+            />
+          </div>
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="link-url">URL</Label>
+          <Input
+            id="link-url"
+            autoFocus={hasSelection}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://example.com"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && valid && (hasSelection || text.trim())) {
+                const url2 = url.trim()
+                const text2 = text.trim()
+                onOpenChange(false)
+                setTimeout(() => onInsert(url2, text2), 220)
+              }
+            }}
+          />
+          {url.trim() && !valid && (
+            <p className="text-xs text-destructive">Enter a valid URL starting with http:// or https://</p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            disabled={!valid || (!hasSelection && !text.trim())}
+            onClick={() => {
+              const url2 = url.trim()
+              const text2 = text.trim()
+              onOpenChange(false)
+              // wait for the modal focus-trap to release before inserting
+              setTimeout(() => onInsert(url2, text2), 220)
+            }}
+          >
+            Apply
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ---------------- Image dialog ---------------- */
+
+export function ImageDialog({
+  open, onOpenChange, onInsert,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onInsert: (src: string, alt: string) => void
+}) {
+  const [url, setUrl] = React.useState("")
+  const [alt, setAlt] = React.useState("")
+  const [fileSrc, setFileSrc] = React.useState("")
+  const [fileName, setFileName] = React.useState("")
+  const { toast } = useToast()
+
+  React.useEffect(() => {
+    if (open) {
+      setUrl("")
+      setAlt("")
+      setFileSrc("")
+      setFileName("")
+    }
+  }, [open])
+
+  const onFile = (f: File | undefined) => {
+    if (!f) return
+    if (f.size > 2.5 * 1024 * 1024) {
+      toast({ title: "Image too large", description: "Please pick an image under 2.5 MB.", variant: "destructive" })
+      return
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      setFileSrc(String(reader.result))
+      setFileName(f.name)
+    }
+    reader.readAsDataURL(f)
+  }
+
+  const ready = (url.trim() && /^https?:\/\//i.test(url.trim())) || fileSrc
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Insert image</DialogTitle>
+        </DialogHeader>
+        <Tabs defaultValue="by-url">
+          <TabsList className="w-full">
+            <TabsTrigger value="by-url" className="flex-1">From URL</TabsTrigger>
+            <TabsTrigger value="upload" className="flex-1">Upload</TabsTrigger>
+          </TabsList>
+          <TabsContent value="by-url" className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="img-url">Image URL</Label>
+              <Input
+                id="img-url"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://example.com/photo.jpg"
+              />
+            </div>
+          </TabsContent>
+          <TabsContent value="upload" className="space-y-2 pt-2">
+            <Label htmlFor="img-file">Choose a file (≤ 2.5 MB)</Label>
+            <Input id="img-file" type="file" accept="image/*" onChange={(e) => onFile(e.target.files?.[0])} />
+            {fileSrc && (
+              <div className="mt-2 space-y-1">
+                <img src={fileSrc} alt="preview" className="max-h-36 rounded border" />
+                <p className="text-xs text-muted-foreground">{fileName}</p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+        <div className="space-y-2">
+          <Label htmlFor="img-alt">Alt text (optional)</Label>
+          <Input id="img-alt" value={alt} onChange={(e) => setAlt(e.target.value)} placeholder="Describe the image" />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            disabled={!ready}
+            onClick={() => {
+              const src = url.trim() || fileSrc
+              const alt2 = alt.trim()
+              onOpenChange(false)
+              setTimeout(() => onInsert(src, alt2), 220)
+            }}
+          >
+            Insert
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/* ---------------- Find & replace ---------------- */
+
+export function FindReplaceDialog({
+  open, onOpenChange, onReplaceAll, onCountMatches,
+}: {
+  open: boolean
+  onOpenChange: (o: boolean) => void
+  onReplaceAll: (find: string, replace: string, caseSensitive: boolean) => number
+  onCountMatches: (find: string, caseSensitive: boolean) => number
+}) {
+  const [find, setFind] = React.useState("")
+  const [replace, setReplace] = React.useState("")
+  const [caseSensitive, setCaseSensitive] = React.useState(false)
+  const [count, setCount] = React.useState<number | null>(null)
+
+  React.useEffect(() => {
+    if (open) {
+      setFind("")
+      setReplace("")
+      setCount(null)
+    }
+  }, [open])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Link2 className="h-4 w-4" /> Find and replace
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="find-input">Find</Label>
+            <Input
+              id="find-input"
+              autoFocus
+              value={find}
+              onChange={(e) => {
+                setFind(e.target.value)
+                setCount(e.target.value ? onCountMatches(e.target.value, caseSensitive) : null)
+              }}
+              placeholder="Text to find"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="replace-input">Replace with</Label>
+            <Input
+              id="replace-input"
+              value={replace}
+              onChange={(e) => setReplace(e.target.value)}
+              placeholder="Replacement"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={caseSensitive}
+              onChange={(e) => setCaseSensitive(e.target.checked)}
+              className="h-4 w-4 rounded accent-[var(--primary)]"
+            />
+            Match case
+          </label>
+          {count !== null && (
+            <p className="text-xs text-muted-foreground" role="status">
+              {count === 0
+                ? "No matches found"
+                : `${count} ${count === 1 ? "match" : "matches"} found`}
+            </p>
+          )}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setCount(find ? onCountMatches(find, caseSensitive) : null)}
+            disabled={!find}
+          >
+            Count matches
+          </Button>
+          <Button
+            disabled={!find}
+            onClick={() => {
+              const n = onReplaceAll(find, replace, caseSensitive)
+              setCount(n)
+            }}
+          >
+            Replace all
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

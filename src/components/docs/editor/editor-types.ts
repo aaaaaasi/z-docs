@@ -1,0 +1,78 @@
+import type { CollabUser } from "@/lib/docs-types"
+
+export type SaveStatus = "saved" | "saving" | "unsaved" | "error"
+
+export interface FormatState {
+  bold: boolean
+  italic: boolean
+  underline: boolean
+  strike: boolean
+  superscript: boolean
+  subscript: boolean
+  ul: boolean
+  ol: boolean
+  block: string
+  align: "left" | "center" | "right" | "full"
+  fontName: string
+  fontSize: number
+  link: boolean
+}
+
+export const DEFAULT_FORMAT: FormatState = {
+  bold: false,
+  italic: false,
+  underline: false,
+  strike: false,
+  superscript: false,
+  subscript: false,
+  ul: false,
+  ol: false,
+  block: "p",
+  align: "left",
+  fontName: "Arial",
+  fontSize: 11,
+  link: false,
+}
+
+export type DialogKey =
+  | "link"
+  | "image"
+  | "find"
+  | "share"
+  | "versions"
+  | "wordcount"
+  | "shortcuts"
+  | "helpwrite"
+  | "about"
+
+export interface EditorApi {
+  docId: string
+  title: string
+  starred: boolean
+  saveStatus: SaveStatus
+  lastSavedAt: Date | null
+  stats: { words: number; chars: number; paragraphs: number; pages: number; readingMinutes: number }
+  zoom: number
+  setZoom: (z: number) => void
+  spellCheck: boolean
+  setSpellCheck: (v: boolean) => void
+  fmt: FormatState
+  exec: (cmd: string, val?: string) => void
+  applyFontSize: (pt: number) => void
+  applyLineSpacing: (lh: number) => void
+  applyAlignment: (a: "left" | "center" | "right" | "full") => void
+  clearFormatting: () => void
+  focusEditor: () => void
+  onTitleChange: (t: string) => void
+  focusTitle: () => void
+  toggleStar: () => void
+  saveNow: () => void
+  printDoc: () => void
+  downloadDoc: (format: "doc" | "html" | "txt") => void
+  goHome: () => void
+  moveToTrash: () => void
+  duplicate: () => void
+  openDialog: (d: DialogKey) => void
+  presence: CollabUser[]
+  connected: boolean
+}
