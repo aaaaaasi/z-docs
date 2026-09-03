@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useDraggable } from "@dnd-kit/core"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
   DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
@@ -23,6 +24,7 @@ import { useDocsStore } from "@/store/docs-store"
 import type { DocumentMeta, FolderDTO } from "@/lib/docs-types"
 import { relativeTime } from "@/lib/doc-utils"
 import { DocPreview } from "@/components/docs/doc-preview"
+import { docDragId } from "./doc-dnd"
 import {
   FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder
 } from "lucide-react"
@@ -299,7 +301,7 @@ function CardMenu({
         <Button
           variant="ghost" size="icon"
           aria-label={`Actions for ${doc.title}`}
-          className="h-8 w-8 rounded-full text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+          className="h-8 w-8 rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
           <MoreVertical className="h-4 w-4" />
@@ -344,14 +346,22 @@ function DocCard({
   ...actions
 }: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean; folders: FolderDTO[] }) {
   const folder = folders.find((f) => f.id === doc.folderId)
+  const { attributes: dragAttrs, listeners: dragListeners, setNodeRef: dragRef, isDragging } = useDraggable({
+    id: docDragId(doc.id),
+    disabled: inTrash,
+  })
   return (
     <div
+      ref={dragRef}
       role="button"
       tabIndex={0}
       onClick={actions.onOpen}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && actions.onOpen()}
+      {...dragAttrs}
+      {...dragListeners}
       className={cn(
-        "animate-card-in group flex w-[168px] cursor-pointer flex-col rounded-lg p-2 transition-colors outline-none hover:bg-muted/60 focus-visible:bg-muted/60"
+        "animate-card-in group flex w-[168px] cursor-pointer flex-col rounded-lg p-2 transition-colors outline-none hover:bg-muted/60 focus-visible:bg-muted/60",
+        isDragging && "opacity-40"
       )}
       style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
       aria-label={`Open ${doc.title}`}
@@ -393,15 +403,23 @@ function DocRow({
   ...actions
 }: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean; folders: FolderDTO[] }) {
   const folder = folders.find((f) => f.id === doc.folderId)
+  const { attributes: dragAttrs, listeners: dragListeners, setNodeRef: dragRef, isDragging } = useDraggable({
+    id: docDragId(doc.id),
+    disabled: inTrash,
+  })
   return (
     <div
+      ref={dragRef}
       role="button"
       tabIndex={0}
       onClick={actions.onOpen}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && actions.onOpen()}
+      {...dragAttrs}
+      {...dragListeners}
       className={cn(
         "animate-card-in group flex cursor-pointer items-center gap-3 border-b px-4 py-3 outline-none last:border-b-0 hover:bg-muted/50 focus-visible:bg-muted/50",
-        index === 0 && "rounded-t-lg", index % 2 === 1 && "bg-muted/30"
+        index === 0 && "rounded-t-lg", index % 2 === 1 && "bg-muted/30",
+        isDragging && "opacity-40"
       )}
       aria-label={`Open ${doc.title}`}
     >
@@ -439,7 +457,7 @@ function EmptyState({ filter, search }: { filter: string; search: boolean }) {
       ) : (
         <FileText className="h-10 w-10 text-muted-foreground/40" />
       )}
-      <p className="mt-4 text-sm font-medium">
+      <p className="font-editorial mt-4 text-[15.5px] font-medium italic tracking-tight text-foreground/80">
         {search
           ? "No documents match your search"
           : filter === "trash"
@@ -448,7 +466,7 @@ function EmptyState({ filter, search }: { filter: string; search: boolean }) {
               ? "No starred documents yet"
               : "No documents yet"}
       </p>
-      <p className="mt-1 max-w-sm text-xs text-muted-foreground">
+      <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground">
         {search
           ? "Try a different keyword or clear the search field."
           : filter === "trash"

@@ -496,7 +496,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
             <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-center">
               <MessageSquarePlus className="h-8 w-8 text-muted-foreground/40" />
               <div>
-                <p className="text-sm font-medium">No comments yet</p>
+                <p className="font-editorial text-[14.5px] font-medium italic tracking-tight text-foreground/80">No comments yet</p>
                 <p className="mt-1 max-w-[240px] text-xs text-muted-foreground">
                   Select text in the document and press the comment button to start a discussion.
                 </p>

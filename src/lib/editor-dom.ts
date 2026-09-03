@@ -228,7 +228,8 @@ export function insertTableRow(ctx: TableContext, where: "above" | "below"): HTM
   return tr
 }
 
-/** Insert a column left/right of the context column; returns the new cells. */
+/** Insert a column left/right of the context column; returns the new cells.
+ *  Keeps the <colgroup> (if any) in sync by splitting the source column's width. */
 export function insertTableColumn(ctx: TableContext, where: "left" | "right"): HTMLTableCellElement[] {
   const cells: HTMLTableCellElement[] = []
   for (const row of Array.from(ctx.table.rows)) {
@@ -239,6 +240,7 @@ export function insertTableColumn(ctx: TableContext, where: "left" | "right"): H
     else row.appendChild(cell)
     cells.push(cell)
   }
+  syncColgroupWithColumns(ctx.table, ctx.colIndex + (where === "left" ? 0 : 1), where === "left" ? "left" : "right")
   return cells
 }
 
@@ -258,6 +260,10 @@ export function deleteTableColumn(ctx: TableContext): boolean {
   for (const row of Array.from(ctx.table.rows)) {
     const cell = row.cells[ctx.colIndex]
     if (cell) cell.remove()
+  }
+  const cg = ctx.table.querySelector(":scope > colgroup")
+  if (cg && cg.children.length === ctx.table.rows[0]?.cells.length + 1) {
+    cg.children[ctx.colIndex]?.remove()
   }
   if (ctx.table.rows.length > 0 && ctx.table.rows[0].cells.length === 0) {
     ctx.table.remove()
@@ -291,6 +297,117 @@ export function ensureParagraph(root: HTMLElement): void {
   const p = document.createElement("p")
   p.innerHTML = "<br>"
   root.appendChild(p)
+}
+
+/* ================================ column resizing ================================ */
+
+/**
+ * Materialize the table's current column distribution into a <colgroup> with
+ * percentage widths, so the columns become resizable and the layout stays
+ * responsive. No-op when a width-bearing colgroup already exists.
+ */
+export function ensureTableColWidths(table: HTMLTableElement): HTMLColElement[] | null {
+  const cols = colWidthsFrom(table)
+  if (cols) return cols
+  const firstRow = table.rows[0]
+  if (!firstRow || firstRow.cells.length === 0) return null
+  const tableWidth = table.getBoundingClientRect().width
+  if (tableWidth <= 0) return null
+  table.querySelectorAll("colgroup").forEach((g) => g.remove())
+  const cg = document.createElement("colgroup")
+  for (const cell of Array.from(firstRow.cells)) {
+    const col = document.createElement("col")
+    const pct = (cell.getBoundingClientRect().width / tableWidth) * 100
+    col.style.width = `${pct.toFixed(3)}%`
+    cg.appendChild(col)
+  }
+  table.insertBefore(cg, table.firstChild)
+  return Array.from(cg.children) as HTMLColElement[]
+}
+
+/** Existing width-bearing colgroup, if present. */
+function colWidthsFrom(table: HTMLTableElement): HTMLColElement[] | null {
+  // NOTE: HTMLTableElement has no `colgroup` DOM property — query it explicitly
+  const cg = table.querySelector(":scope > colgroup")
+  if (!cg) return null
+  const cols = Array.from(cg.children) as HTMLColElement[]
+  if (cols.length === 0 || cols.some((c) => !c.style.width)) return null
+  return cols
+}
+
+/** Keep the colgroup aligned after a structural column change. */
+function syncColgroupWithColumns(
+  table: HTMLTableElement,
+  newColIndex: number,
+  side: "left" | "right",
+): void {
+  const cols = colWidthsFrom(table)
+  if (!cols) return // no colgroup yet — percentages materialize on first resize
+  const firstRow = table.rows[0]
+  const cellCount = firstRow?.cells.length ?? 0
+  if (cols.length !== cellCount - 1) return // unexpected shape, leave alone
+  const sourceIndex = Math.max(0, newColIndex - (side === "left" ? 0 : 1))
+  const source = cols[Math.min(sourceIndex, cols.length - 1)]
+  const sourcePct = parseColPct(source) ?? 100 / (cols.length + 1)
+  const half = Math.max(sourcePct / 2, 2)
+  const other = Math.max(sourcePct - half, 2)
+  source.style.width = `${other.toFixed(3)}%`
+  const col = document.createElement("col")
+  col.style.width = `${half.toFixed(3)}%`
+  source.after(col)
+}
+
+function parseColPct(col: HTMLColElement): number | null {
+  const m = /^([\d.]+)%$/.exec(col.style.width)
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * Adjust the boundary between two adjacent columns by a pixel delta,
+ * Google-Docs style: the two neighbors share the table width between them.
+ * Returns the applied delta in pixels (0 when clamped).
+ */
+export function resizeTableColumn(
+  table: HTMLTableElement,
+  boundaryIndex: number,
+  deltaPx: number,
+  minPct = 4,
+): number {
+  const cols = ensureTableColWidths(table)
+  if (!cols) return 0
+  const i = boundaryIndex
+  const j = boundaryIndex + 1
+  if (i < 0 || j >= cols.length) return 0
+  const a = parseColPct(cols[i])
+  const b = parseColPct(cols[j])
+  if (a == null || b == null) return 0
+  const tableWidth = table.getBoundingClientRect().width
+  if (tableWidth <= 0) return 0
+  const deltaPct = (deltaPx / tableWidth) * 100
+  let na = a + deltaPct
+  let nb = b - deltaPct
+  // clamp: keep both columns at the minimum width
+  if (na < minPct) {
+    nb -= minPct - na
+    na = minPct
+  }
+  if (nb < minPct) {
+    na -= minPct - nb
+    nb = minPct
+  }
+  na = Math.max(na, minPct)
+  nb = Math.max(nb, minPct)
+  const appliedPct = na - a
+  cols[i].style.width = `${na.toFixed(3)}%`
+  cols[j].style.width = `${nb.toFixed(3)}%`
+  return (appliedPct / 100) * tableWidth
+}
+
+/** Current pixel width of a column (from the first row's cells). */
+export function tableColumnPixelWidth(table: HTMLTableElement, colIndex: number): number {
+  const firstRow = table.rows[0]
+  const cell = firstRow?.cells[colIndex]
+  return cell ? cell.getBoundingClientRect().width : 0
 }
 
 /** Caret range from a point, cross-browser (WebKit + Firefox). */

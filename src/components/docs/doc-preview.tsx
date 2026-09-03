@@ -27,7 +27,7 @@ export function DocPreview({
         {html ? (
           <div className="doc-content" dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
-          <div className="doc-content text-[#9aa0a6]">{emptyLabel}</div>
+          <div className="doc-content text-[#a3a09a]">{emptyLabel}</div>
         )}
       </div>
       {/* subtle edge fade so previews end softly */}

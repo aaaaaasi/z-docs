@@ -85,7 +85,7 @@ export function VersionHistorySheet({
                     <span
                       className={cn(
                         "absolute -left-[27px] top-4 h-2.5 w-2.5 rounded-full border-2 border-primary",
-                        i === 0 ? "bg-primary shadow-[0_0_0_3px_rgba(18,156,88,0.15)]" : "bg-background"
+                        i === 0 ? "bg-primary shadow-[0_0_0_3px_rgba(11,107,98,0.15)]" : "bg-background"
                       )}
                     />
                     <div className="rounded-lg border p-3 transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-sm">
@@ -236,12 +236,12 @@ export function VersionDiffDialog({
           </Select>
           <div className="ml-auto flex items-center gap-1.5 text-xs font-medium">
             {stats && stats.addedWords > 0 && (
-              <span className="tnum inline-flex items-center gap-1 rounded-md bg-[rgba(18,156,88,0.12)] px-2.5 py-1 text-[#0b7a4b]">
+              <span className="tnum inline-flex items-center gap-1 rounded-md bg-[rgba(58,125,68,0.12)] px-2.5 py-1 text-[#3a7d44]">
                 <TrendingUp className="h-3 w-3" />+{stats.addedWords} {stats.addedWords === 1 ? "word" : "words"}
               </span>
             )}
             {stats && stats.removedWords > 0 && (
-              <span className="tnum inline-flex items-center gap-1 rounded-md bg-[rgba(217,48,37,0.10)] px-2.5 py-1 text-[#b3261e]">
+              <span className="tnum inline-flex items-center gap-1 rounded-md bg-[rgba(176,67,43,0.10)] px-2.5 py-1 text-[#b0432b]">
                 <TrendingDown className="h-3 w-3" />−{stats.removedWords} {stats.removedWords === 1 ? "word" : "words"}
               </span>
             )}
@@ -273,10 +273,10 @@ export function VersionDiffDialog({
 
         <div className="flex items-center gap-4 border-t bg-background px-4 py-2.5 text-xs text-foreground/70">
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded-[3px] bg-[rgba(18,156,88,0.30)]" /> added
+            <span className="inline-block h-3 w-3 rounded-[3px] bg-[rgba(58,125,68,0.30)]" /> added
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded-[3px] bg-[rgba(217,48,37,0.22)]" /> removed
+            <span className="inline-block h-3 w-3 rounded-[3px] bg-[rgba(176,67,43,0.22)]" /> removed
           </span>
         </div>
       </div>

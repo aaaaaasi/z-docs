@@ -3,7 +3,8 @@ import { db } from "@/lib/db"
 
 export const dynamic = "force-dynamic"
 
-const FOLDER_COLORS = ["#0b6b62", "#8f5a0b", "#7c3aed", "#be185d", "#0369a1", "#15803d", "#b91c1c"]
+// Warm, desaturated accents matching the 11-a design system (no cold blue/violet)
+const FOLDER_COLORS = ["#0b6b62", "#9a6b2f", "#a15c48", "#5e7050", "#8d5a74", "#a04b3c", "#6e6259"]
 
 // GET /api/folders — list all folders
 export async function GET() {

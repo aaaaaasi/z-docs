@@ -8,7 +8,7 @@ const KEY = "zdocs-user"
 
 export type LocalUser = CollabUser
 
-const SERVER_FALLBACK: LocalUser = { id: "server", name: "Guest", color: "#129c58" }
+const SERVER_FALLBACK: LocalUser = { id: "server", name: "Guest", color: "#0e7c74" }
 
 function createDefault(): LocalUser {
   const animals = ["Panda", "Falcon", "Otter", "Lynx", "Heron", "Fox", "Koala", "Ibex", "Tapir", "Marmot"]

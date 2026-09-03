@@ -67,7 +67,7 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
             <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
               <Heading1 className="h-8 w-8 text-muted-foreground/40" />
               <div>
-                <p className="text-sm font-medium">No headings yet</p>
+                <p className="font-editorial text-[14.5px] font-medium italic tracking-tight text-foreground/80">No headings yet</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Add headings with <span className="font-medium">Format → Paragraph styles</span> or the
                   style dropdown to build a navigable outline.

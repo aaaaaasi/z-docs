@@ -57,6 +57,7 @@ export function EditorView() {
   const [spellCheck, setSpellCheck] = React.useState(true)
   const [fmt, setFmt] = React.useState<FormatState>(DEFAULT_FORMAT)
   const [tableInfo, setTableInfo] = React.useState<TableInfo | null>(null)
+  const [activeTableEl, setActiveTableEl] = React.useState<HTMLTableElement | null>(null)
   const [menuTableInfo, setMenuTableInfo] = React.useState<TableInfo | null>(null)
   const [outlineOpen, setOutlineOpen] = React.useState(false)
   const [outlineItems, setOutlineItems] = React.useState<OutlineItem[]>([])
@@ -368,6 +369,8 @@ export function EditorView() {
       if (sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange()
       refreshFmt()
       setTableInfo(describeTableAt(el))
+      const ctx = getTableContext(el)
+      setActiveTableEl(ctx ? ctx.table : null)
       const now = Date.now()
       if (now - lastCursorEmitRef.current > 140) {
         lastCursorEmitRef.current = now
@@ -639,6 +642,7 @@ export function EditorView() {
       handleInput()
       refreshFmt()
       setTableInfo(describeTableAt(el))
+      setActiveTableEl(getTableContext(el)?.table ?? null)
     },
     [handleInput, refreshFmt, toast]
   )
@@ -972,7 +976,7 @@ h3 { font-size: 14pt; font-weight: 400; color: #434343; margin: 12pt 0 4pt; }
 p { margin: 0 0 7.5pt; }
 ul { list-style: disc outside; padding-left: 40px; margin: 8pt 0; }
 ol { list-style: decimal outside; padding-left: 40px; margin: 8pt 0; }
-blockquote { border-left: 3px solid #dadce0; margin: 8pt 0; padding: 4pt 0 4pt 16pt; color: #5f6368; }
+blockquote { border-left: 3px solid #d9d7d2; margin: 8pt 0; padding: 4pt 0 4pt 16pt; color: #6d6a64; }
 a { color: #0b6b62; }
 img { max-width: 100%; }
 </style></head>
@@ -1357,6 +1361,12 @@ img { max-width: 100%; }
                   comments={comments}
                   activeCommentId={activeCommentId}
                   contentTick={contentTick}
+                  activeTable={activeTableEl}
+                  onColumnResize={() => {
+                    // colgroup widths live in the document HTML: recompute
+                    // stats/outline so dependent views stay in sync
+                    setTableInfo(describeTableAt(pageRef.current ?? document.body))
+                  }}
                   onCommentClick={(id) => {
                     const c = comments.find((t) => t.id === id)
                     if (c) {
@@ -1467,7 +1477,7 @@ img { max-width: 100%; }
         docId={docId}
         title={title}
         presence={presence}
-        me={{ name: user?.name ?? "You", color: user?.color ?? "#129c58" }}
+        me={{ name: user?.name ?? "You", color: user?.color ?? "#0e7c74" }}
       />
       <HelpWriteDialog
         open={dialog === "helpwrite"}

@@ -95,7 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         parentId: body.parentId ?? null,
         authorId: body.authorId,
         authorName: body.authorName.slice(0, 60),
-        authorColor: body.authorColor ?? "#129c58",
+        authorColor: body.authorColor ?? "#0e7c74",
         quote: (body.quote ?? "").slice(0, 400),
         anchorOffset: Math.max(0, Math.floor(body.anchorOffset ?? 0)),
         content: text,

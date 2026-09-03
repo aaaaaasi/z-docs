@@ -14,6 +14,7 @@ import {
   Folder, FolderPlus, Pencil, MoreVertical
 } from "lucide-react"
 import { useDocsStore } from "@/store/docs-store"
+import { DropTarget } from "./doc-dnd"
 import { cn } from "@/lib/utils"
 import type { ReactNode } from "react"
 import type { FolderDTO } from "@/lib/docs-types"
@@ -103,12 +104,16 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
       </div>
 
       <nav className="flex flex-col gap-0.5" aria-label="Document filters">
-        {navItem(filter === "all", <Home className="h-4.5 w-4.5" />, "All documents", () => {
-          useDocsStore.setState({ filter: "all", activeFolderId: null })
-          void useDocsStore.getState().refresh({ silent: true })
-        })}
+        <DropTarget kind="root">
+          {navItem(filter === "all", <Home className="h-4.5 w-4.5" />, "All documents", () => {
+            useDocsStore.setState({ filter: "all", activeFolderId: null })
+            void useDocsStore.getState().refresh({ silent: true })
+          })}
+        </DropTarget>
         {navItem(filter === "starred", <Star className="h-4.5 w-4.5" />, "Starred", () => setFilter("starred"), starredCount)}
-        {navItem(filter === "trash", <Trash2 className="h-4.5 w-4.5" />, "Trash", () => setFilter("trash"))}
+        <DropTarget kind="trash">
+          {navItem(filter === "trash", <Trash2 className="h-4.5 w-4.5" />, "Trash", () => setFilter("trash"))}
+        </DropTarget>
       </nav>
 
       {/* Folders */}
@@ -234,7 +239,11 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
             </div>
           )
           return (
-            <Wrap key={f.id} inSheet={inSheet}>{btn}</Wrap>
+            <Wrap key={f.id} inSheet={inSheet}>
+              <DropTarget kind="folder" folderId={f.id}>
+                {btn}
+              </DropTarget>
+            </Wrap>
           )
         })}
 

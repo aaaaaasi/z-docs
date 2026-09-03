@@ -4,6 +4,7 @@ import * as React from "react"
 import { MessageSquareMore } from "lucide-react"
 import type { RemoteCursor, CommentDTO } from "@/lib/docs-types"
 import { rangeFromOffsets, selectionOffsets, setSelectionFromOffsets, findQuoteRange } from "@/lib/editor-dom"
+import { TableResizeOverlay } from "@/components/docs/editor/table-resize"
 import { cn } from "@/lib/utils"
 
 interface CaretView {
@@ -41,6 +42,8 @@ interface EditorCanvasProps {
   activeCommentId?: string | null
   contentTick?: number
   onCommentClick?: (id: string) => void
+  activeTable?: HTMLTableElement | null
+  onColumnResize?: () => void
 }
 
 export function EditorCanvas({
@@ -57,6 +60,8 @@ export function EditorCanvas({
   activeCommentId = null,
   contentTick = 0,
   onCommentClick,
+  activeTable = null,
+  onColumnResize,
 }: EditorCanvasProps) {
   const [dims, setDims] = React.useState({ w: 816, h: 1056 })
   const [caretViews, setCaretViews] = React.useState<CaretView[]>([])
@@ -313,6 +318,18 @@ export function EditorCanvas({
               </button>
             ))}
           </div>
+
+          {/* Table column resize grabbers + active-table outline */}
+          <TableResizeOverlay
+            pageRef={pageRef}
+            activeTable={activeTable}
+            zoom={zoom}
+            contentTick={contentTick}
+            onCommit={() => {
+              onColumnResize?.()
+              onInput()
+            }}
+          />
         </div>
       </div>
     </div>
