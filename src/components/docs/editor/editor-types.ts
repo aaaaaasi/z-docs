@@ -1,5 +1,9 @@
 import type { CollabUser } from "@/lib/docs-types"
 import type { TableInfo } from "@/lib/editor-dom"
+import type { SuggestionInfo } from "@/lib/suggest-dom"
+import type { PageMargins } from "@/components/docs/editor/ruler"
+
+export type { SuggestionInfo, PageMargins }
 
 export type SaveStatus = "saved" | "saving" | "unsaved" | "error"
 
@@ -61,6 +65,7 @@ export type DialogKey =
   | "about"
   | "table"
   | "emoji"
+  | "aitools"
 
 export interface EditorApi {
   docId: string
@@ -111,4 +116,15 @@ export interface EditorApi {
   /* voice typing (Web Speech dictation into the caret) */
   voiceListening: boolean
   toggleVoiceTyping: () => void
+  /* suggesting mode (Google Docs track-changes parity) */
+  mode: "edit" | "suggest"
+  setMode: (m: "edit" | "suggest") => void
+  suggestions: SuggestionInfo[]
+  activeSuggestionId: string | null
+  acceptSuggestion: (sid: string) => void
+  rejectSuggestion: (sid: string) => void
+  focusSuggestion: (sid: string) => void
+  /* draggable page margins (ruler handles) */
+  pageMargins: PageMargins
+  setPageMargins: (m: PageMargins) => void
 }

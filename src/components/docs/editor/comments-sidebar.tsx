@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { CommentDTO, CommentReactionDTO } from "@/lib/docs-types"
+import type { SuggestionInfo } from "@/lib/suggest-dom"
 import { relativeTime } from "@/lib/doc-utils"
 import {
-  MessageSquarePlus, X, Check, RotateCcw, Trash2, CornerDownRight, MessageCircle, Loader2, CheckCircle2, Quote, Pencil, SmilePlus
+  MessageSquarePlus, X, Check, RotateCcw, Trash2, CornerDownRight, MessageCircle, Loader2, CheckCircle2, Quote, Pencil, SmilePlus, PencilLine
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -560,6 +561,93 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
   )
 }
 
+/* ------------------------------------------------------------- suggestion cards */
+
+function SuggestionCard({
+  s,
+  active,
+  onAccept,
+  onReject,
+  onFocus,
+}: {
+  s: SuggestionInfo
+  active: boolean
+  onAccept: (sid: string) => void
+  onReject: (sid: string) => void
+  onFocus: (sid: string) => void
+}) {
+  const verb =
+    s.kind === "del" ? "deleted" : s.kind === "para" ? "suggested a paragraph break" : "inserted"
+  const preview =
+    s.kind === "para" ? "¶" : s.text.length > 120 ? s.text.slice(0, 120).trimEnd() + "…" : s.text
+
+  return (
+    <div
+      data-sug-card={s.sid}
+      className={cn(
+        "animate-fade-in rounded-lg border bg-card p-3 transition-[border-color,box-shadow] group/sug",
+        active ? "border-primary/60 ring-2 ring-primary/20" : "hover:border-border/80"
+      )}
+    >
+      <div className="flex gap-2.5">
+        <CommentAvatar name={s.authorName} color={s.authorColor} size="sm" />
+        <div className="min-w-0 flex-1">
+          <p className="text-xs leading-snug">
+            <button
+              className="font-semibold text-foreground hover:underline"
+              onClick={() => onFocus(s.sid)}
+              title="Show in document"
+            >
+              {s.authorName}
+            </button>{" "}
+            <span className="text-muted-foreground">{verb}</span>
+            {s.createdAt > 0 && (
+              <span className="text-muted-foreground"> · {relativeTime(new Date(s.createdAt).toISOString())}</span>
+            )}
+          </p>
+          {s.kind !== "para" && (
+            <button
+              className="mt-1.5 block w-full rounded-md bg-muted/60 px-2 py-1.5 text-left text-xs leading-snug transition-colors hover:bg-muted"
+              onClick={() => onFocus(s.sid)}
+              aria-label="Show this suggestion in the document"
+            >
+              <span
+                className="line-clamp-3"
+                style={{
+                  textDecorationLine: s.kind === "del" ? "line-through" : "underline",
+                  textDecorationColor: s.authorColor,
+                  textDecorationThickness: "1.5px",
+                  textUnderlineOffset: "2px",
+                  color: s.kind === "del" ? s.authorColor : undefined,
+                }}
+              >
+                {preview || "(empty)"}
+              </span>
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-end gap-1.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => onReject(s.sid)}
+        >
+          <X className="h-3.5 w-3.5" /> Reject
+        </Button>
+        <Button
+          size="sm"
+          className="h-7 gap-1.5 rounded-md px-2.5 text-xs"
+          onClick={() => onAccept(s.sid)}
+        >
+          <Check className="h-3.5 w-3.5" /> Accept
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 /* ------------------------------------------------------------- sidebar shell */
 
 export interface CommentsSidebarProps {
@@ -579,12 +667,20 @@ export interface CommentsSidebarProps {
   onDelete: (c: CommentDTO) => void
   onFocusComment: (c: CommentDTO) => void
   onToggleReaction?: (commentId: string, emoji: string) => void
+  /* suggesting mode */
+  suggestions?: SuggestionInfo[]
+  activeSuggestionId?: string | null
+  onAcceptSuggestion?: (sid: string) => void
+  onRejectSuggestion?: (sid: string) => void
+  onFocusSuggestion?: (sid: string) => void
 }
 
 export function CommentsSidebar(props: CommentsSidebarProps) {
   const {
     open, onClose, comments, loading, activeCommentId, pendingQuote, busy, meId,
     onSubmitComment, onCancelComposer, onReply, onEdit, onToggleResolve, onDelete, onFocusComment, onToggleReaction,
+    suggestions = [], activeSuggestionId = null,
+    onAcceptSuggestion, onRejectSuggestion, onFocusSuggestion,
   } = props
 
   const openThreads = React.useMemo(() => comments.filter((c) => !c.resolved), [comments])
@@ -593,7 +689,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
 
   return (
     <aside
-      aria-label="Comments"
+      aria-label="Comments and suggestions"
       data-open={open}
       className={cn(
         "no-print relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-l bg-background/95 backdrop-blur-sm",
@@ -626,6 +722,31 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
 
         {/* body */}
         <div className="slim-scroll flex-1 space-y-3 overflow-y-auto p-3">
+          {suggestions.length > 0 && (
+            <div className="space-y-2">
+              <div className="sticky top-0 z-[1] -mx-1 flex items-center gap-2 bg-background/95 px-1 py-1 backdrop-blur-sm">
+                <PencilLine className="h-3.5 w-3.5 text-primary" />
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Suggestions
+                </h3>
+                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-primary">
+                  {suggestions.length}
+                </span>
+              </div>
+              {suggestions.map((s) => (
+                <SuggestionCard
+                  key={s.sid}
+                  s={s}
+                  active={activeSuggestionId === s.sid}
+                  onAccept={onAcceptSuggestion ?? (() => {})}
+                  onReject={onRejectSuggestion ?? (() => {})}
+                  onFocus={onFocusSuggestion ?? (() => {})}
+                />
+              ))}
+              <div className="pt-1" />
+            </div>
+          )}
+
           <Composer
             quote={pendingQuote?.quote ?? null}
             submitting={busy}

@@ -198,6 +198,7 @@
 
 /* ------------------------------------------------ page ruler */
 .doc-ruler {
+  position: relative;
   width: 816px;
   max-width: 816px;
   margin-bottom: 4px;
@@ -471,7 +472,8 @@
   margin: 8pt 0;
   white-space: pre-wrap;
 }
-.doc-content:empty::before {
+.doc-content:empty::before,
+.doc-content:has(> p:only-child > br:only-child)::before {
   content: attr(data-placeholder);
   color: #a3a09a;
   pointer-events: none;
@@ -608,6 +610,150 @@
   background-color: rgba(94, 158, 150, 0.44);
   box-shadow: 0 0 0 1.5px rgba(94, 158, 150, 0.7);
 }
+/* ------------------------------------------------ suggesting mode */
+/* insertion: solid underline in the author's color (Google Docs look) */
+.doc-content .sug-ins {
+  text-decoration-line: underline;
+  text-decoration-color: var(--sc, #0e7c74);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2.5px;
+  border-radius: 1px;
+}
+/* deletion: struck through, faded toward the author color */
+.doc-content .sug-del {
+  text-decoration-line: line-through;
+  text-decoration-color: var(--sc, #0e7c74);
+  text-decoration-thickness: 2px;
+  color: color-mix(in srgb, var(--sc, #0e7c74) 45%, #5f6368);
+  border-radius: 1px;
+}
+/* suggested paragraph break: small dash mark on the new line */
+.doc-content .sug-para::after {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--sc, #0e7c74);
+  vertical-align: middle;
+  margin-left: 2px;
+}
+/* card-focus ring on the mark itself */
+.doc-content .sug-focus {
+  background-color: color-mix(in srgb, var(--sc, #0e7c74) 14%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--sc, #0e7c74) 45%, transparent);
+}
+/* hovering a card highlights its marks via [data-sug-card-hover] on root —
+   default state keeps suggestions calm, Google-style */
+
+/* print & PDF export: show the "accepted" view — deletions hidden,
+   insertions rendered as plain text */
+@media print {
+  .doc-content .sug-del {
+    display: none;
+  }
+  .doc-content .sug-ins {
+    text-decoration: none;
+  }
+  .doc-content .sug-para::after {
+    display: none;
+  }
+}
+.doc-page.exporting .sug-del {
+  display: none;
+}
+.doc-page.exporting .sug-ins {
+  text-decoration: none;
+}
+.doc-page.exporting .sug-para::after {
+  display: none;
+}
+
+/* ruler margin drag handles (Google Docs style triangles) */
+.doc-ruler-handle {
+  position: absolute;
+  bottom: -1px;
+  z-index: 3;
+  width: 16px;
+  height: 18px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: ew-resize;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  touch-action: none;
+  /* generous invisible hit area via box-shadow-less padding */
+  margin-left: -8px;
+  outline: none;
+}
+.doc-ruler-handle::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 9px solid rgba(11, 107, 98, 0.85);
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.18));
+  transition: border-top-color 0.12s ease, transform 0.12s ease;
+}
+.doc-ruler-handle:hover::after,
+.doc-ruler-handle:focus-visible::after,
+.doc-ruler-handle[data-dragging="true"]::after {
+  border-top-color: #0b6b62;
+  transform: scale(1.15);
+}
+.doc-ruler-handle:focus-visible {
+  outline: none;
+}
+.doc-ruler-handle[data-dragging="true"]::after {
+  transform: scale(1.28);
+}
+/* margin value tooltip shown while dragging */
+.doc-ruler-tip {
+  position: absolute;
+  bottom: calc(100% + 2px);
+  z-index: 4;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #0b6b62;
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 8px rgba(11, 107, 98, 0.35);
+  pointer-events: none;
+  white-space: nowrap;
+}
+/* full-height guide line while dragging a margin */
+.doc-margin-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 12;
+  width: 0;
+  border-left: 1px solid rgba(11, 107, 98, 0.65);
+  pointer-events: none;
+}
+.dark .doc-ruler-handle::after {
+  border-top-color: rgba(94, 158, 150, 0.9);
+}
+.dark .doc-ruler-handle:hover::after,
+.dark .doc-ruler-handle:focus-visible::after,
+.dark .doc-ruler-handle[data-dragging="true"]::after {
+  border-top-color: #5e9e96;
+}
+
+/* keep custom margins from breaking the narrow-screen layout */
+@media (max-width: 900px) {
+  .doc-page[style] {
+    padding-left: 32px !important;
+    padding-right: 32px !important;
+  }
+}
+
 .comment-marker {
   position: absolute;
   display: flex;

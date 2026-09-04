@@ -6,7 +6,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -15,7 +15,8 @@ import { FONT_FAMILIES, FONT_SIZES, TEXT_COLOR_PALETTE } from "@/lib/doc-utils"
 import {
   Undo2, Redo2, Printer, Bold, Italic, Underline, Strikethrough, Link, ImagePlus,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, List, ListOrdered, Indent,
-  Outdent, RemoveFormatting, Sparkles, Wand2, Text, Highlighter, ChevronDown, Baseline, MessageSquarePlus, Mic
+  Outdent, RemoveFormatting, Sparkles, Wand2, Text, Highlighter, ChevronDown, Baseline, MessageSquarePlus, Mic,
+  Pencil, PencilLine, Check
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -412,8 +413,64 @@ export function Toolbar({ api }: { api: EditorApi }) {
         </TooltipContent>
       </Tooltip>
 
-      <div className="ml-auto hidden shrink-0 items-center gap-1 pr-1 text-xs text-muted-foreground lg:flex">
-        <ChevronDown className="h-3.5 w-3.5" />
+      {/* Mode switcher (Google Docs' iconic pencil dropdown, right end) */}
+      <div className="ml-auto flex shrink-0 items-center gap-1.5 pr-1">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={`Mode: ${api.mode === "suggest" ? "Suggesting" : "Editing"}. Switch editing mode.`}
+              aria-haspopup="menu"
+              className={cn(
+                "h-9 gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
+                api.mode === "suggest"
+                  ? "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              {api.mode === "suggest" ? (
+                <PencilLine className="h-4 w-4" strokeWidth={1.9} />
+              ) : (
+                <Pencil className="h-4 w-4" strokeWidth={1.9} />
+              )}
+              <span className="hidden sm:inline">{api.mode === "suggest" ? "Suggesting" : "Editing"}</span>
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              {api.suggestions.length > 0 && (
+                <span
+                  className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-semibold leading-none tabular-nums text-primary-foreground shadow-sm"
+                  aria-label={`${api.suggestions.length} pending suggestions`}
+                >
+                  {api.suggestions.length > 9 ? "9+" : api.suggestions.length}
+                </span>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem
+              onClick={() => api.setMode("edit")}
+              aria-checked={api.mode === "edit"}
+              className="gap-2"
+            >
+              <Pencil className="h-4 w-4" /> Editing
+              {api.mode === "edit" && <Check className="ml-auto h-4 w-4 text-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => api.setMode("suggest")}
+              aria-checked={api.mode === "suggest"}
+              className="gap-2"
+            >
+              <PencilLine className="h-4 w-4" /> Suggesting
+              {api.mode === "suggest" && <Check className="ml-auto h-4 w-4 text-primary" />}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <div className="px-2 pb-1.5 pt-1 text-[11px] leading-relaxed text-muted-foreground">
+              {api.mode === "suggest"
+                ? "Edits you make show as suggestions others can accept or reject."
+                : "Edits apply directly to the document."}
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   )

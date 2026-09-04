@@ -6,7 +6,7 @@ import type { RemoteCursor, CommentDTO } from "@/lib/docs-types"
 import { rangeFromOffsets, selectionOffsets, setSelectionFromOffsets, findQuoteRange } from "@/lib/editor-dom"
 import type { TextMatch } from "@/lib/editor-dom"
 import { TableResizeOverlay } from "@/components/docs/editor/table-resize"
-import { DocRuler } from "@/components/docs/editor/ruler"
+import { DocRuler, DEFAULT_MARGINS, type PageMargins } from "@/components/docs/editor/ruler"
 import { cn } from "@/lib/utils"
 
 interface CaretView {
@@ -49,6 +49,9 @@ interface EditorCanvasProps {
   /* find & replace highlight state (null/empty = no search active) */
   findMatches?: TextMatch[]
   findActiveIndex?: number
+  /* draggable page margins (ruler handles) */
+  margins?: PageMargins
+  onMarginsChange?: (m: PageMargins) => void
 }
 
 export function EditorCanvas({
@@ -69,8 +72,11 @@ export function EditorCanvas({
   onColumnResize,
   findMatches = [],
   findActiveIndex = -1,
+  margins = DEFAULT_MARGINS,
+  onMarginsChange,
 }: EditorCanvasProps) {
   const [dims, setDims] = React.useState({ w: 816, h: 1056 })
+  const [marginDragSide, setMarginDragSide] = React.useState<"left" | "right" | null>(null)
   const [caretViews, setCaretViews] = React.useState<CaretView[]>([])
   const [highlightViews, setHighlightViews] = React.useState<CommentHighlightView[]>([])
   const [findRects, setFindRects] = React.useState<{
@@ -118,7 +124,9 @@ export function EditorCanvas({
   React.useEffect(() => {
     const el = pageRef.current
     if (!el) return
-    el.innerHTML = initialContent
+    // empty documents start with a proper paragraph block (Google Docs parity)
+    // — bare text at the content root confuses paragraph ops, stats & exports
+    el.innerHTML = initialContent?.trim() ? initialContent : "<p><br></p>"
     try {
       document.execCommand("styleWithCSS", false, "true")
       document.execCommand("defaultParagraphSeparator", false, "p")
@@ -269,10 +277,20 @@ export function EditorCanvas({
           style={{ width: dims.w + padX * 2, transform: `scale(${zoom})`, transformOrigin: "top left" }}
         >
           <div className="px-10 pt-10">
-            <DocRuler />
+            <DocRuler
+              pageWidth={dims.w}
+              margins={margins}
+              zoom={zoom}
+              onMarginsChange={onMarginsChange}
+              onDragChange={setMarginDragSide}
+            />
             <div
               ref={pageRef}
               className="doc-page doc-content"
+              style={{
+                paddingLeft: margins.left,
+                paddingRight: margins.right,
+              }}
               contentEditable
               suppressContentEditableWarning
               role="textbox"
@@ -383,6 +401,14 @@ export function EditorCanvas({
               </button>
             ))}
           </div>
+
+          {/* Margin-drag guide lines (full page height) */}
+          {marginDragSide === "left" && (
+            <div className="no-print doc-margin-guide" style={{ left: 40 + margins.left }} aria-hidden />
+          )}
+          {marginDragSide === "right" && (
+            <div className="no-print doc-margin-guide" style={{ left: 40 + dims.w - margins.right }} aria-hidden />
+          )}
 
           {/* Table column resize grabbers + active-table outline */}
           <TableResizeOverlay

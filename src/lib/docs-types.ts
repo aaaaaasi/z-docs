@@ -21,9 +21,11 @@ export interface TagDTO {
   updatedAt?: string
 }
 
-export interface DocumentMeta extends DocumentDTO {
+export interface DocumentMeta extends Omit<DocumentDTO, "content"> {
   snippet: string
   wordCount: number
+  /** full HTML is normally stripped in list views; present only when a full doc is stored */
+  content?: string
 }
 
 export interface FolderDTO {

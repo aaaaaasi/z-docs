@@ -543,7 +543,7 @@ export function ensureParagraph(root: HTMLElement): void {
  * percentage widths, so the columns become resizable and the layout stays
  * responsive. No-op when a width-bearing colgroup already exists.
  */
-export function ensureTableColWidths(table: HTMLTableElement): HTMLColElement[] | null {
+export function ensureTableColWidths(table: HTMLTableElement): HTMLTableColElement[] | null {
   const cols = colWidthsFrom(table)
   if (cols) return cols
   const firstRow = table.rows[0]
@@ -559,15 +559,15 @@ export function ensureTableColWidths(table: HTMLTableElement): HTMLColElement[] 
     cg.appendChild(col)
   }
   table.insertBefore(cg, table.firstChild)
-  return Array.from(cg.children) as HTMLColElement[]
+  return Array.from(cg.children) as HTMLTableColElement[]
 }
 
 /** Existing width-bearing colgroup, if present. */
-function colWidthsFrom(table: HTMLTableElement): HTMLColElement[] | null {
+function colWidthsFrom(table: HTMLTableElement): HTMLTableColElement[] | null {
   // NOTE: HTMLTableElement has no `colgroup` DOM property — query it explicitly
   const cg = table.querySelector(":scope > colgroup")
   if (!cg) return null
-  const cols = Array.from(cg.children) as HTMLColElement[]
+  const cols = Array.from(cg.children) as HTMLTableColElement[]
   if (cols.length === 0 || cols.some((c) => !c.style.width)) return null
   return cols
 }
@@ -594,7 +594,7 @@ function syncColgroupWithColumns(
   source.after(col)
 }
 
-function parseColPct(col: HTMLColElement): number | null {
+function parseColPct(col: HTMLTableColElement): number | null {
   const m = /^([\d.]+)%$/.exec(col.style.width)
   return m ? Number(m[1]) : null
 }

@@ -17,6 +17,13 @@ import {
   type TableInfo, type TextMatch,
 } from "@/lib/editor-dom"
 import type { DocumentDTO, CommentDTO } from "@/lib/docs-types"
+import {
+  collectSuggestions, suggestInsertText, suggestInsertParagraph, suggestDeleteSelection,
+  deletionUnitRange, caretSugSpan, acceptSuggestionMark, rejectSuggestionMark,
+  focusSuggestionMark, clearSuggestionFocus,
+  type SuggestionInfo, type SuggestionAuthor,
+} from "@/lib/suggest-dom"
+import { DEFAULT_MARGINS, type PageMargins } from "./ruler"
 import { EditorCanvas } from "./editor-canvas"
 import { EditorHeader } from "./editor-header"
 import { MenuBar } from "./menu-bar"
@@ -89,6 +96,14 @@ export function EditorView() {
   const [pendingQuote, setPendingQuoteState] = React.useState<PendingQuote | null>(null)
   const pendingQuoteRef = React.useRef<PendingQuote | null>(null)
 
+  /* ---------------- suggesting mode state ---------------- */
+  const [mode, setModeState] = React.useState<"edit" | "suggest">("edit")
+  const [suggestions, setSuggestions] = React.useState<SuggestionInfo[]>([])
+  const [activeSuggestionId, setActiveSuggestionId] = React.useState<string | null>(null)
+
+  /* ---------------- page margins state (ruler drag) ---------------- */
+  const [pageMargins, setPageMarginsState] = React.useState<PageMargins>(DEFAULT_MARGINS)
+
   /* ---------------- refs ---------------- */
   const pageRef = React.useRef<HTMLDivElement | null>(null)
   const titleInputRef = React.useRef<HTMLInputElement | null>(null)
@@ -104,6 +119,27 @@ export function EditorView() {
   const broadcastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   const versionCounterRef = React.useRef(0)
   const myIdRef = React.useRef<string | null>(null)
+  const userRef = React.useRef<SuggestionAuthor | null>(null)
+  const modeRef = React.useRef<"edit" | "suggest">("edit")
+  const prevSidsRef = React.useRef<Set<string>>(new Set())
+
+  React.useEffect(() => {
+    userRef.current = user ? { id: user.id, name: user.name, color: user.color } : null
+    myIdRef.current = user?.id ?? null
+  }, [user])
+  React.useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
+
+  // restore the persisted mode (global) — Google remembers your last mode
+  React.useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("zdocs:mode")
+      if (saved === "suggest") setModeState("suggest")
+    } catch {
+      // private mode etc.
+    }
+  }, [])
 
   /* ---------------- load document ---------------- */
   React.useEffect(() => {
@@ -133,6 +169,30 @@ export function EditorView() {
         if (cancelled) return
         setLoadError(e.message === "not-found" ? "This document doesn't exist anymore." : "Couldn't load this document.")
       })
+    // restore per-document page margins
+    try {
+      const raw = window.localStorage.getItem(`zdocs:margins:${docId}`)
+      if (raw) {
+        const m = JSON.parse(raw) as PageMargins
+        if (typeof m?.left === "number" && typeof m?.right === "number") {
+          setPageMarginsState({
+            left: Math.min(336, Math.max(48, m.left)),
+            right: Math.min(336, Math.max(48, m.right)),
+          })
+        }
+      } else {
+        setPageMarginsState(DEFAULT_MARGINS)
+      }
+    } catch {
+      setPageMarginsState(DEFAULT_MARGINS)
+    }
+    // initial suggestion scan (marks persist inside the document HTML)
+    requestAnimationFrame(() => {
+      if (cancelled) return
+      const list = collectSuggestions(pageRef.current)
+      setSuggestions(list)
+      prevSidsRef.current = new Set(list.map((s) => s.sid))
+    })
     return () => {
       cancelled = true
     }
@@ -305,6 +365,8 @@ export function EditorView() {
       setStats(docStats(contentRef.current))
       // bump so the comment highlight overlays re-align after local edits
       setContentTick((t) => t + 1)
+      // re-derive suggestion cards from the document marks
+      setSuggestions(collectSuggestions(pageRef.current))
     }, 400)
   }, [])
 
@@ -325,6 +387,182 @@ export function EditorView() {
     scheduleBroadcast()
     scheduleStats()
   }, [scheduleSave, scheduleBroadcast, scheduleStats])
+
+  /* ---------------- suggesting mode ---------------- */
+  /** Intercept raw edits while in Suggesting mode and convert them into
+   *  marked suggestion spans. Everything flows through execCommand so each
+   *  edit is ONE undo step, just like normal typing. */
+  React.useEffect(() => {
+    const el = pageRef.current
+    if (!el || mode !== "suggest" || !doc) return
+
+    const onBeforeInput = (e: Event) => {
+      const input = e as InputEvent
+      const author = userRef.current
+      if (!author) return
+      switch (input.inputType) {
+        case "insertText": {
+          const data = input.data
+          if (!data) return
+          // typing at the end of your own insertion extends it naturally —
+          // let the default insertText happen (it stays inside the mark)
+          const span = caretSugSpan(el)
+          if (span && span.classList.contains("sug-ins") && span.dataset.ai === author.id) return
+          input.preventDefault()
+          if (suggestInsertText(el, data, author)) handleInput()
+          break
+        }
+        case "insertParagraph": {
+          input.preventDefault()
+          if (suggestInsertParagraph(el, author)) handleInput()
+          break
+        }
+        case "insertFromPaste": {
+          input.preventDefault()
+          const text = input.dataTransfer?.getData("text/plain") ?? ""
+          if (text && suggestInsertText(el, text.slice(0, 5000), author)) handleInput()
+          break
+        }
+        case "deleteContentBackward":
+        case "deleteContentForward": {
+          const dir = input.inputType === "deleteContentBackward" ? "backward" : "forward"
+          // backspace inside your own deletion mark shortens it — default ok
+          const span = caretSugSpan(el)
+          const sel = window.getSelection()
+          if (
+            sel &&
+            sel.isCollapsed &&
+            span &&
+            span.classList.contains("sug-del") &&
+            span.dataset.ai === author.id
+          ) {
+            return
+          }
+          if (!sel || !sel.rangeCount) return
+          // selection delete → wrap the whole selection as a deletion mark
+          if (!sel.isCollapsed) {
+            const range = sel.getRangeAt(0)
+            if (el.contains(range.commonAncestorContainer)) {
+              input.preventDefault()
+              // direct-DOM mutation: no input event fires, so drive the
+              // autosave pipeline manually
+              if (suggestDeleteSelection(range, author)) handleInput()
+            }
+            return
+          }
+          // collapsed delete → mark the single unit the browser would remove
+          const unit = deletionUnitRange(el, dir)
+          if (unit && el.contains(unit.startContainer)) {
+            input.preventDefault()
+            if (suggestDeleteSelection(unit, author)) handleInput()
+          }
+          // no unit → structural delete (paragraph merge etc.): default
+          break
+        }
+        default:
+          // insertCompositionText, format changes, word deletes, … → default
+          break
+      }
+    }
+
+    el.addEventListener("beforeinput", onBeforeInput)
+    return () => el.removeEventListener("beforeinput", onBeforeInput)
+  }, [mode, doc, handleInput])
+
+  /** Apply a suggestion: mark → plain content, then persist. */
+  const acceptSuggestion = React.useCallback(
+    (sid: string) => {
+      const el = pageRef.current
+      if (!el) return
+      if (acceptSuggestionMark(el, sid)) {
+        handleInput()
+        setSuggestions(collectSuggestions(el))
+        if (activeSuggestionId === sid) {
+          setActiveSuggestionId(null)
+          clearSuggestionFocus(el)
+        }
+      }
+    },
+    [handleInput, activeSuggestionId]
+  )
+
+  /** Revert a suggestion: mark disappears, the original text stays/returns. */
+  const rejectSuggestion = React.useCallback(
+    (sid: string) => {
+      const el = pageRef.current
+      if (!el) return
+      if (rejectSuggestionMark(el, sid)) {
+        handleInput()
+        setSuggestions(collectSuggestions(el))
+        if (activeSuggestionId === sid) {
+          setActiveSuggestionId(null)
+          clearSuggestionFocus(el)
+        }
+      }
+    },
+    [handleInput, activeSuggestionId]
+  )
+
+  /** Scroll a suggestion mark into view + highlight it. */
+  const focusSuggestion = React.useCallback((sid: string) => {
+    setActiveSuggestionId(sid)
+    focusSuggestionMark(pageRef.current, sid)
+  }, [])
+
+  const setMode = React.useCallback(
+    (m: "edit" | "suggest") => {
+      setModeState(m)
+      try {
+        window.localStorage.setItem("zdocs:mode", m)
+      } catch {
+        // ignore
+      }
+      if (m === "suggest") {
+        const el = pageRef.current
+        if (el && collectSuggestions(el).length > 0) setCommentsOpen(true)
+        toast({
+          title: "You're in suggesting mode",
+          description: "Edits you make will show as suggestions others can accept or reject.",
+        })
+      }
+    },
+    [toast]
+  )
+
+  /** Dragging the ruler handles: persist per document. */
+  const setPageMargins = React.useCallback(
+    (m: PageMargins) => {
+      setPageMarginsState(m)
+      try {
+        window.localStorage.setItem(`zdocs:margins:${docId}`, JSON.stringify(m))
+      } catch {
+        // ignore
+      }
+    },
+    [docId]
+  )
+
+  // Google Docs behavior: the review rail pops open when a NEW suggestion
+  // appears while you're in suggesting mode.
+  React.useEffect(() => {
+    if (mode !== "suggest") {
+      prevSidsRef.current = new Set(suggestions.map((s) => s.sid))
+      return
+    }
+    const hasNew = suggestions.some((s) => !prevSidsRef.current.has(s.sid))
+    if (hasNew && suggestions.length > 0 && !commentsOpen) setCommentsOpen(true)
+    prevSidsRef.current = new Set(suggestions.map((s) => s.sid))
+  }, [suggestions, mode, commentsOpen])
+
+  // remote content applied → re-derive suggestion cards (other users'
+  // suggestions arrive inside the broadcast HTML)
+  React.useEffect(() => {
+    if (remoteContent != null) return
+    const t = setTimeout(() => {
+      setSuggestions(collectSuggestions(pageRef.current))
+    }, 80)
+    return () => clearTimeout(t)
+  }, [remoteContent, contentTick, doc])
 
   /* ---------------- format state ---------------- */
   const refreshFmt = React.useCallback(() => {
@@ -1018,8 +1256,8 @@ export function EditorView() {
   /** Re-run after local edits so highlights stay glued to the text. */
   React.useEffect(() => {
     if (!findOpen || !findQuery) return
-    const keep = findActiveIndex >= 0 && findMatches[findActiveIndex]?.start
-    runFind(findQuery, findCase, keep ?? null)
+    const keep = findActiveIndex >= 0 ? findMatches[findActiveIndex]?.start ?? null : null
+    runFind(findQuery, findCase, keep)
   }, [contentTick, remoteContent])
 
   /** Select a match range in the document WITHOUT losing the panel's focus.
@@ -1298,6 +1536,10 @@ img { max-width: 100%; }
         wrap.style.transform = "none"
       }
       const [{ jsPDF }, h2c] = await Promise.all([import("jspdf"), import("html2canvas-pro")])
+      // export the "accepted" view — suggestion marks flattened (Google parity).
+      // The class stays on through BOTH the capture and the block measuring so
+      // the pagination slices match the rendered canvas exactly (finally removes it).
+      if (el.querySelector("[data-sid]") != null) el.classList.add("exporting")
       const canvas = await h2c.default(el, {
         scale: 2,
         backgroundColor: "#ffffff",
@@ -1352,6 +1594,7 @@ img { max-width: 100%; }
       printDoc()
     } finally {
       if (wrap) wrap.style.transform = prevTransform
+      el.classList.remove("exporting")
     }
   }, [printDoc, toast])
 
@@ -1520,7 +1763,7 @@ img { max-width: 100%; }
       setOutlineItems([])
       return
     }
-    const headings = Array.from(el.querySelectorAll("h1, h2, h3, h4"))
+    const headings = Array.from(el.querySelectorAll<HTMLElement>("h1, h2, h3, h4"))
     const stamp = Date.now().toString(36)
     const items: OutlineItem[] = headings.map((h, i) => {
       const oid = h.dataset.oid ?? `${stamp}-${i}`
@@ -1666,6 +1909,17 @@ img { max-width: 100%; }
     /* voice typing */
     voiceListening: voice.listening,
     toggleVoiceTyping,
+    /* suggesting mode */
+    mode,
+    setMode,
+    suggestions,
+    activeSuggestionId,
+    acceptSuggestion,
+    rejectSuggestion,
+    focusSuggestion,
+    /* page margins */
+    pageMargins,
+    setPageMargins,
   }
 
   const openDialog = (d: string | null) => setDialog(d)
@@ -1767,6 +2021,8 @@ img { max-width: 100%; }
                   activeTable={activeTableEl}
                   findMatches={findMatches}
                   findActiveIndex={findActiveIndex}
+                  margins={pageMargins}
+                  onMarginsChange={setPageMargins}
                   onColumnResize={() => {
                     // colgroup widths live in the document HTML: recompute
                     // stats/outline so dependent views stay in sync
@@ -1857,6 +2113,11 @@ img { max-width: 100%; }
             onDelete={(c) => void deleteComment(c)}
             onFocusComment={focusComment}
             onToggleReaction={(commentId, emoji) => void toggleReaction(commentId, emoji)}
+            suggestions={suggestions}
+            activeSuggestionId={activeSuggestionId}
+            onAcceptSuggestion={acceptSuggestion}
+            onRejectSuggestion={rejectSuggestion}
+            onFocusSuggestion={focusSuggestion}
           />
         </div>
       ) : (

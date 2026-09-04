@@ -483,12 +483,12 @@ function DocCard({
   return (
     <div
       ref={dragRef}
+      {...dragAttrs}
+      {...dragListeners}
       role="button"
       tabIndex={0}
       onClick={actions.onOpen}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && actions.onOpen()}
-      {...dragAttrs}
-      {...dragListeners}
       className={cn(
         "animate-card-in group flex w-[168px] cursor-pointer flex-col rounded-lg p-2 transition-colors outline-none hover:bg-muted/60 focus-visible:bg-muted/60",
         isDragging && "opacity-40"
@@ -497,7 +497,7 @@ function DocCard({
       aria-label={`Open ${doc.title}`}
     >
       <div className="relative overflow-hidden rounded-sm border elev-1 transition-[border-color,box-shadow] duration-200 group-hover:border-foreground/25 group-hover:elev-2 group-focus-visible:border-foreground/25 group-focus-visible:elev-2">
-        <DocPreview html={doc.content} width={152} className="mx-auto" />
+        <DocPreview html={doc.content ?? doc.snippet} width={152} className="mx-auto" />
         {doc.starred && !inTrash && (
           <Star className="absolute right-1.5 top-1.5 h-4 w-4 fill-amber-400 text-amber-400 drop-shadow transition-transform duration-200 group-hover:scale-110" aria-label="Starred" />
         )}
@@ -558,12 +558,12 @@ function DocRow({
   return (
     <div
       ref={dragRef}
+      {...dragAttrs}
+      {...dragListeners}
       role="button"
       tabIndex={0}
       onClick={actions.onOpen}
       onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && actions.onOpen()}
-      {...dragAttrs}
-      {...dragListeners}
       className={cn(
         "animate-card-in group flex cursor-pointer items-center gap-3 border-b px-4 py-3 outline-none last:border-b-0 hover:bg-muted/50 focus-visible:bg-muted/50",
         index === 0 && "rounded-t-lg", index % 2 === 1 && "bg-muted/30",
