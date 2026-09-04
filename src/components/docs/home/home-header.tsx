@@ -8,16 +8,19 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Search, Menu, Settings } from "lucide-react"
 import { UserMenu } from "@/components/docs/user-menu"
 import { ThemeToggle } from "@/components/docs/theme-toggle"
+import { LangToggle } from "@/components/docs/lang-toggle"
 import { AppGridMenu } from "@/components/docs/app-grid"
 import { useDocsStore } from "@/store/docs-store"
 import { SidebarNavContent } from "./sidebar-nav"
+import { useI18n } from "@/lib/i18n"
 
 /** Logo wordmark used across the app: a blinking caret next to a serif wordmark */
 export function DocsLogo({ size = "md" }: { size?: "sm" | "md" }) {
+  const { t } = useI18n()
   const caret = size === "sm" ? "h-4 w-[2.5px]" : "h-[18px] w-[3px]"
   const text = size === "sm" ? "text-[16px]" : "text-[18px]"
   return (
-    <div className="flex items-center gap-1.5 select-none" aria-label="Z-Docs home">
+    <div className="flex items-center gap-1.5 select-none" aria-label={t("Z-Docs home")}>
       <span aria-hidden="true" className={`${caret} rounded-[1px] bg-primary logo-caret`} />
       <span className={`font-editorial ${text} font-medium tracking-tight text-foreground`}>
         Z-Docs
@@ -27,6 +30,7 @@ export function DocsLogo({ size = "md" }: { size?: "sm" | "md" }) {
 }
 
 export function HomeHeader() {
+  const { t } = useI18n()
   const searchQuery = useDocsStore((s) => s.searchQuery)
   const setSearchQuery = useDocsStore((s) => s.setSearchQuery)
   const refresh = useDocsStore((s) => s.refresh)
@@ -50,12 +54,12 @@ export function HomeHeader() {
       <div className="md:hidden">
         <Sheet>
           <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full" aria-label="Open navigation">
+            <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full" aria-label={t("Open navigation")}>
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="w-72 p-0">
-            <SheetTitle className="sr-only">Navigation</SheetTitle>
+            <SheetTitle className="sr-only">{t("Navigation")}</SheetTitle>
             <SidebarNavContent inSheet />
           </SheetContent>
         </Sheet>
@@ -69,8 +73,8 @@ export function HomeHeader() {
         <Input
           value={local}
           onChange={(e) => setLocal(e.target.value)}
-          placeholder="Search your documents"
-          aria-label="Search documents"
+          placeholder={t("Search your documents")}
+          aria-label={t("Search documents")}
           className="h-11 rounded-full border-transparent bg-muted pl-11 pr-4 text-sm transition-[background-color,box-shadow,border-color] duration-200 placeholder:text-muted-foreground/80 focus-visible:border-border focus-visible:bg-background focus-visible:shadow-[0_1px_2px_rgba(35,32,28,0.05),0_6px_20px_rgba(35,32,28,0.08)]"
         />
       </div>
@@ -82,12 +86,13 @@ export function HomeHeader() {
           <Input
             value={local}
             onChange={(e) => setLocal(e.target.value)}
-            placeholder="Search"
-            aria-label="Search documents"
-            className="h-9 w-28 rounded-full border-transparent bg-muted pl-9 pr-3 text-sm focus-visible:w-40 focus-visible:border-border focus-visible:bg-background"
+            placeholder={t("Search")}
+            aria-label={t("Search documents")}
+            className="h-9 w-20 rounded-full border-transparent bg-muted pl-9 pr-3 text-sm focus-visible:w-32 focus-visible:border-border focus-visible:bg-background"
           />
         </div>
         <AppGridMenu />
+        <LangToggle />
         <ThemeToggle />
         <Tooltip>
           <TooltipTrigger asChild>
@@ -95,13 +100,13 @@ export function HomeHeader() {
               variant="ghost"
               size="icon"
               className="hidden h-9 w-9 rounded-full text-muted-foreground hover:text-foreground sm:flex"
-              aria-label="Open settings"
+              aria-label={t("Open settings")}
               onClick={openSettings}
             >
               <Settings className="h-4.5 w-4.5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Settings</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">{t("Settings")}</TooltipContent>
         </Tooltip>
         <div className="ml-1">
           <UserMenu />

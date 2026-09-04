@@ -2,8 +2,9 @@
 
 import * as React from "react"
 import type { CellData } from "@/lib/workspace-types"
-import { cellRef, displayKind, parseRef } from "./cells"
+import { cellRef, colLetter, displayKind, parseRef } from "./cells"
 import { useSheetStore } from "./sheet-store"
+import { useI18n } from "@/lib/i18n"
 
 export const COL_W = 100
 export const ROW_H = 32
@@ -18,12 +19,13 @@ const INK_ON_FILL = "#202124"
 function ColHeader({ c }: { c: number }) {
   const highlighted = useSheetStore((s) => c >= s.sel.c0 && c <= s.sel.c1)
   const selectCol = useSheetStore((s) => s.selectCol)
+  const { t } = useI18n()
   return (
     <button
       type="button"
       data-col-header={c}
       onClick={() => selectCol(c)}
-      aria-label={`Select column ${cellRef(0, c).replace("1", "")}`}
+      aria-label={t("Select column {col}", { col: colLetter(c) })}
       className={`flex h-8 shrink-0 select-none items-center justify-center border-0 bg-muted/95 text-[11px] font-medium text-muted-foreground backdrop-blur-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 ${
         highlighted ? "bg-accent text-accent-foreground" : ""
       }`}
@@ -37,12 +39,13 @@ function ColHeader({ c }: { c: number }) {
 function RowNum({ r }: { r: number }) {
   const highlighted = useSheetStore((s) => r >= s.sel.r0 && r <= s.sel.r1)
   const selectRow = useSheetStore((s) => s.selectRow)
+  const { t } = useI18n()
   return (
     <button
       type="button"
       data-row-header={r}
       onClick={() => selectRow(r)}
-      aria-label={`Select row ${r + 1}`}
+      aria-label={t("Select row {n}", { n: r + 1 })}
       className={`sticky left-0 z-10 flex h-8 shrink-0 select-none items-center justify-center border-0 bg-muted/95 text-[11px] font-medium text-muted-foreground backdrop-blur-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60 ${
         highlighted ? "bg-accent text-accent-foreground" : ""
       }`}
@@ -120,6 +123,7 @@ function CellEditorInput({
   const commitEdit = useSheetStore((s) => s.commitEdit)
   const cancelEdit = useSheetStore((s) => s.cancelEdit)
   const inputRef = React.useRef<HTMLInputElement>(null)
+  const { t } = useI18n()
 
   React.useEffect(() => {
     const el = inputRef.current
@@ -166,7 +170,7 @@ function CellEditorInput({
       value={editing.draft}
       onChange={(e) => updateDraft(e.target.value)}
       onKeyDown={onKey}
-      aria-label={`Edit cell ${editing.ref}`}
+      aria-label={t("Edit cell {ref}", { ref: editing.ref })}
       spellCheck={false}
       autoComplete="off"
       className="absolute z-40 rounded-none border-0 bg-background px-1.5 text-[13px] leading-none text-foreground shadow-none outline-none focus:ring-0"
@@ -197,6 +201,7 @@ export function SheetGrid({ containerRef }: { containerRef: React.RefObject<HTML
   const clearRangeValues = useSheetStore((s) => s.clearRangeValues)
   const contentRef = React.useRef<HTMLDivElement>(null)
   const draggingRef = React.useRef(false)
+  const { t } = useI18n()
 
   const posFromEvent = (e: { clientX: number; clientY: number }) => {
     const rect = contentRef.current?.getBoundingClientRect()
@@ -324,7 +329,7 @@ export function SheetGrid({ containerRef }: { containerRef: React.RefObject<HTML
     <div
       ref={containerRef}
       role="grid"
-      aria-label="Spreadsheet grid"
+      aria-label={t("Spreadsheet grid")}
       tabIndex={0}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -345,7 +350,7 @@ export function SheetGrid({ containerRef }: { containerRef: React.RefObject<HTML
             id="sheets-corner"
             type="button"
             onClick={selectAll}
-            aria-label="Select all cells"
+            aria-label={t("Select all cells")}
             className="sticky left-0 z-30 flex h-8 shrink-0 items-center justify-center border-0 bg-muted/95 backdrop-blur-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
             style={{ width: HEADER_W, height: ROW_H, boxShadow: "inset -1px -1px 0 0 var(--border)" }}
           >

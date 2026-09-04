@@ -22,12 +22,15 @@ import { cellRef, fmtNum, parseNumeric } from "./cells"
 import { Toolbar } from "./sheet-toolbar"
 import { useSheetStore } from "./sheet-store"
 import { SheetGrid } from "./grid"
+import { useI18n } from "@/lib/i18n"
+import { LangToggle } from "@/components/docs/lang-toggle"
 
 /* ------------------------------- title bar ------------------------------- */
 
 function TitleEditor() {
   const title = useSheetStore((s) => s.title)
   const renameCurrentTitle = useSheetStore((s) => s.renameCurrentTitle)
+  const { t } = useI18n()
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState("")
   const inputRef = React.useRef<HTMLInputElement>(null)
@@ -57,7 +60,7 @@ function TitleEditor() {
           if (e.key === "Escape") setEditing(false)
         }}
         className="h-8 w-40 max-w-[40vw] text-[15px] sm:w-64"
-        aria-label="Spreadsheet title"
+        aria-label={t("Spreadsheet title")}
         maxLength={120}
       />
     )
@@ -71,7 +74,7 @@ function TitleEditor() {
       }}
       title={title}
       className="h-9 max-w-[45vw] truncate rounded-md px-2 text-[15px] text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/60"
-      aria-label={`Rename spreadsheet (current: ${title})`}
+      aria-label={t("Rename spreadsheet (current: {title})", { title })}
     >
       {title}
     </button>
@@ -80,24 +83,25 @@ function TitleEditor() {
 
 function SaveStatus() {
   const saveState = useSheetStore((s) => s.saveState)
+  const { t } = useI18n()
   if (saveState === "saving") {
     return (
       <span className="flex items-center gap-1.5 text-xs text-muted-foreground" role="status">
         <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
-        Saving…
+        {t("Saving…")}
       </span>
     )
   }
   if (saveState === "error") {
     return (
       <span className="text-xs text-destructive" role="status">
-        Unable to save
+        {t("Unable to save")}
       </span>
     )
   }
   return (
     <span className="hidden text-xs text-muted-foreground sm:inline" role="status">
-      All changes saved to Z-Drive
+      {t("All changes saved to Z-Drive")}
     </span>
   )
 }
@@ -112,6 +116,7 @@ function FormulaBar({ gridRef }: { gridRef: React.RefObject<HTMLDivElement | nul
   const updateDraft = useSheetStore((s) => s.updateDraft)
   const commitEdit = useSheetStore((s) => s.commitEdit)
   const cancelEdit = useSheetStore((s) => s.cancelEdit)
+  const { t } = useI18n()
 
   const ref = cellRef(active.r, active.c)
   const raw = editing ? editing.draft : data.cells[ref]?.v ?? ""
@@ -120,7 +125,7 @@ function FormulaBar({ gridRef }: { gridRef: React.RefObject<HTMLDivElement | nul
     <div className="flex h-10 items-center gap-1.5 border-b px-2">
       <div
         className="tnum w-16 shrink-0 rounded bg-muted py-1 text-center font-mono text-xs text-foreground"
-        aria-label={`Active cell ${ref}`}
+        aria-label={t("Active cell {ref}", { ref })}
       >
         {ref}
       </div>
@@ -148,8 +153,8 @@ function FormulaBar({ gridRef }: { gridRef: React.RefObject<HTMLDivElement | nul
             gridRef.current?.focus({ preventScroll: true })
           }
         }}
-        placeholder="Enter a value or formula, e.g. =SUM(A1:A5)"
-        aria-label="Formula input"
+        placeholder={t("Enter a value or formula, e.g. =SUM(A1:A5)")}
+        aria-label={t("Formula input")}
         spellCheck={false}
         autoComplete="off"
         className="h-7 flex-1 border-transparent bg-transparent font-mono text-[13px] shadow-none focus-visible:border-border focus-visible:bg-background focus-visible:shadow-none"
@@ -164,6 +169,7 @@ function StatusBar() {
   const data = useSheetStore((s) => s.data)
   const computed = useSheetStore((s) => s.computed)
   const sel = useSheetStore((s) => s.sel)
+  const { t } = useI18n()
 
   const stats = React.useMemo(() => {
     const cells: number[] = []
@@ -181,15 +187,17 @@ function StatusBar() {
     }
     if (size >= 2 && cells.length >= 1) {
       const sum = cells.reduce((a, b) => a + b, 0)
-      return `Sum: ${fmtNum(sum)} · Avg: ${fmtNum(sum / cells.length)} · Count: ${cells.length}`
+      return `${t("Sum: {n}", { n: fmtNum(sum) })} · ${t("Avg: {n}", {
+        n: fmtNum(sum / cells.length),
+      })} · ${t("Count: {n}", { n: cells.length })}`
     }
     return null
-  }, [sel, computed])
+  }, [sel, computed, t])
 
   return (
     <div className="flex h-8 shrink-0 items-center justify-between border-t bg-muted/40 px-3 text-xs text-muted-foreground">
       <span className="tnum">
-        Sheet1 · {data.rows} rows × {data.cols} cols
+        {t("Sheet1 · {rows} rows × {cols} cols", { rows: data.rows, cols: data.cols })}
       </span>
       <span className="tnum truncate pl-4" aria-live="polite">
         {stats ?? ""}
@@ -209,6 +217,7 @@ export function SheetEditor() {
   const undo = useSheetStore((s) => s.undo)
   const redo = useSheetStore((s) => s.redo)
   const gridRef = React.useRef<HTMLDivElement>(null)
+  const { t } = useI18n()
 
   // grid owns the keyboard as soon as the editor opens
   React.useEffect(() => {
@@ -218,8 +227,8 @@ export function SheetEditor() {
   // editor-level shortcuts: undo / redo (Ctrl+Z, Ctrl+Shift+Z, Ctrl+Y) — only when
   // focus is not inside an input (browser text undo wins there)
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const t = e.target as HTMLElement | null
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return
+    const el = e.target as HTMLElement | null
+    if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return
     const mod = e.ctrlKey || e.metaKey
     if (!mod) return
     const k = e.key.toLowerCase()
@@ -258,11 +267,11 @@ export function SheetEditor() {
       <header className="flex h-14 shrink-0 items-center gap-1 border-b px-2 sm:gap-2 sm:px-3">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full" aria-label="Back to spreadsheets" onClick={backToList}>
+            <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full" aria-label={t("Back to spreadsheets")} onClick={backToList}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Back to spreadsheets</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">{t("Back to spreadsheets")}</TooltipContent>
         </Tooltip>
         <span
           aria-hidden
@@ -277,7 +286,7 @@ export function SheetEditor() {
               variant="ghost"
               size="icon"
               className="h-11 w-11 rounded-full text-muted-foreground hover:text-foreground sm:h-9 sm:w-9"
-              aria-label={starred ? "Remove star" : "Add star"}
+              aria-label={starred ? t("Remove star") : t("Add star")}
               aria-pressed={starred}
               onClick={() => void toggleCurrentStar()}
             >
@@ -285,28 +294,31 @@ export function SheetEditor() {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            {starred ? "Remove star" : "Add star"}
+            {starred ? t("Remove star") : t("Add star")}
           </TooltipContent>
         </Tooltip>
         <div className="ml-auto flex items-center gap-2">
           <SaveStatus />
+          <span className="hidden min-[420px]:inline-flex">
+            <LangToggle />
+          </span>
           <DropdownMenu>
             <Tooltip>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full text-muted-foreground hover:text-foreground sm:h-9 sm:w-9" aria-label="Spreadsheet menu">
+                  <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full text-muted-foreground hover:text-foreground sm:h-9 sm:w-9" aria-label={t("Spreadsheet menu")}>
                     <FileSpreadsheet className="h-4.5 w-4.5" />
                   </Button>
                 </DropdownMenuTrigger>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs">More</TooltipContent>
+              <TooltipContent side="bottom" className="text-xs">{t("More")}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={backToList}>
-                <FileSpreadsheet className="h-4 w-4" /> Find spreadsheet in list
+                <FileSpreadsheet className="h-4 w-4" /> {t("Find spreadsheet in list")}
               </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void trashCurrent()}>
-                <Trash2 className="h-4 w-4" /> Delete
+                <Trash2 className="h-4 w-4" /> {t("Delete")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

@@ -13,6 +13,7 @@ import {
 import { Copy, MoreVertical, Pencil, RotateCcw, Star, Trash2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { relativeTime } from "@/lib/doc-utils"
+import { useI18n } from "@/lib/i18n"
 import type { SheetMeta } from "@/lib/workspace-types"
 import { useSheetStore } from "./sheet-store"
 
@@ -54,6 +55,7 @@ export function SheetCard({ sheet, cellCount, renaming, onStartRename, onCancelR
   const restoreSheet = useSheetStore((s) => s.restoreSheet)
   const duplicateSheet = useSheetStore((s) => s.duplicateSheet)
   const { toast } = useToast()
+  const { t, lang } = useI18n()
   const renameRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
@@ -80,7 +82,7 @@ export function SheetCard({ sheet, cellCount, renaming, onStartRename, onCancelR
       }}
       tabIndex={0}
       role="button"
-      aria-label={`Open spreadsheet ${sheet.title}`}
+      aria-label={t("Open spreadsheet {title}", { title: sheet.title })}
     >
       <div className="flex items-start gap-3">
         <SheetGlyph />
@@ -90,7 +92,7 @@ export function SheetCard({ sheet, cellCount, renaming, onStartRename, onCancelR
               ref={renameRef}
               defaultValue={sheet.title}
               className="h-8 text-sm"
-              aria-label="Rename spreadsheet"
+              aria-label={t("Rename spreadsheet")}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
                 e.stopPropagation()
@@ -104,8 +106,12 @@ export function SheetCard({ sheet, cellCount, renaming, onStartRename, onCancelR
             <p className="truncate text-sm font-medium text-foreground">{sheet.title}</p>
           )}
           <p className="mt-1 truncate text-xs text-muted-foreground tnum">
-            {cellCount === undefined ? "…" : `${cellCount} cell${cellCount === 1 ? "" : "s"}`} · edited{" "}
-            {relativeTime(sheet.updatedAt)}
+            {cellCount === undefined
+              ? "…"
+              : cellCount === 1
+                ? t("1 cell")
+                : t("{n} cells", { n: cellCount })}{" · "}
+            {t("edited {time}", { time: relativeTime(sheet.updatedAt, lang) })}
           </p>
         </div>
         <div className="flex items-center gap-0.5">
@@ -119,7 +125,7 @@ export function SheetCard({ sheet, cellCount, renaming, onStartRename, onCancelR
                     ? "text-amber-500 opacity-100"
                     : "text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
                 }`}
-                aria-label={sheet.starred ? "Unstar spreadsheet" : "Star spreadsheet"}
+                aria-label={sheet.starred ? t("Unstar spreadsheet") : t("Star spreadsheet")}
                 aria-pressed={sheet.starred}
                 onClick={(e) => {
                   e.stopPropagation()
@@ -130,7 +136,7 @@ export function SheetCard({ sheet, cellCount, renaming, onStartRename, onCancelR
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              {sheet.starred ? "Remove star" : "Add star"}
+              {sheet.starred ? t("Remove star") : t("Add star")}
             </TooltipContent>
           </Tooltip>
           <div data-menu onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
@@ -140,7 +146,7 @@ export function SheetCard({ sheet, cellCount, renaming, onStartRename, onCancelR
                   variant="ghost"
                   size="icon"
                   className="h-11 w-11 rounded-full text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100 sm:h-9 sm:w-9"
-                  aria-label={`More actions for ${sheet.title}`}
+                  aria-label={t("More actions for {title}", { title: sheet.title })}
                 >
                   <MoreVertical className="h-4.5 w-4.5" />
                 </Button>
@@ -149,33 +155,36 @@ export function SheetCard({ sheet, cellCount, renaming, onStartRename, onCancelR
                 {inTrash ? (
                   <>
                     <DropdownMenuItem onClick={() => void restoreSheet(sheet.id)}>
-                      <RotateCcw className="h-4 w-4" /> Restore
+                      <RotateCcw className="h-4 w-4" /> {t("Restore")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
                       onClick={() => onDeleteForever()}
                     >
-                      <Trash2 className="h-4 w-4" /> Delete forever
+                      <Trash2 className="h-4 w-4" /> {t("Delete forever")}
                     </DropdownMenuItem>
                   </>
                 ) : (
                   <>
                     <DropdownMenuItem onClick={onStartRename}>
-                      <Pencil className="h-4 w-4" /> Rename
+                      <Pencil className="h-4 w-4" /> {t("Rename")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => void toggleStar(sheet.id)}>
-                      <Star className="h-4 w-4" /> {sheet.starred ? "Remove star" : "Add star"}
+                      <Star className="h-4 w-4" /> {sheet.starred ? t("Remove star") : t("Add star")}
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => void duplicateSheet(sheet.id)}>
-                      <Copy className="h-4 w-4" /> Make a copy
+                      <Copy className="h-4 w-4" /> {t("Make a copy")}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onClick={() => {
                         void trashSheet(sheet.id)
-                        toast({ title: "Moved to trash", description: `“${sheet.title}” can be restored from Trash.` })
+                        toast({
+                          title: t("Moved to trash"),
+                          description: t("“{title}” can be restored from Trash.", { title: sheet.title }),
+                        })
                       }}
                     >
-                      <Trash2 className="h-4 w-4" /> Move to trash
+                      <Trash2 className="h-4 w-4" /> {t("Move to trash")}
                     </DropdownMenuItem>
                   </>
                 )}

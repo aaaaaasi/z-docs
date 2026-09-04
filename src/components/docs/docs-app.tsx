@@ -3,6 +3,7 @@
 import * as React from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useDocsStore } from "@/store/docs-store"
+import { I18nProvider } from "@/lib/i18n"
 import { HomeView } from "./home/home-view"
 import { EditorView } from "./editor/editor-view"
 import { SheetsApp } from "./sheets/sheets-app"
@@ -27,18 +28,20 @@ export function DocsApp() {
   }, [hydrateFromUrl, bindPopState])
 
   return (
-    <TooltipProvider delayDuration={250}>
-      {/* applies persisted settings (accent color) at app level */}
-      <SettingsEffects />
-      <div key={view} className="animate-view-in">
-        {view === "home" && <HomeView />}
-        {view === "editor" && <EditorView />}
-        {view === "sheets" && <SheetsApp />}
-        {view === "slides" && <SlidesApp />}
-        {view === "forms" && <FormsApp />}
-        {view === "activity" && <ActivityView />}
-        {view === "settings" && <SettingsView />}
-      </div>
-    </TooltipProvider>
+    <I18nProvider>
+      <TooltipProvider delayDuration={250}>
+        {/* applies persisted settings (accent color) at app level */}
+        <SettingsEffects />
+        <div key={view} className="animate-view-in">
+          {view === "home" && <HomeView />}
+          {view === "editor" && <EditorView />}
+          {view === "sheets" && <SheetsApp />}
+          {view === "slides" && <SlidesApp />}
+          {view === "forms" && <FormsApp />}
+          {view === "activity" && <ActivityView />}
+          {view === "settings" && <SettingsView />}
+        </div>
+      </TooltipProvider>
+    </I18nProvider>
   )
 }

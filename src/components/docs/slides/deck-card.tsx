@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
+import { useI18n } from "@/lib/i18n"
 import {
   Copy,
   FolderOpen,
@@ -66,13 +67,14 @@ function DeckMenu({
   onRestore: () => void
   onDelete: () => void
 }) {
+  const { t } = useI18n()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
-          aria-label={`Actions for ${deck.title}`}
+          aria-label={t("Actions for {title}", { title: deck.title })}
           className="h-8 w-8 rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
           onClick={(e) => e.stopPropagation()}
         >
@@ -81,40 +83,40 @@ function DeckMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
         <DropdownMenuItem onClick={onOpen}>
-          <FolderOpen className="h-4 w-4" /> Open
+          <FolderOpen className="h-4 w-4" /> {t("Open")}
         </DropdownMenuItem>
         {!inTrash && (
           <>
             <DropdownMenuItem onClick={onStar}>
               {deck.starred ? <StarOff className="h-4 w-4" /> : <Star className="h-4 w-4" />}
-              {deck.starred ? "Remove star" : "Add star"}
+              {deck.starred ? t("Remove star") : t("Add star")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onRename}>
-              <Pencil className="h-4 w-4" /> Rename
+              <Pencil className="h-4 w-4" /> {t("Rename")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={onDuplicate}>
-              <Copy className="h-4 w-4" /> Make a copy
+              <Copy className="h-4 w-4" /> {t("Make a copy")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={onTrash}
             >
-              <Trash2 className="h-4 w-4" /> Move to trash
+              <Trash2 className="h-4 w-4" /> {t("Move to trash")}
             </DropdownMenuItem>
           </>
         )}
         {inTrash && (
           <>
             <DropdownMenuItem onClick={onRestore}>
-              <RotateCcw className="h-4 w-4" /> Restore
+              <RotateCcw className="h-4 w-4" /> {t("Restore")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={onDelete}
             >
-              <Trash2 className="h-4 w-4" /> Delete forever
+              <Trash2 className="h-4 w-4" /> {t("Delete forever")}
             </DropdownMenuItem>
           </>
         )}
@@ -142,6 +144,7 @@ export function DeckCard({
   const deleteDeckForever = useSlidesStore((s) => s.deleteDeckForever)
   const duplicateDeck = useSlidesStore((s) => s.duplicateDeck)
   const { toast } = useToast()
+  const { t, lang } = useI18n()
 
   const [renaming, setRenaming] = React.useState(false)
   const [renameValue, setRenameValue] = React.useState("")
@@ -154,8 +157,8 @@ export function DeckCard({
     const name = renameValue.trim()
     if (!name || name === deck.title) return
     const ok = await renameDeck(deck.id, name)
-    if (ok) toast({ title: "Renamed", description: `“${name}”` })
-    else toast({ title: "Rename failed", variant: "destructive" })
+    if (ok) toast({ title: t("Renamed"), description: `“${name}”` })
+    else toast({ title: t("Rename failed"), variant: "destructive" })
   }
 
   return (
@@ -170,7 +173,7 @@ export function DeckCard({
           onOpen()
         }
       }}
-      aria-label={`Open ${deck.title}`}
+      aria-label={t("Open {title}", { title: deck.title })}
       className="animate-card-in group flex cursor-pointer flex-col rounded-lg p-2 outline-none transition-colors hover:bg-muted/60 focus-visible:bg-muted/60"
       style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
     >
@@ -189,12 +192,12 @@ export function DeckCard({
         {deck.starred && !inTrash && (
           <Star
             className="absolute right-1.5 top-1.5 h-4 w-4 fill-amber-400 text-amber-400 drop-shadow transition-transform duration-200 group-hover:scale-110"
-            aria-label="Starred"
+            aria-label={t("Starred")}
           />
         )}
         {inTrash && (
           <div className="absolute left-1.5 top-1.5 rounded-[4px] bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white">
-            In trash
+            {t("In trash")}
           </div>
         )}
       </div>
@@ -214,7 +217,7 @@ export function DeckCard({
                 if (e.key === "Escape") setRenaming(false)
               }}
               onBlur={() => void commitRename()}
-              aria-label="Presentation name"
+              aria-label={t("Presentation name")}
               className="h-8 rounded-md text-sm"
             />
           ) : (
@@ -223,10 +226,10 @@ export function DeckCard({
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {slideCount != null && (
               <>
-                {slideCount} {slideCount === 1 ? "slide" : "slides"} ·{" "}
+                {slideCount === 1 ? t("1 slide") : t("{n} slides", { n: slideCount })}{" · "}
               </>
             )}
-            edited {relativeTime(deck.updatedAt)}
+            {t("edited {time}", { time: relativeTime(deck.updatedAt, lang) })}
           </p>
         </div>
         <DeckMenu
@@ -242,17 +245,20 @@ export function DeckCard({
             const ok = await duplicateDeck(deck)
             toast(
               ok
-                ? { title: "Copy created", description: `“Copy of ${deck.title}”` }
-                : { title: "Couldn’t create the copy", variant: "destructive" }
+                ? {
+                    title: t("Copy created"),
+                    description: `“${t("Copy of {title}", { title: deck.title })}”`,
+                  }
+                : { title: t("Couldn’t create the copy"), variant: "destructive" }
             )
           }}
           onTrash={() => {
             void setDeckTrashed(deck.id, true)
-            toast({ title: "Moved to trash", description: deck.title })
+            toast({ title: t("Moved to trash"), description: deck.title })
           }}
           onRestore={() => {
             void setDeckTrashed(deck.id, false)
-            toast({ title: "Restored", description: deck.title })
+            toast({ title: t("Restored"), description: deck.title })
           }}
           onDelete={() => setDeleting(true)}
         />
@@ -261,21 +267,21 @@ export function DeckCard({
       <AlertDialog open={deleting} onOpenChange={(o) => !o && setDeleting(false)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{deck.title}” forever?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Delete “{title}” forever?", { title: deck.title })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This can’t be undone. The presentation will be permanently removed.
+              {t("This can’t be undone. The presentation will be permanently removed.")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90"
               onClick={() => {
                 void deleteDeckForever(deck.id)
-                toast({ title: "Deleted permanently", variant: "destructive" })
+                toast({ title: t("Deleted permanently"), variant: "destructive" })
               }}
             >
-              Delete forever
+              {t("Delete forever")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

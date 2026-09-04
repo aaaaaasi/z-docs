@@ -17,6 +17,7 @@ import { useDocsStore } from "@/store/docs-store"
 import { DropTarget } from "./doc-dnd"
 import { DEFAULT_TAG_COLOR, TagColorPalette, hitArea } from "./tag-ui"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import type { ReactNode } from "react"
 import type { FolderDTO } from "@/lib/docs-types"
 
@@ -28,6 +29,7 @@ export function NewDocButton({ className, label = "New document" }: { className?
   const createDoc = useDocsStore((s) => s.createDoc)
   const openDoc = useDocsStore((s) => s.openDoc)
   const { toast } = useToast()
+  const { t } = useI18n()
   const [busy, setBusy] = React.useState(false)
 
   return (
@@ -39,19 +41,20 @@ export function NewDocButton({ className, label = "New document" }: { className?
         try {
           const id = await createDoc({ templateId: "blank" })
           if (id) openDoc(id)
-          else toast({ title: "Could not create document", variant: "destructive" })
+          else toast({ title: t("Could not create document"), variant: "destructive" })
         } finally {
           setBusy(false)
         }
       }}
     >
       <Plus className="h-4 w-4" />
-      {label}
+      {t(label)}
     </Button>
   )
 }
 
 export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
+  const { t } = useI18n()
   const filter = useDocsStore((s) => s.filter)
   const setFilter = useDocsStore((s) => s.setFilter)
   const view = useDocsStore((s) => s.view)
@@ -88,11 +91,11 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
     if (!name) return
     const tag = await createTag(name, tagColor)
     if (tag) {
-      toast({ title: "Tag created", description: tag.name })
+      toast({ title: t("Tag created"), description: tag.name })
       setTagCreating(false)
       setTagName("")
     } else {
-      toast({ title: "Couldn’t create tag", description: "Names must be unique.", variant: "destructive" })
+      toast({ title: t("Couldn’t create tag"), description: t("Names must be unique."), variant: "destructive" })
     }
   }
 
@@ -132,26 +135,26 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
 
       {/* scrollable nav area (folders + tags can grow past the viewport) */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-      <nav className="flex flex-col gap-0.5" aria-label="Document filters">
+      <nav className="flex flex-col gap-0.5" aria-label={t("Document filters")}>
         <DropTarget kind="root">
-          {navItem(filter === "all", <Home className="h-4.5 w-4.5" />, "All documents", () => {
+          {navItem(filter === "all", <Home className="h-4.5 w-4.5" />, t("All documents"), () => {
             useDocsStore.setState({ filter: "all", activeFolderId: null })
             void useDocsStore.getState().refresh({ silent: true })
           })}
         </DropTarget>
-        {navItem(filter === "starred", <Star className="h-4.5 w-4.5" />, "Starred", () => setFilter("starred"), starredCount)}
+        {navItem(filter === "starred", <Star className="h-4.5 w-4.5" />, t("Starred"), () => setFilter("starred"), starredCount)}
         <DropTarget kind="trash">
-          {navItem(filter === "trash", <Trash2 className="h-4.5 w-4.5" />, "Trash", () => setFilter("trash"))}
+          {navItem(filter === "trash", <Trash2 className="h-4.5 w-4.5" />, t("Trash"), () => setFilter("trash"))}
         </DropTarget>
       </nav>
 
       {/* Folders */}
       <div className="mt-4 flex items-center justify-between px-3">
-        <span className="text-[11px] font-medium tracking-wide text-muted-foreground">Folders</span>
+        <span className="text-[11px] font-medium tracking-wide text-muted-foreground">{t("Folders")}</span>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              aria-label="New folder"
+              aria-label={t("New folder")}
               onClick={() => {
                 setCreating(true)
                 setNewName("")
@@ -161,11 +164,11 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
               <FolderPlus className="h-4 w-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right" className="text-xs">New folder</TooltipContent>
+          <TooltipContent side="right" className="text-xs">{t("New folder")}</TooltipContent>
         </Tooltip>
       </div>
 
-      <nav className="mt-1 flex flex-col gap-0.5" aria-label="Document folders">
+      <nav className="mt-1 flex flex-col gap-0.5" aria-label={t("Document folders")}>
         {creating && (
           <div className="flex items-center gap-2.5 px-3 py-1.5">
             <Folder className="h-4.5 w-4.5 shrink-0 text-muted-foreground" />
@@ -177,16 +180,16 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                 if (e.key === "Enter" && newName.trim()) {
                   const f = await createFolder(newName.trim())
                   if (f) {
-                    toast({ title: "Folder created", description: f.name })
+                    toast({ title: t("Folder created"), description: f.name })
                     setCreating(false)
                   } else {
-                    toast({ title: "Couldn't create folder", description: "Names must be unique.", variant: "destructive" })
+                    toast({ title: t("Couldn't create folder"), description: t("Names must be unique."), variant: "destructive" })
                   }
                 }
                 if (e.key === "Escape") setCreating(false)
               }}
               onBlur={() => setCreating(false)}
-              placeholder="Folder name"
+              placeholder={t("Folder name")}
               className="h-8 rounded-md text-[13px]"
               maxLength={80}
             />
@@ -220,7 +223,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
-                      aria-label={`Actions for folder ${f.name}`}
+                      aria-label={t("Actions for folder {name}", { name: f.name })}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100"
                       onClick={(e) => e.stopPropagation()}
                     >
@@ -229,17 +232,17 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
                     <DropdownMenuItem onClick={() => { setRenaming(f); setRenameValue(f.name) }}>
-                      <Pencil className="h-4 w-4" /> Rename
+                      <Pencil className="h-4 w-4" /> {t("Rename")}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive focus:text-destructive"
                       onClick={async () => {
                         await deleteFolder(f.id)
-                        toast({ title: "Folder deleted", description: "Documents were kept in All documents." })
+                        toast({ title: t("Folder deleted"), description: t("Documents were kept in All documents.") })
                       }}
                     >
-                      <Trash2 className="h-4 w-4" /> Delete folder
+                      <Trash2 className="h-4 w-4" /> {t("Delete folder")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -278,18 +281,18 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
 
         {folders.length === 0 && !creating && (
           <p className="px-3 py-2 text-[11.5px] leading-relaxed text-muted-foreground/80">
-            No folders yet. Create one to organize your docs.
+            {t("No folders yet. Create one to organize your docs.")}
           </p>
         )}
       </nav>
 
       {/* Tags */}
       <div className="mt-4 flex items-center justify-between px-3">
-        <span className="text-[11px] font-medium tracking-wide text-muted-foreground">Tags</span>
+        <span className="text-[11px] font-medium tracking-wide text-muted-foreground">{t("Tags")}</span>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              aria-label="New tag"
+              aria-label={t("New tag")}
               onClick={() => {
                 setTagCreating(true)
                 setTagName("")
@@ -303,11 +306,11 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
               <Plus className="h-4 w-4" />
             </button>
           </TooltipTrigger>
-          <TooltipContent side="right" className="text-xs">New tag</TooltipContent>
+          <TooltipContent side="right" className="text-xs">{t("New tag")}</TooltipContent>
         </Tooltip>
       </div>
 
-      <nav className="mt-1 flex flex-col gap-0.5" aria-label="Document tags">
+      <nav className="mt-1 flex flex-col gap-0.5" aria-label={t("Document tags")}>
         {tagFilter && (
           <Button
             variant="ghost"
@@ -315,17 +318,17 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
             className="w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[13px] font-normal text-muted-foreground hover:bg-accent/60 hover:text-foreground"
           >
             <Tags className="h-4.5 w-4.5" />
-            <span className="flex-1 text-left">All tags</span>
+            <span className="flex-1 text-left">{t("All tags")}</span>
           </Button>
         )}
 
-        {tags.map((t) => {
-          const active = tagFilter === t.id
+        {tags.map((tag) => {
+          const active = tagFilter === tag.id
           const row = (
             <div className="group relative">
               <Button
                 variant="ghost"
-                onClick={() => setTagFilter(active ? null : t.id)}
+                onClick={() => setTagFilter(active ? null : tag.id)}
                 aria-pressed={active}
                 className={cn(
                   "w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[13px] font-normal",
@@ -337,18 +340,18 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                 <span
                   aria-hidden="true"
                   className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: t.color }}
+                  style={{ backgroundColor: tag.color }}
                 />
-                <span className="flex-1 truncate text-left">{t.name}</span>
-                {(t.count ?? 0) > 0 && (
-                  <span className="tnum text-[11px] text-muted-foreground">{t.count}</span>
+                <span className="flex-1 truncate text-left">{tag.name}</span>
+                {(tag.count ?? 0) > 0 && (
+                  <span className="tnum text-[11px] text-muted-foreground">{tag.count}</span>
                 )}
               </Button>
               {/* hover actions */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    aria-label={`Actions for tag ${t.name}`}
+                    aria-label={t("Actions for tag {name}", { name: tag.name })}
                     className={cn(
                       "absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100",
                       hitArea
@@ -362,18 +365,18 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
                     onClick={async () => {
-                      await deleteTag(t.id)
-                      toast({ title: "Tag deleted", description: "Removed from all documents." })
+                      await deleteTag(tag.id)
+                      toast({ title: t("Tag deleted"), description: t("Removed from all documents.") })
                     }}
                   >
-                    <Trash2 className="h-4 w-4" /> Delete tag
+                    <Trash2 className="h-4 w-4" /> {t("Delete tag")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           )
           return (
-            <Wrap key={t.id} inSheet={inSheet}>
+            <Wrap key={tag.id} inSheet={inSheet}>
               {row}
             </Wrap>
           )
@@ -401,8 +404,8 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
                   if (e.key === "Enter") void confirmCreateTag()
                   if (e.key === "Escape") setTagCreating(false)
                 }}
-                placeholder="Tag name"
-                aria-label="New tag name"
+                placeholder={t("Tag name")}
+                aria-label={t("New tag name")}
                 className="h-8 rounded-md text-[13px]"
                 maxLength={24}
               />
@@ -415,20 +418,20 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
 
         {tags.length === 0 && !tagCreating && (
           <p className="px-3 py-2 text-[11.5px] leading-relaxed text-muted-foreground/80">
-            No tags yet. Use tags to label documents.
+            {t("No tags yet. Use tags to label documents.")}
           </p>
         )}
       </nav>
 
       <div className="mt-4 px-3 text-[11px] font-medium tracking-wide text-muted-foreground/70">
-        Workspace
+        {t("Workspace")}
       </div>
-      <nav className="mt-1 flex flex-col gap-0.5" aria-label="Workspace apps">
+      <nav className="mt-1 flex flex-col gap-0.5" aria-label={t("Workspace apps")}>
         {(
           [
             {
               icon: <FileClock className="h-4.5 w-4.5" />,
-              label: "Recent activity",
+              label: t("Recent activity"),
               active: view === "activity",
               onSelect: () => openActivity(),
             },
@@ -452,7 +455,7 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
             },
             {
               icon: <Settings className="h-4.5 w-4.5" />,
-              label: "Settings",
+              label: t("Settings"),
               active: view === "settings",
               onSelect: () => openSettings(),
             },
@@ -469,12 +472,12 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
         <div className="rounded-lg border border-border/70 bg-muted/40 p-3">
           <div className="flex items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground">
             <Cloud className="h-3.5 w-3.5" strokeWidth={1.75} />
-            Storage
+            {t("Storage")}
           </div>
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-border/70">
             <div className="h-full w-[12%] rounded-full bg-primary transition-[width] duration-500" />
           </div>
-          <p className="tnum mt-1.5 text-[11px] text-muted-foreground">1.8 GB of 15 GB used</p>
+          <p className="tnum mt-1.5 text-[11px] text-muted-foreground">{t("1.8 GB of 15 GB used")}</p>
         </div>
       </div>
     </div>
@@ -482,8 +485,9 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
 }
 
 export function SidebarNav() {
+  const { t } = useI18n()
   return (
-    <aside className="hidden w-64 shrink-0 border-r bg-background md:block" aria-label="Navigation">
+    <aside className="hidden w-64 shrink-0 border-r bg-background md:block" aria-label={t("Navigation")}>
       <SidebarNavContent />
     </aside>
   )

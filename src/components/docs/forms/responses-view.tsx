@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { useToast } from "@/hooks/use-toast"
 import { relativeTime } from "@/lib/doc-utils"
+import { useI18n } from "@/lib/i18n"
 import type { Question } from "@/lib/workspace-types"
 import {
   BuilderTab,
@@ -51,6 +52,7 @@ interface ResponsesViewProps {
 /** Responses mode — Google-Forms-style analytics with bars, rating stats and CSV export. */
 export function ResponsesView(props: ResponsesViewProps) {
   const { form, responses, loading } = props
+  const { t, lang } = useI18n()
   const { toast } = useToast()
 
   const answeredCells = React.useMemo(
@@ -68,10 +70,14 @@ export function ResponsesView(props: ResponsesViewProps) {
 
   const handleDownload = () => {
     const csv = buildResponsesCsv(form.questions, responses)
-    downloadCsvFile(`${sanitizeFilename(form.title)}-responses.csv`, csv)
+    const file = `${sanitizeFilename(form.title)}-responses.csv`
+    downloadCsvFile(file, csv)
     toast({
-      title: "CSV downloaded",
-      description: `${responses.length} response${responses.length === 1 ? "" : "s"} exported to ${sanitizeFilename(form.title)}-responses.csv`,
+      title: t("CSV downloaded"),
+      description:
+        responses.length === 1
+          ? t("1 response exported to {file}", { file })
+          : t("{n} responses exported to {file}", { n: responses.length, file }),
     })
   }
 
@@ -91,10 +97,10 @@ export function ResponsesView(props: ResponsesViewProps) {
 
       <main className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 py-8 sm:px-6">
         {/* Summary strip */}
-        <section aria-label="Response summary" className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <SummaryCard icon={MessagesSquare} label="Responses" value={String(responses.length)} />
-          <SummaryCard icon={ListChecks} label="Questions" value={String(form.questions.length)} />
-          <SummaryCard icon={BarChart3} label="Avg answered" value={`${avgPct}%`} sub="per question" />
+        <section aria-label={t("Response summary")} className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <SummaryCard icon={MessagesSquare} label={t("Responses")} value={String(responses.length)} />
+          <SummaryCard icon={ListChecks} label={t("Questions")} value={String(form.questions.length)} />
+          <SummaryCard icon={BarChart3} label={t("Avg answered")} value={`${avgPct}%`} sub={t("per question")} />
           <div className="flex flex-col justify-between rounded-lg border bg-background p-4 shadow-xs">
             {loading ? (
               <Skeleton className="h-8 w-full" />
@@ -104,9 +110,9 @@ export function ResponsesView(props: ResponsesViewProps) {
                 disabled={responses.length === 0}
                 className="w-full gap-2"
                 size="sm"
-                aria-label="Download responses as CSV"
+                aria-label={t("Download responses as CSV")}
               >
-                <Download className="h-4 w-4" /> Download CSV
+                <Download className="h-4 w-4" /> {t("Download CSV")}
               </Button>
             )}
             <p className="mt-2 truncate text-[12px] text-muted-foreground" title={`${sanitizeFilename(form.title)}-responses.csv`}>
@@ -131,14 +137,14 @@ export function ResponsesView(props: ResponsesViewProps) {
           <Tabs defaultValue="summary" className="w-full">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <TabsList>
-                <TabsTrigger value="summary">Summary</TabsTrigger>
-                <TabsTrigger value="individual">Individual</TabsTrigger>
+                <TabsTrigger value="summary">{t("Summary")}</TabsTrigger>
+                <TabsTrigger value="individual">{t("Individual")}</TabsTrigger>
               </TabsList>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={props.onRefresh}
-                aria-label="Refresh responses"
+                aria-label={t("Refresh responses")}
                 className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -151,20 +157,20 @@ export function ResponsesView(props: ResponsesViewProps) {
               ))}
               {form.questions.length === 0 && (
                 <p className="rounded-lg border border-dashed bg-background/60 p-6 text-center text-[13px] text-muted-foreground">
-                  This form has no questions yet.
+                  {t("This form has no questions yet.")}
                 </p>
               )}
             </TabsContent>
 
             <TabsContent value="individual" className="mt-4">
-              <section aria-label="All responses" className="space-y-2">
-                <h2 className="mb-2 text-sm font-medium">All responses</h2>
+              <section aria-label={t("All responses")} className="space-y-2">
+                <h2 className="mb-2 text-sm font-medium">{t("All responses")}</h2>
                 {responses.map((r, i) => (
                   <Collapsible key={r.id} defaultOpen={i === 0}>
                     <CollapsibleTrigger className="group flex w-full items-center justify-between gap-2 rounded-lg border bg-background px-4 py-3 text-left shadow-xs transition-shadow hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60">
                       <span className="min-w-0 truncate text-[13px] font-medium">
-                        Response {i + 1}
-                        <span className="font-normal text-muted-foreground"> · {relativeTime(r.submittedAt)}</span>
+                        {t("Response {n}", { n: i + 1 })}
+                        <span className="font-normal text-muted-foreground"> · {relativeTime(r.submittedAt, lang)}</span>
                       </span>
                       <ChevronDown
                         className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-data-[state=open]:rotate-180"
@@ -177,16 +183,16 @@ export function ResponsesView(props: ResponsesViewProps) {
                         return (
                           <div key={q.id}>
                             <p className="text-[13px] font-medium text-muted-foreground">
-                              {q.title.trim() || "Untitled question"}
+                              {q.title.trim() || t("Untitled question")}
                             </p>
                             <p className={cn("mt-0.5 whitespace-pre-wrap break-words text-sm", !a && "italic text-muted-foreground")}>
-                              {a || "No answer"}
+                              {a || t("No answer")}
                             </p>
                           </div>
                         )
                       })}
                       {form.questions.length === 0 && (
-                        <p className="text-[13px] italic text-muted-foreground">No questions.</p>
+                        <p className="text-[13px] italic text-muted-foreground">{t("No questions.")}</p>
                       )}
                     </CollapsibleContent>
                   </Collapsible>
@@ -228,12 +234,13 @@ function SummaryCard({
 /* ------------------------------ per-question summary ---------------------------- */
 
 function QuestionSummary({ question, index, responses }: { question: Question; index: number; responses: ParsedResponse[] }) {
+  const { t } = useI18n()
   const values = responses.map((r) => r.answers[question.id])
   const answered = values.filter((v) => !isEmptyAnswer(v)).length
-  const title = question.title.trim() || "Untitled question"
+  const title = question.title.trim() || t("Untitled question")
 
   return (
-    <section aria-label={`Summary for question ${index + 1}`} className="rounded-lg border bg-background p-5 shadow-sm">
+    <section aria-label={t("Summary for question {n}", { n: index + 1 })} className="rounded-lg border bg-background p-5 shadow-sm">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium">
           {title}
@@ -241,9 +248,9 @@ function QuestionSummary({ question, index, responses }: { question: Question; i
         </h3>
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
-            {typeLabel(question.type)}
+            {t(typeLabel(question.type))}
           </span>
-          <span className="text-[13px] text-muted-foreground tnum">{answered} answered</span>
+          <span className="text-[13px] text-muted-foreground tnum">{t("{n} answered", { n: answered })}</span>
         </div>
       </div>
 
@@ -261,7 +268,8 @@ function QuestionSummary({ question, index, responses }: { question: Question; i
 }
 
 function ChoiceBars({ question, responses, checkbox }: { question: Question; responses: ParsedResponse[]; checkbox?: boolean }) {
-  const labels = question.options.map((o, i) => o.trim() || `Option ${i + 1}`)
+  const { t } = useI18n()
+  const labels = question.options.map((o, i) => o.trim() || t("Option {n}", { n: i + 1 }))
   const counts = labels.map((label) => {
     if (checkbox) {
       return responses.filter((r) => Array.isArray(r.answers[question.id]) && (r.answers[question.id] as string[]).includes(label)).length
@@ -274,7 +282,9 @@ function ChoiceBars({ question, responses, checkbox }: { question: Question; res
   return (
     <div>
       {checkbox && (
-        <p className="mb-3 text-[13px] text-muted-foreground tnum">{selections} selections across {total} responses</p>
+        <p className="mb-3 text-[13px] text-muted-foreground tnum">
+          {t("{selections} selections across {total} responses", { selections, total })}
+        </p>
       )}
       <div className="space-y-2.5">
         {labels.map((label, i) => {
@@ -287,7 +297,7 @@ function ChoiceBars({ question, responses, checkbox }: { question: Question; res
               <div
                 className="h-2 flex-1 rounded-full bg-muted"
                 role="img"
-                aria-label={`${label}: ${counts[i]} of ${total} responses (${pct}%)`}
+                aria-label={t("{label}: {count} of {total} responses ({pct}%)", { label, count: counts[i], total, pct })}
               >
                 <div
                   className={cn("h-2 rounded-full bg-primary transition-[width] duration-500", counts[i] > 0 && "min-w-[3px]")}
@@ -306,6 +316,7 @@ function ChoiceBars({ question, responses, checkbox }: { question: Question; res
 }
 
 function RatingSummary({ question, responses }: { question: Question; responses: ParsedResponse[] }) {
+  const { t } = useI18n()
   const nums = responses
     .map((r) => r.answers[question.id])
     .filter((v): v is number => typeof v === "number")
@@ -316,17 +327,17 @@ function RatingSummary({ question, responses }: { question: Question; responses:
   return (
     <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-8">
       <div className="shrink-0">
-        <p className="text-3xl font-normal tnum" aria-label={`Average rating ${avg.toFixed(1)} of 5`}>
+        <p className="text-3xl font-normal tnum" aria-label={t("Average rating {avg} of 5", { avg: avg.toFixed(1) })}>
           {nums.length > 0 ? avg.toFixed(1) : "–"}
         </p>
         <p className="flex items-center gap-1 text-[12px] text-muted-foreground">
-          <Star className="size-3 fill-primary text-primary" aria-hidden="true" /> average of 5 · {nums.length} rated
+          <Star className="size-3 fill-primary text-primary" aria-hidden="true" /> {t("average of 5 · {n} rated", { n: nums.length })}
         </p>
       </div>
       <div className="flex-1 space-y-1.5">
         {dist.map((d) => (
           <div key={d.star} className="flex items-center gap-3">
-            <span className="flex w-9 shrink-0 items-center gap-1 text-[13px] text-muted-foreground tnum" aria-label={`${d.star} stars: ${d.count} responses`}>
+            <span className="flex w-9 shrink-0 items-center gap-1 text-[13px] text-muted-foreground tnum" aria-label={t("{n} stars: {count} responses", { n: d.star, count: d.count })}>
               {d.star}
               <Star className="size-3 fill-muted-foreground/30 text-muted-foreground/40" aria-hidden="true" />
             </span>
@@ -345,12 +356,13 @@ function RatingSummary({ question, responses }: { question: Question; responses:
 }
 
 function TextAnswers({ question, responses }: { question: Question; responses: ParsedResponse[] }) {
+  const { t, lang } = useI18n()
   const items = responses
     .filter((r) => !isEmptyAnswer(r.answers[question.id]))
     .map((r) => ({ text: answerToText(r.answers[question.id]), at: r.submittedAt, id: r.id }))
 
   if (items.length === 0) {
-    return <p className="text-[13px] italic text-muted-foreground">No answers yet</p>
+    return <p className="text-[13px] italic text-muted-foreground">{t("No answers yet")}</p>
   }
 
   return (
@@ -366,7 +378,7 @@ function TextAnswers({ question, responses }: { question: Question; responses: P
           </span>
           <div className="min-w-0">
             <p className="whitespace-pre-wrap break-words text-sm leading-snug">{it.text}</p>
-            <p className="mt-0.5 text-[12px] text-muted-foreground">{relativeTime(it.at)}</p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">{relativeTime(it.at, lang)}</p>
           </div>
         </div>
       ))}
@@ -377,17 +389,18 @@ function TextAnswers({ question, responses }: { question: Question; responses: P
 /* --------------------------------- empty state ---------------------------------- */
 
 function EmptyResponses({ onOpenFill }: { onOpenFill: () => void }) {
+  const { t } = useI18n()
   return (
     <section className="flex flex-col items-center gap-4 rounded-lg border border-dashed bg-background/60 p-10 text-center">
       <span className="flex size-14 items-center justify-center rounded-full bg-primary/10">
         <BarChart3 className="h-6 w-6 text-primary" aria-hidden="true" />
       </span>
       <div>
-        <p className="text-sm font-medium">No responses yet</p>
-        <p className="mt-1 text-[13px] text-muted-foreground">Open the preview and submit one to see analytics here.</p>
+        <p className="text-sm font-medium">{t("No responses yet")}</p>
+        <p className="mt-1 text-[13px] text-muted-foreground">{t("Open the preview and submit one to see analytics here.")}</p>
       </div>
-      <Button onClick={onOpenFill} className="mt-1 gap-2" aria-label="Open preview to submit a test response">
-        <Eye className="h-4 w-4" /> Open preview
+      <Button onClick={onOpenFill} className="mt-1 gap-2" aria-label={t("Open preview to submit a test response")}>
+        <Eye className="h-4 w-4" /> {t("Open preview")}
       </Button>
     </section>
   )

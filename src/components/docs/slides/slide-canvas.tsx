@@ -12,6 +12,7 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react"
+import { useI18n } from "@/lib/i18n"
 import { useSlidesStore } from "./deck-store"
 import {
   SlideCard,
@@ -45,6 +46,7 @@ function RegionEditor({
   onCancel: () => void
 }) {
   const ref = React.useRef<HTMLTextAreaElement | null>(null)
+  const { t } = useI18n()
 
   // auto-height: cover the region and grow with the content
   React.useLayoutEffect(() => {
@@ -65,7 +67,7 @@ function RegionEditor({
       autoFocus
       value={value}
       spellCheck={false}
-      aria-label={region === "title" ? "Slide title" : "Slide text"}
+      aria-label={region === "title" ? t("Slide title") : t("Slide text")}
       onChange={(e) => onChange(e.target.value)}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
@@ -99,6 +101,7 @@ export function SlideCanvas() {
   const updateSlide = useSlidesStore((s) => s.updateSlide)
   const moveSelection = useSlidesStore((s) => s.moveSelection)
   const addSlide = useSlidesStore((s) => s.addSlide)
+  const { t } = useI18n()
 
   const [zoom, setZoom] = React.useState(1)
   const [selectedRegion, setSelectedRegion] = React.useState<EditableRegion | null>(null)
@@ -182,7 +185,7 @@ export function SlideCanvas() {
     <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
       <main
         ref={areaRef}
-        aria-label="Slide canvas"
+        aria-label={t("Slide canvas")}
         className="slim-scroll min-h-0 flex-1 overflow-auto bg-muted/60"
         onClick={() => {
           if (editing) commitEditing()
@@ -193,13 +196,13 @@ export function SlideCanvas() {
           {slides.length === 0 ? (
             <div className="my-auto flex flex-col items-center gap-4 rounded-xl border border-dashed p-10 text-center">
               <p className="text-sm text-muted-foreground">
-                This presentation has no slides yet.
+                {t("This presentation has no slides yet.")}
               </p>
               <LayoutPickerPopover
-                title="Insert a new slide"
+                title={t("Insert a new slide")}
                 onPick={(layout) => addSlide(layout)}
                 trigger={
-                  <Button className="h-10 rounded-full px-5">Add a slide</Button>
+                  <Button className="h-10 rounded-full px-5">{t("Add a slide")}</Button>
                 }
               />
             </div>
@@ -238,7 +241,7 @@ export function SlideCanvas() {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Zoom out (Ctrl minus)"
+              aria-label={t("Zoom out (Ctrl minus)")}
               onClick={() => setZoom((z) => clampZoom(z - ZOOM_STEP))}
               disabled={zoom <= MIN_ZOOM}
               className="h-9 w-9 rounded-full"
@@ -247,7 +250,7 @@ export function SlideCanvas() {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            Zoom out (Ctrl−)
+            {t("Zoom out (Ctrl−)")}
           </TooltipContent>
         </Tooltip>
         <span className="tnum w-12 select-none text-center text-[13px] text-muted-foreground">
@@ -258,7 +261,7 @@ export function SlideCanvas() {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Zoom in (Ctrl plus)"
+              aria-label={t("Zoom in (Ctrl plus)")}
               onClick={() => setZoom((z) => clampZoom(z + ZOOM_STEP))}
               disabled={zoom >= MAX_ZOOM}
               className="h-9 w-9 rounded-full"
@@ -267,7 +270,7 @@ export function SlideCanvas() {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            Zoom in (Ctrl+)
+            {t("Zoom in (Ctrl+)")}
           </TooltipContent>
         </Tooltip>
 
@@ -278,7 +281,7 @@ export function SlideCanvas() {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Previous slide"
+              aria-label={t("Previous slide")}
               onClick={() => moveSelection(-1)}
               disabled={slideIndex <= 0}
               className="h-9 w-9 rounded-full"
@@ -287,7 +290,7 @@ export function SlideCanvas() {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            Previous slide
+            {t("Previous slide")}
           </TooltipContent>
         </Tooltip>
         <span
@@ -301,7 +304,7 @@ export function SlideCanvas() {
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Next slide"
+              aria-label={t("Next slide")}
               onClick={() => moveSelection(1)}
               disabled={slideIndex < 0 || slideIndex >= slides.length - 1}
               className="h-9 w-9 rounded-full"
@@ -310,7 +313,7 @@ export function SlideCanvas() {
             </Button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            Next slide
+            {t("Next slide")}
           </TooltipContent>
         </Tooltip>
       </div>

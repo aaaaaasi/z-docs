@@ -3,6 +3,7 @@
 import * as React from "react"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import type { TagDTO } from "@/lib/docs-types"
 
 /**
@@ -60,6 +61,7 @@ export function TagChip({
   active?: boolean
   onFilter?: () => void
 }) {
+  const { t } = useI18n()
   const interactive = !!onFilter
   return (
     <button
@@ -73,8 +75,8 @@ export function TagChip({
           : undefined
       }
       aria-pressed={interactive ? active : undefined}
-      aria-label={interactive ? `Filter by tag ${tag.name}` : undefined}
-      title={interactive ? `Filter by \u201C${tag.name}\u201D` : undefined}
+      aria-label={interactive ? t("Filter by tag {name}", { name: tag.name }) : undefined}
+      title={interactive ? t("Filter by “{name}”", { name: tag.name }) : undefined}
       className={cn(
         "inline-flex h-5 max-w-full items-center gap-1 rounded-full bg-muted px-2 text-[11px] leading-none text-foreground/80 transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
         interactive && cn(hitArea, "cursor-pointer hover:bg-muted/70"),
@@ -89,9 +91,10 @@ export function TagChip({
 
 /** Non-interactive "+N" overflow chip for docs carrying more than 3 tags */
 export function TagOverflowChip({ count, names }: { count: number; names?: string }) {
+  const { t } = useI18n()
   return (
     <span
-      title={names ? `More tags: ${names}` : undefined}
+      title={names ? t("More tags: {names}", { names }) : undefined}
       className="inline-flex h-5 items-center rounded-full bg-muted px-2 text-[11px] leading-none text-muted-foreground"
     >
       +{count}
@@ -101,6 +104,7 @@ export function TagOverflowChip({ count, names }: { count: number; names?: strin
 
 /** Google Drive style filter chip shown in the docs grid header while a tag filter is active */
 export function TagFilterChip({ tag, onClear }: { tag: TagDTO; onClear: () => void }) {
+  const { t } = useI18n()
   return (
     <div
       className="inline-flex h-8 items-center gap-1.5 rounded-full pl-3 pr-1 ring-1 ring-inset ring-foreground/10"
@@ -111,7 +115,7 @@ export function TagFilterChip({ tag, onClear }: { tag: TagDTO; onClear: () => vo
       <button
         type="button"
         onClick={onClear}
-        aria-label={`Clear tag filter ${tag.name}`}
+        aria-label={t("Clear tag filter {name}", { name: tag.name })}
         className={cn(
           "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
           hitArea
@@ -133,8 +137,9 @@ export function TagColorPalette({
   onChange: (hex: string) => void
   className?: string
 }) {
+  const { t } = useI18n()
   return (
-    <div role="radiogroup" aria-label="Tag color" className={cn("flex items-center gap-1", className)}>
+    <div role="radiogroup" aria-label={t("Tag color")} className={cn("flex items-center gap-1", className)}>
       {TAG_COLORS.map((c) => {
         const selected = c.value === value
         return (
@@ -143,7 +148,7 @@ export function TagColorPalette({
             type="button"
             role="radio"
             aria-checked={selected}
-            aria-label={`${c.name} tag color`}
+            aria-label={t(`${c.name} tag color`)}
             onClick={() => onChange(c.value)}
             className={cn(
               "flex h-6 w-6 items-center justify-center rounded-full transition-transform duration-150 hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70",

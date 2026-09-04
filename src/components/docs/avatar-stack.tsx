@@ -1,6 +1,7 @@
 "use client"
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { useI18n } from "@/lib/i18n"
 import type { CollabUser } from "@/lib/docs-types"
 import { initialsOf } from "@/lib/doc-utils"
 
@@ -14,6 +15,7 @@ export function AvatarStack({
   max?: number
   size?: "sm" | "md"
 }) {
+  const { t } = useI18n()
   const visible = users.slice(0, max)
   const rest = users.length - visible.length
   const dim = size === "sm" ? "h-7 w-7 text-[10px]" : "h-8 w-8 text-[11px]"
@@ -30,7 +32,7 @@ export function AvatarStack({
             </div>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            <span className="font-medium">{u.name}</span> is editing
+            <span className="font-medium">{u.name}</span>{t(" is editing")}
           </TooltipContent>
         </Tooltip>
       ))}

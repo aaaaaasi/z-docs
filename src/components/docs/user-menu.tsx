@@ -7,11 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { useLocalUser, saveLocalUser } from "@/lib/identity"
 import { initialsOf, PRESENCE_COLORS } from "@/lib/doc-utils"
+import { useI18n } from "@/lib/i18n"
 import { Check } from "lucide-react"
 
 /** Avatar button + popover to edit your display name & color */
 export function UserMenu({ align = "end" }: { align?: "start" | "center" | "end" }) {
   const user = useLocalUser()
+  const { t } = useI18n()
   const [draft, setDraft] = React.useState<string | null>(null)
 
   if (!user) {
@@ -27,7 +29,7 @@ export function UserMenu({ align = "end" }: { align?: "start" | "center" | "end"
     <Popover>
       <PopoverTrigger asChild>
         <button
-          aria-label="Account settings"
+          aria-label={t("Account settings")}
           className="h-9 w-9 rounded-full text-sm font-semibold text-white ring-2 ring-background transition-transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           style={{ backgroundColor: user.color }}
         >
@@ -45,11 +47,11 @@ export function UserMenu({ align = "end" }: { align?: "start" | "center" | "end"
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{user.name}</p>
-              <p className="text-xs text-muted-foreground">Local account · demo</p>
+              <p className="text-xs text-muted-foreground">{t("Local account · demo")}</p>
             </div>
           </div>
           <Separator className="my-3" />
-          <label className="text-xs font-medium text-muted-foreground">Display name</label>
+          <label className="text-xs font-medium text-muted-foreground">{t("Display name")}</label>
           <Input
             value={name}
             onChange={(e) => setDraft(e.target.value)}
@@ -57,12 +59,12 @@ export function UserMenu({ align = "end" }: { align?: "start" | "center" | "end"
             className="mt-1 h-8"
             maxLength={40}
           />
-          <label className="mt-3 block text-xs font-medium text-muted-foreground">Avatar color</label>
+          <label className="mt-3 block text-xs font-medium text-muted-foreground">{t("Avatar color")}</label>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {PRESENCE_COLORS.slice(0, 10).map((c) => (
               <button
                 key={c}
-                aria-label={`Use color ${c}`}
+                aria-label={t("Use color {color}", { color: c })}
                 onClick={() => {
                   saveLocalUser({ ...user, color: c })
                 }}
@@ -74,7 +76,7 @@ export function UserMenu({ align = "end" }: { align?: "start" | "center" | "end"
             ))}
           </div>
           <Button size="sm" className="mt-3 w-full" onClick={apply}>
-            Save profile
+            {t("Save profile")}
           </Button>
         </div>
       </PopoverContent>

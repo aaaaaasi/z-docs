@@ -3,6 +3,7 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import { FileText, Sparkles } from "lucide-react"
+import { useI18n } from "@/lib/i18n"
 
 export function WordCountDialog({
   open, onOpenChange, stats,
@@ -11,19 +12,20 @@ export function WordCountDialog({
   onOpenChange: (o: boolean) => void
   stats: { words: number; chars: number; paragraphs: number; pages: number; readingMinutes: number }
 }) {
+  const { t } = useI18n()
   const rows: [string, string | number][] = [
-    ["Pages", stats.pages],
-    ["Words", stats.words.toLocaleString()],
-    ["Characters", stats.chars.toLocaleString()],
-    ["Paragraphs", stats.paragraphs.toLocaleString()],
-    ["Reading time", `~${stats.readingMinutes} min`],
+    [t("Pages"), stats.pages],
+    [t("Words"), stats.words.toLocaleString()],
+    [t("Characters"), stats.chars.toLocaleString()],
+    [t("Paragraphs"), stats.paragraphs.toLocaleString()],
+    [t("Reading time"), t("~{n} min", { n: stats.readingMinutes })],
   ]
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Word count</DialogTitle>
-          <DialogDescription>Live statistics for this document.</DialogDescription>
+          <DialogTitle>{t("Word count")}</DialogTitle>
+          <DialogDescription>{t("Live statistics for this document.")}</DialogDescription>
         </DialogHeader>
         <table className="w-full text-sm">
           <tbody>
@@ -63,11 +65,12 @@ const SHORTCUTS: [string, string][] = [
 ]
 
 export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useI18n()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Keyboard shortcuts</DialogTitle>
+          <DialogTitle>{t("Keyboard shortcuts")}</DialogTitle>
         </DialogHeader>
         <div className="max-h-80 overflow-y-auto pr-1 slim-scroll">
           <table className="w-full text-sm">
@@ -77,7 +80,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
                   <td className="py-2">
                     <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-[11px]">{k}</kbd>
                   </td>
-                  <td className="py-2.5 text-muted-foreground">{v}</td>
+                  <td className="py-2.5 text-muted-foreground">{t(v)}</td>
                 </tr>
               ))}
             </tbody>
@@ -89,6 +92,7 @@ export function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenC
 }
 
 export function AboutDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const { t } = useI18n()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -97,25 +101,24 @@ export function AboutDialog({ open, onOpenChange }: { open: boolean; onOpenChang
             <div className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-primary text-primary-foreground">
               <FileText className="h-5 w-5" />
             </div>
-            About Z-Docs
+            {t("About Z-Docs")}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm text-muted-foreground">
           <p>
-            Z-Docs is a Google&nbsp;Docs-style collaborative document editor. It features a rich text
-            toolbar, autosave, version history, real-time presence, live cursors and an AI writing assistant.
+            {t("Z-Docs is a Google Docs-style collaborative document editor. It features a rich text toolbar, autosave, version history, real-time presence, live cursors and an AI writing assistant.")}
           </p>
           <Separator />
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5 text-primary" /> AI drafting</div>
-            <div>Real-time collaboration</div>
-            <div>Version history</div>
-            <div>Templates gallery</div>
-            <div>Trash &amp; stars</div>
-            <div>Print &amp; export</div>
+            <div className="flex items-center gap-2"><Sparkles className="h-3.5 w-3.5 text-primary" /> {t("AI drafting")}</div>
+            <div>{t("Real-time collaboration")}</div>
+            <div>{t("Version history")}</div>
+            <div>{t("Templates gallery")}</div>
+            <div>{t("Trash & stars")}</div>
+            <div>{t("Print & export")}</div>
           </div>
           <Separator />
-          <p className="text-xs">Built with Next.js 16, Prisma, Socket.IO and Tailwind CSS.</p>
+          <p className="text-xs">{t("Built with Next.js 16, Prisma, Socket.IO and Tailwind CSS.")}</p>
         </div>
       </DialogContent>
     </Dialog>

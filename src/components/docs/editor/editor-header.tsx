@@ -5,22 +5,25 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { AvatarStack } from "@/components/docs/avatar-stack"
 import { ThemeToggle } from "@/components/docs/theme-toggle"
+import { LangToggle } from "@/components/docs/lang-toggle"
 import { UserMenu } from "@/components/docs/user-menu"
 import { DocsLogo } from "@/components/docs/home/home-header"
 import type { EditorApi } from "./editor-types"
 import { Star, CloudCheck, CloudOff, CloudUpload, Users, ArrowLeft, Share2, MessageSquare, ListTree } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { relativeTime } from "@/lib/doc-utils"
+import { useI18n } from "@/lib/i18n"
 
 function SaveState({ api }: { api: EditorApi }) {
+  const { t, lang } = useI18n()
   const [text, icon, cls] =
     api.saveStatus === "saving"
-      ? ["Saving…", CloudUpload, "text-muted-foreground"]
+      ? [t("Saving…"), CloudUpload, "text-muted-foreground"]
       : api.saveStatus === "unsaved"
-        ? ["Unsaved changes", CloudUpload, "text-amber-600"]
+        ? [t("Unsaved changes"), CloudUpload, "text-amber-600"]
         : api.saveStatus === "error"
-          ? ["Offline, retrying", CloudOff, "text-destructive"]
-          : ["All changes saved", CloudCheck, "text-muted-foreground"]
+          ? [t("Offline, retrying"), CloudOff, "text-destructive"]
+          : [t("All changes saved"), CloudCheck, "text-muted-foreground"]
 
   return (
     <div className={cn("flex items-center gap-1 text-xs", cls)}>
@@ -28,7 +31,7 @@ function SaveState({ api }: { api: EditorApi }) {
       <span>
         {text}
         {api.saveStatus === "saved" && api.lastSavedAt && (
-          <span className="tnum hidden sm:inline"> · {relativeTime(api.lastSavedAt.toISOString())}</span>
+          <span className="tnum hidden sm:inline"> · {relativeTime(api.lastSavedAt.toISOString(), lang)}</span>
         )}
       </span>
     </div>
@@ -36,6 +39,7 @@ function SaveState({ api }: { api: EditorApi }) {
 }
 
 export function EditorHeader({ api }: { api: EditorApi }) {
+  const { t } = useI18n()
   const titleRef = React.useRef<HTMLInputElement>(null)
 
   React.useEffect(() => {
@@ -51,13 +55,13 @@ export function EditorHeader({ api }: { api: EditorApi }) {
         <TooltipTrigger asChild>
           <button
             onClick={api.goHome}
-            aria-label="Back to documents"
+            aria-label={t("Back to documents")}
             className="rounded-md p-1.5 transition-colors hover:bg-muted"
           >
             <ArrowLeft className="h-5 w-5 text-muted-foreground" />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="text-xs">Back to documents</TooltipContent>
+        <TooltipContent side="bottom" className="text-xs">{t("Back to documents")}</TooltipContent>
       </Tooltip>
 
       <DocsLogo size="sm" />
@@ -74,7 +78,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
                 api.focusEditor()
               }
             }}
-            aria-label="Document title"
+            aria-label={t("Document title")}
             maxLength={150}
             className="min-w-[4ch] max-w-full truncate rounded px-1.5 py-0.5 text-lg font-medium outline-none hover:bg-muted/60 focus:bg-muted"
           />
@@ -82,7 +86,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
             <TooltipTrigger asChild>
               <button
                 onClick={api.toggleStar}
-                aria-label={api.starred ? "Remove star" : "Add star"}
+                aria-label={api.starred ? t("Remove star") : t("Add star")}
                 className="rounded-md p-1.5 transition-colors hover:bg-muted"
               >
                 <Star
@@ -95,7 +99,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              {api.starred ? "Remove star" : "Star this document"}
+              {api.starred ? t("Remove star") : t("Star this document")}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -108,7 +112,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
             <AvatarStack users={api.presence} size="sm" max={3} />
             <span className="hidden items-center gap-1 text-xs text-muted-foreground lg:flex">
               <Users className="h-3.5 w-3.5" />
-              {api.presence.length === 1 ? "1 editor" : `${api.presence.length} editors`}
+              {api.presence.length === 1 ? t("1 editor") : t("{n} editors", { n: api.presence.length })}
             </span>
           </div>
         )}
@@ -116,7 +120,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
           <TooltipTrigger asChild>
             <button
               onClick={() => api.toggleOutline()}
-              aria-label={api.outlineOpen ? "Hide document outline" : "Show document outline"}
+              aria-label={api.outlineOpen ? t("Hide document outline") : t("Show document outline")}
               aria-pressed={api.outlineOpen}
               className={cn(
                 "rounded-md p-2 transition-colors hover:bg-muted",
@@ -127,14 +131,14 @@ export function EditorHeader({ api }: { api: EditorApi }) {
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            {api.outlineOpen ? "Hide document outline" : "Show document outline"}
+            {api.outlineOpen ? t("Hide document outline") : t("Show document outline")}
           </TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               onClick={() => api.toggleComments()}
-              aria-label={api.commentsOpen ? "Hide comments" : "Show comments"}
+              aria-label={api.commentsOpen ? t("Hide comments") : t("Show comments")}
               aria-pressed={api.commentsOpen}
               className={cn(
                 "relative rounded-md p-2 transition-colors hover:bg-muted",
@@ -145,7 +149,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
               {api.unresolvedCommentCount > 0 && (
                 <span
                   className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground shadow"
-                  aria-label={`${api.unresolvedCommentCount} unresolved comments`}
+                  aria-label={t("{n} unresolved comments", { n: api.unresolvedCommentCount })}
                 >
                   {api.unresolvedCommentCount > 9 ? "9+" : api.unresolvedCommentCount}
                 </span>
@@ -153,17 +157,18 @@ export function EditorHeader({ api }: { api: EditorApi }) {
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            {api.commentsOpen ? "Hide comments" : "Show comments"}
+            {api.commentsOpen ? t("Hide comments") : t("Show comments")}
             {api.unresolvedCommentCount > 0 ? ` (${api.unresolvedCommentCount})` : ""}
           </TooltipContent>
         </Tooltip>
+        <LangToggle />
         <Button
           size="sm"
           className="gap-2 rounded-md px-4 max-sm:px-3"
           onClick={() => api.openDialog("share")}
         >
           <Share2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Share</span>
+          <span className="hidden sm:inline">{t("Share")}</span>
         </Button>
         <ThemeToggle />
         <UserMenu />

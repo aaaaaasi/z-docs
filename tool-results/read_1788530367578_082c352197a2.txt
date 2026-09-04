@@ -1,0 +1,779 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useTheme } from "next-themes"
+     5→import type { LucideIcon } from "lucide-react"
+     6→import {
+     7→  ArrowLeft,
+     8→  Check,
+     9→  Database,
+    10→  Download,
+    11→  FileCog,
+    12→  FileSpreadsheet,
+    13→  FileText,
+    14→  Folder,
+    15→  FormInput,
+    16→  Info,
+    17→  Palette,
+    18→  Presentation,
+    19→  RotateCcw,
+    20→  Tag,
+    21→  User,
+    22→} from "lucide-react"
+    23→import {
+    24→  AlertDialog,
+    25→  AlertDialogAction,
+    26→  AlertDialogCancel,
+    27→  AlertDialogContent,
+    28→  AlertDialogDescription,
+    29→  AlertDialogFooter,
+    30→  AlertDialogHeader,
+    31→  AlertDialogTitle,
+    32→  AlertDialogTrigger,
+    33→} from "@/components/ui/alert-dialog"
+    34→import { Button } from "@/components/ui/button"
+    35→import { Input } from "@/components/ui/input"
+    36→import { Label } from "@/components/ui/label"
+    37→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+    38→import { Skeleton } from "@/components/ui/skeleton"
+    39→import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+    40→import { useDocsStore } from "@/store/docs-store"
+    41→import { useLocalUser, saveLocalUser } from "@/lib/identity"
+    42→import { initialsOf, PRESENCE_COLORS } from "@/lib/doc-utils"
+    43→import { useToast } from "@/hooks/use-toast"
+    44→import { cn } from "@/lib/utils"
+    45→import {
+    46→  ACCENT_OPTIONS,
+    47→  ACCENT_STORAGE_KEY,
+    48→  DEFAULT_ACCENT_HEX,
+    49→  FONT_STORAGE_KEY,
+    50→  THEME_MODE_STORAGE_KEY,
+    51→  USER_STORAGE_KEY,
+    52→  ZOOM_STORAGE_KEY,
+    53→  applyAccent,
+    54→  readStoredAccent,
+    55→  saveAccent,
+    56→} from "./settings-lib"
+    57→
+    58→/* ------------------------------ theme mode hook ----------------------------- */
+    59→
+    60→type ThemeMode = "light" | "dark" | "system"
+    61→
+    62→function systemPreference(): "light" | "dark" {
+    63→  if (typeof window === "undefined" || !window.matchMedia) return "light"
+    64→  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+    65→}
+    66→
+    67→/**
+    68→ * Light / Dark / System selection on top of next-themes' setTheme. The app's
+    69→ * ThemeProvider has system resolution disabled, so "System" is resolved here
+    70→ * via matchMedia and applied as an explicit light/dark theme — and followed
+    71→ * live if the OS preference changes. The chosen mode is mirrored to
+    72→ * localStorage and re-synced when the theme is toggled elsewhere (header).
+    73→ */
+    74→function useThemeMode(): { mode: ThemeMode; setMode: (mode: ThemeMode) => void } {
+    75→  const { theme, setTheme } = useTheme()
+    76→  const [mode, setModeState] = React.useState<ThemeMode>(() => {
+    77→    if (typeof window === "undefined") return "light"
+    78→    let own: string | null = null
+    79→    try {
+    80→      own = window.localStorage.getItem(THEME_MODE_STORAGE_KEY)
+    81→    } catch {
+    82→      // storage unavailable
+    83→    }
+    84→    if (own === "light" || own === "dark" || own === "system") {
+    85→      const applied = own === "system" ? systemPreference() : own
+    86→      if ((theme === "light" || theme === "dark") && theme !== applied) return theme
+    87→      return own
+    88→    }
+    89→    return theme === "dark" ? "dark" : "light"
+    90→  })
+    91→
+    92→  const setMode = React.useCallback(
+    93→    (next: ThemeMode) => {
+    94→      setModeState(next)
+    95→      try {
+    96→        window.localStorage.setItem(THEME_MODE_STORAGE_KEY, next)
+    97→      } catch {
+    98→        // storage unavailable — still apply for this session
+    99→      }
+   100→      setTheme(next === "system" ? systemPreference() : next)
+   101→    },
+   102→    [setTheme]
+   103→  )
+   104→
+   105→  // keep the card selection honest when the theme is toggled outside Settings
+   106→  React.useEffect(() => {
+   107→    if (theme !== "light" && theme !== "dark") return
+   108→    const applied = mode === "system" ? systemPreference() : mode
+   109→    if (theme !== applied) setModeState(theme)
+   110→  }, [theme, mode])
+   111→
+   112→  // follow OS preference changes while in System mode
+   113→  React.useEffect(() => {
+   114→    if (mode !== "system") return
+   115→    const mq = window.matchMedia("(prefers-color-scheme: dark)")
+   116→    const onChange = () => setTheme(mq.matches ? "dark" : "light")
+   117→    mq.addEventListener("change", onChange)
+   118→    return () => mq.removeEventListener("change", onChange)
+   119→  }, [mode, setTheme])
+   120→
+   121→  return { mode, setMode }
+   122→}
+   123→
+   124→/* ------------------------------ shared helpers ------------------------------ */
+   125→
+   126→type SettingsTab = "general" | "appearance" | "workspace" | "data" | "about"
+   127→
+   128→const TABS: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
+   129→  { id: "general", label: "General", icon: User },
+   130→  { id: "appearance", label: "Appearance", icon: Palette },
+   131→  { id: "workspace", label: "Workspace defaults", icon: FileCog },
+   132→  { id: "data", label: "Data & storage", icon: Database },
+   133→  { id: "about", label: "About", icon: Info },
+   134→]
+   135→
+   136→function SectionCard({
+   137→  title,
+   138→  description,
+   139→  children,
+   140→}: {
+   141→  title: string
+   142→  description?: string
+   143→  children: React.ReactNode
+   144→}) {
+   145→  return (
+   146→    <section className="space-y-6 rounded-xl border bg-background p-6">
+   147→      <div>
+   148→        <h2 className="text-[15px] font-medium">{title}</h2>
+   149→        {description ? <p className="mt-1 text-[13px] text-muted-foreground">{description}</p> : null}
+   150→      </div>
+   151→      {children}
+   152→    </section>
+   153→  )
+   154→}
+   155→
+   156→function formatBytes(bytes: number): string {
+   157→  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+   158→  return `${(bytes / 1024).toFixed(1)} KB`
+   159→}
+   160→
+   161→/* --------------------------------- General ---------------------------------- */
+   162→
+   163→function GeneralSection() {
+   164→  const user = useLocalUser()
+   165→  const { toast } = useToast()
+   166→  const [draftName, setDraftName] = React.useState<string | null>(null)
+   167→
+   168→  const name = draftName ?? user?.name ?? ""
+   169→
+   170→  // 400ms debounced save of the display name
+   171→  React.useEffect(() => {
+   172→    if (draftName === null || !user) return
+   173→    const t = setTimeout(() => {
+   174→      const trimmed = draftName.trim()
+   175→      if (trimmed && trimmed !== user.name) {
+   176→        saveLocalUser({ ...user, name: trimmed })
+   177→        toast({ title: "Name saved" })
+   178→      }
+   179→    }, 400)
+   180→    return () => clearTimeout(t)
+   181→  }, [draftName, user, toast])
+   182→
+   183→  if (!user) {
+   184→    return (
+   185→      <SectionCard title="Profile">
+   186→        <div className="flex items-center gap-4">
+   187→          <Skeleton className="h-10 w-10 rounded-full" />
+   188→          <div className="flex-1 space-y-2">
+   189→            <Skeleton className="h-4 w-24" />
+   190→            <Skeleton className="h-10 w-full max-w-sm" />
+   191→          </div>
+   192→        </div>
+   193→      </SectionCard>
+   194→    )
+   195→  }
+   196→
+   197→  return (
+   198→    <SectionCard title="Profile" description="How you appear across the Z workspace.">
+   199→      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+   200→        <div
+   201→          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ring-1 ring-black/5"
+   202→          style={{ backgroundColor: user.color }}
+   203→          aria-label={`Avatar preview: ${initialsOf(name)}`}
+   204→        >
+   205→          {initialsOf(name)}
+   206→        </div>
+   207→        <div className="min-w-0 max-w-sm flex-1">
+   208→          <Label htmlFor="display-name">Display name</Label>
+   209→          <Input
+   210→            id="display-name"
+   211→            value={name}
+   212→            onChange={(e) => setDraftName(e.target.value)}
+   213→            maxLength={40}
+   214→            placeholder="Your name"
+   215→            className="mt-1.5 h-10"
+   216→          />
+   217→          <p className="mt-1.5 text-xs text-muted-foreground">Saved automatically as you type.</p>
+   218→        </div>
+   219→      </div>
+   220→      <div>
+   221→        <Label>Avatar color</Label>
+   222→        <div className="mt-2 flex flex-wrap gap-2">
+   223→          {PRESENCE_COLORS.slice(0, 10).map((c) => {
+   224→            const selected = user.color === c
+   225→            return (
+   226→              <button
+   227→                key={c}
+   228→                type="button"
+   229→                aria-label={`Use color ${c}`}
+   230→                aria-pressed={selected}
+   231→                onClick={() => {
+   232→                  saveLocalUser({ ...user, color: c })
+   233→                  toast({ title: "Avatar color updated" })
+   234→                }}
+   235→                className={cn(
+   236→                  "flex h-8 w-8 items-center justify-center rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
+   237→                  selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
+   238→                )}
+   239→                style={{ backgroundColor: c }}
+   240→              >
+   241→                {selected ? <Check className="h-4 w-4 text-white" /> : null}
+   242→              </button>
+   243→            )
+   244→          })}
+   245→        </div>
+   246→      </div>
+   247→      <p className="text-xs text-muted-foreground">
+   248→        Your name and color appear in comments, presence and the activity feed.
+   249→      </p>
+   250→    </SectionCard>
+   251→  )
+   252→}
+   253→
+   254→/* ------------------------------- Appearance --------------------------------- */
+   255→
+   256→function WindowBody({ dark }: { dark: boolean }) {
+   257→  return (
+   258→    <div className={cn("flex-1", dark ? "bg-neutral-900" : "bg-white")}>
+   259→      <div
+   260→        className={cn(
+   261→          "flex h-4 items-center gap-1 border-b px-2",
+   262→          dark ? "border-neutral-700 bg-neutral-800" : "border-neutral-100 bg-neutral-50"
+   263→        )}
+   264→      >
+   265→        <span className="h-1 w-1 rounded-full bg-[#0b6b62]" />
+   266→        <span className={cn("h-1 w-4 rounded-full", dark ? "bg-neutral-600" : "bg-neutral-200")} />
+   267→      </div>
+   268→      <div className="space-y-1.5 p-2.5">
+   269→        <div className={cn("h-1.5 w-3/5 rounded-full", dark ? "bg-neutral-700" : "bg-neutral-200")} />
+   270→        <div className={cn("h-1.5 w-4/5 rounded-full", dark ? "bg-neutral-800" : "bg-neutral-100")} />
+   271→        <div className="h-1.5 w-1/3 rounded-full bg-[#0b6b62]" />
+   272→      </div>
+   273→    </div>
+   274→  )
+   275→}
+   276→
+   277→function WindowPreview({ variant }: { variant: "light" | "dark" | "split" }) {
+   278→  if (variant === "split") {
+   279→    return (
+   280→      <div className="flex h-[72px] overflow-hidden rounded-md border border-neutral-300">
+   281→        <WindowBody dark={false} />
+   282→        <WindowBody dark />
+   283→      </div>
+   284→    )
+   285→  }
+   286→  return (
+   287→    <div
+   288→      className={cn(
+   289→        "h-[72px] overflow-hidden rounded-md border",
+   290→        variant === "dark" ? "border-neutral-700" : "border-neutral-200"
+   291→      )}
+   292→    >
+   293→      <WindowBody dark={variant === "dark"} />
+   294→    </div>
+   295→  )
+   296→}
+   297→
+   298→const THEME_CARDS: { value: ThemeMode; label: string; hint: string; preview: "light" | "dark" | "split" }[] = [
+   299→  { value: "light", label: "Light", hint: "Bright surfaces", preview: "light" },
+   300→  { value: "dark", label: "Dark", hint: "Dimmed surfaces", preview: "dark" },
+   301→  { value: "system", label: "System", hint: "Follows your device", preview: "split" },
+   302→]
+   303→
+   304→function AppearanceSection() {
+   305→  const { mode, setMode } = useThemeMode()
+   306→  const { resolvedTheme } = useTheme()
+   307→  const { toast } = useToast()
+   308→  const [accent, setAccent] = React.useState<string | null>(null)
+   309→  const [mounted, setMounted] = React.useState(false)
+   310→
+   311→  React.useEffect(() => {
+   312→    setAccent(readStoredAccent())
+   313→    setMounted(true)
+   314→  }, [])
+   315→
+   316→  // keep the applied accent correct when the light/dark theme flips
+   317→  React.useEffect(() => {
+   318→    const hex = readStoredAccent()
+   319→    if (hex) applyAccent(hex)
+   320→  }, [resolvedTheme])
+   321→
+   322→  const activeAccent = accent ?? DEFAULT_ACCENT_HEX
+   323→
+   324→  return (
+   325→    <SectionCard title="Appearance" description="Choose how Z-Docs looks and feels.">
+   326→      <div>
+   327→        <Label>Theme</Label>
+   328→        <div role="radiogroup" aria-label="Theme" className="mt-2 grid grid-cols-3 gap-3 sm:max-w-lg">
+   329→          {THEME_CARDS.map((card) => {
+   330→            const selected = mounted && mode === card.value
+   331→            return (
+   332→              <button
+   333→                key={card.value}
+   334→                type="button"
+   335→                role="radio"
+   336→                aria-checked={selected}
+   337→                onClick={() => setMode(card.value)}
+   338→                className={cn(
+   339→                  "rounded-xl border p-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+   340→                  selected
+   341→                    ? "border-transparent ring-2 ring-primary"
+   342→                    : "border-border hover:bg-accent/50"
+   343→                )}
+   344→              >
+   345→                <WindowPreview variant={card.preview} />
+   346→                <span className="mt-2 flex items-center justify-between">
+   347→                  <span className="text-[13px] font-medium">{card.label}</span>
+   348→                  {selected ? <Check className="h-4 w-4 text-primary" /> : null}
+   349→                </span>
+   350→                <span className="mt-0.5 block text-[11px] text-muted-foreground">{card.hint}</span>
+   351→              </button>
+   352→            )
+   353→          })}
+   354→        </div>
+   355→      </div>
+   356→      <div>
+   357→        <Label>Accent color</Label>
+   358→        <p className="mt-0.5 text-xs text-muted-foreground">
+   359→          Recolors buttons, links and highlights across the workspace.
+   360→        </p>
+   361→        <div className="mt-2 flex flex-wrap gap-2.5">
+   362→          {ACCENT_OPTIONS.map((option) => {
+   363→            const selected = mounted && activeAccent === option.hex
+   364→            return (
+   365→              <button
+   366→                key={option.hex}
+   367→                type="button"
+   368→                aria-label={`Accent color: ${option.name}`}
+   369→                aria-pressed={selected}
+   370→                onClick={() => {
+   371→                  setAccent(option.hex)
+   372→                  saveAccent(option.hex)
+   373→                  toast({ title: `Accent set to ${option.name}` })
+   374→                }}
+   375→                className={cn(
+   376→                  "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
+   377→                  selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
+   378→                )}
+   379→                style={{ backgroundColor: option.hex }}
+   380→              >
+   381→                {selected ? <Check className="h-4 w-4 text-white" /> : null}
+   382→              </button>
+   383→            )
+   384→          })}
+   385→        </div>
+   386→      </div>
+   387→    </SectionCard>
+   388→  )
+   389→}
+   390→
+   391→/* --------------------------- Workspace defaults ----------------------------- */
+   392→
+   393→function WorkspaceSection() {
+   394→  const { toast } = useToast()
+   395→  const [font, setFont] = React.useState<"sans" | "serif">("sans")
+   396→  const [zoom, setZoom] = React.useState<"100" | "125" | "150">("100")
+   397→
+   398→  React.useEffect(() => {
+   399→    try {
+   400→      const f = window.localStorage.getItem(FONT_STORAGE_KEY)
+   401→      if (f === "sans" || f === "serif") setFont(f)
+   402→      const z = window.localStorage.getItem(ZOOM_STORAGE_KEY)
+   403→      if (z === "100" || z === "125" || z === "150") setZoom(z)
+   404→    } catch {
+   405→      // storage unavailable — defaults are fine
+   406→    }
+   407→  }, [])
+   408→
+   409→  const saveFont = (value: string) => {
+   410→    if (value !== "sans" && value !== "serif") return
+   411→    setFont(value)
+   412→    try {
+   413→      window.localStorage.setItem(FONT_STORAGE_KEY, value)
+   414→    } catch {
+   415→      // ignore
+   416→    }
+   417→    toast({ title: value === "sans" ? "Default font set to Sans" : "Default font set to Serif" })
+   418→  }
+   419→
+   420→  const saveZoom = (value: string) => {
+   421→    if (value !== "100" && value !== "125" && value !== "150") return
+   422→    setZoom(value)
+   423→    try {
+   424→      window.localStorage.setItem(ZOOM_STORAGE_KEY, value)
+   425→    } catch {
+   426→      // ignore
+   427→    }
+   428→    toast({ title: `Default zoom set to ${value}%` })
+   429→  }
+   430→
+   431→  return (
+   432→    <SectionCard
+   433→      title="Workspace defaults"
+   434→      description="Preferences used when creating new documents."
+   435→    >
+   436→      <div className="grid gap-4 sm:grid-cols-2">
+   437→        <div>
+   438→          <Label htmlFor="default-font">Default font</Label>
+   439→          <Select value={font} onValueChange={saveFont}>
+   440→            <SelectTrigger id="default-font" className="mt-1.5 h-10 w-full">
+   441→              <SelectValue placeholder="Sans" />
+   442→            </SelectTrigger>
+   443→            <SelectContent>
+   444→              <SelectItem value="sans">Sans (Arial)</SelectItem>
+   445→              <SelectItem value="serif">Serif (Georgia)</SelectItem>
+   446→            </SelectContent>
+   447→          </Select>
+   448→          <p className="mt-1.5 text-xs text-muted-foreground">Used when creating new documents</p>
+   449→        </div>
+   450→        <div>
+   451→          <Label htmlFor="default-zoom">Default editor zoom</Label>
+   452→          <Select value={zoom} onValueChange={saveZoom}>
+   453→            <SelectTrigger id="default-zoom" className="mt-1.5 h-10 w-full">
+   454→              <SelectValue placeholder="100%" />
+   455→            </SelectTrigger>
+   456→            <SelectContent>
+   457→              <SelectItem value="100">100%</SelectItem>
+   458→              <SelectItem value="125">125%</SelectItem>
+   459→              <SelectItem value="150">150%</SelectItem>
+   460→            </SelectContent>
+   461→          </Select>
+   462→          <p className="mt-1.5 text-xs text-muted-foreground">Used when creating new documents</p>
+   463→        </div>
+   464→      </div>
+   465→    </SectionCard>
+   466→  )
+   467→}
+   468→
+   469→/* ------------------------------ Data & storage ------------------------------ */
+   470→
+   471→interface ExportPayload {
+   472→  counts?: {
+   473→    documents?: number
+   474→    sheets?: number
+   475→    decks?: number
+   476→    forms?: number
+   477→    folders?: number
+   478→    tags?: number
+   479→  }
+   480→}
+   481→
+   482→const STORAGE_QUOTA_BYTES = 10 * 1024 * 1024 // 10 MB demo quota
+   483→
+   484→const STORAGE_STATS: { key: keyof NonNullable<ExportPayload["counts"]>; label: string; icon: LucideIcon }[] = [
+   485→  { key: "documents", label: "Documents", icon: FileText },
+   486→  { key: "sheets", label: "Spreadsheets", icon: FileSpreadsheet },
+   487→  { key: "decks", label: "Decks", icon: Presentation },
+   488→  { key: "forms", label: "Forms", icon: FormInput },
+   489→  { key: "folders", label: "Folders", icon: Folder },
+   490→  { key: "tags", label: "Tags", icon: Tag },
+   491→]
+   492→
+   493→function DataSection() {
+   494→  const { toast } = useToast()
+   495→  const [counts, setCounts] = React.useState<NonNullable<ExportPayload["counts"]> | null>(null)
+   496→  const [bytes, setBytes] = React.useState(0)
+   497→  const [error, setError] = React.useState<string | null>(null)
+   498→
+   499→  React.useEffect(() => {
+   500→    let live = true
+   501→    const load = async () => {
+   502→      setError(null)
+   503→      try {
+   504→        const res = await fetch("/api/export")
+   505→        if (!res.ok) throw new Error(`Failed to load storage stats (${res.status})`)
+   506→        const text = await res.text()
+   507→        if (!live) return
+   508→        const payload = JSON.parse(text) as ExportPayload
+   509→        setCounts(payload.counts ?? {})
+   510→        setBytes(new TextEncoder().encode(text).length)
+   511→      } catch (e) {
+   512→        if (!live) return
+   513→        setError(e instanceof Error ? e.message : "Something went wrong")
+   514→      }
+   515→    }
+   516→    void load()
+   517→    return () => {
+   518→      live = false
+   519→    }
+   520→  }, [])
+   521→
+   522→  const exportAll = () => {
+   523→    const a = document.createElement("a")
+   524→    a.href = "/api/export"
+   525→    a.setAttribute("download", "")
+   526→    document.body.appendChild(a)
+   527→    a.click()
+   528→    a.remove()
+   529→    toast({ title: "Download started", description: "Your workspace is exporting as JSON." })
+   530→  }
+   531→
+   532→  const resetLocal = () => {
+   533→    for (const key of [
+   534→      USER_STORAGE_KEY,
+   535→      ACCENT_STORAGE_KEY,
+   536→      FONT_STORAGE_KEY,
+   537→      ZOOM_STORAGE_KEY,
+   538→      THEME_MODE_STORAGE_KEY,
+   539→    ]) {
+   540→      try {
+   541→        window.localStorage.removeItem(key)
+   542→      } catch {
+   543→        // ignore
+   544→      }
+   545→    }
+   546→    window.location.reload()
+   547→  }
+   548→
+   549→  const usedPercent = counts ? Math.min(100, (bytes / STORAGE_QUOTA_BYTES) * 100) : 0
+   550→
+   551→  return (
+   552→    <SectionCard
+   553→      title="Data & storage"
+   554→      description="Everything you create lives in your local Z workspace database."
+   555→    >
+   556→      {error ? (
+   557→        <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
+   558→          {error}
+   559→        </p>
+   560→      ) : counts ? (
+   561→        <>
+   562→          <div>
+   563→            <div className="flex items-baseline justify-between gap-3">
+   564→              <p className="text-[13px] font-medium">Workspace storage</p>
+   565→              <p className="text-xs text-muted-foreground">
+   566→                <span className="tnum font-medium text-foreground">{formatBytes(bytes)}</span> used
+   567→                <span className="opacity-70"> · 10 MB quota</span>
+   568→              </p>
+   569→            </div>
+   570→            <div
+   571→              className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
+   572→              role="progressbar"
+   573→              aria-label="Workspace storage used"
+   574→              aria-valuemin={0}
+   575→              aria-valuemax={100}
+   576→              aria-valuenow={Math.round(usedPercent)}
+   577→            >
+   578→              <div
+   579→                className="h-full rounded-full bg-primary transition-[width] duration-500"
+   580→                style={{ width: `${usedPercent}%` }}
+   581→              />
+   582→            </div>
+   583→          </div>
+   584→          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+   585→            {STORAGE_STATS.map((stat) => {
+   586→              const Icon = stat.icon
+   587→              return (
+   588→                <div key={stat.key} className="flex items-center gap-3 rounded-lg border p-3">
+   589→                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+   590→                  <div className="min-w-0">
+   591→                    <p className="tnum text-[15px] font-medium leading-tight">
+   592→                      {counts[stat.key] ?? 0}
+   593→                    </p>
+   594→                    <p className="text-[11px] text-muted-foreground">{stat.label}</p>
+   595→                  </div>
+   596→                </div>
+   597→              )
+   598→            })}
+   599→          </div>
+   600→        </>
+   601→      ) : (
+   602→        <>
+   603→          <div className="flex items-baseline justify-between">
+   604→            <Skeleton className="h-4 w-32" />
+   605→            <Skeleton className="h-3.5 w-24" />
+   606→          </div>
+   607→          <Skeleton className="h-2 w-full rounded-full" />
+   608→          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+   609→            {STORAGE_STATS.map((stat) => (
+   610→              <Skeleton key={stat.key} className="h-14 rounded-lg" />
+   611→            ))}
+   612→          </div>
+   613→        </>
+   614→      )}
+   615→      <div className="flex flex-wrap gap-3">
+   616→        <Button onClick={exportAll} className="h-10">
+   617→          <Download className="h-4 w-4" />
+   618→          Export all your data
+   619→        </Button>
+   620→        <AlertDialog>
+   621→          <AlertDialogTrigger asChild>
+   622→            <Button
+   623→              variant="outline"
+   624→              className="h-10 text-destructive hover:bg-destructive/5 hover:text-destructive"
+   625→            >
+   626→              <RotateCcw className="h-4 w-4" />
+   627→              Reset local profile
+   628→            </Button>
+   629→          </AlertDialogTrigger>
+   630→          <AlertDialogContent>
+   631→            <AlertDialogHeader>
+   632→              <AlertDialogTitle>Reset local profile?</AlertDialogTitle>
+   633→              <AlertDialogDescription>
+   634→                This clears your saved name, avatar color, theme, accent and workspace defaults
+   635→                from this browser. Your documents, spreadsheets, decks and forms are kept.
+   636→              </AlertDialogDescription>
+   637→            </AlertDialogHeader>
+   638→            <AlertDialogFooter>
+   639→              <AlertDialogCancel>Cancel</AlertDialogCancel>
+   640→              <AlertDialogAction
+   641→                onClick={resetLocal}
+   642→                className="bg-destructive text-white hover:bg-destructive/90"
+   643→              >
+   644→                Reset &amp; reload
+   645→              </AlertDialogAction>
+   646→            </AlertDialogFooter>
+   647→          </AlertDialogContent>
+   648→        </AlertDialog>
+   649→      </div>
+   650→    </SectionCard>
+   651→  )
+   652→}
+   653→
+   654→/* ---------------------------------- About ----------------------------------- */
+   655→
+   656→const TECH_STACK = [
+   657→  "Next.js 16",
+   658→  "React 19",
+   659→  "Tailwind 4",
+   660→  "Prisma",
+   661→  "TipTap-style canvas",
+   662→  "socket.io collab",
+   663→]
+   664→
+   665→function AboutSection() {
+   666→  return (
+   667→    <SectionCard title="About">
+   668→      <div className="flex items-center gap-4">
+   669→        <div
+   670→          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary"
+   671→          aria-hidden="true"
+   672→        >
+   673→          <span className="logo-caret h-4 w-[3px] rounded-[1px] bg-primary-foreground" />
+   674→        </div>
+   675→        <div className="min-w-0">
+   676→          <p className="font-editorial text-xl font-medium tracking-tight">Z-Docs</p>
+   677→          <p className="mt-0.5 text-[13px] text-muted-foreground">
+   678→            A Google-style workspace: Docs, Sheets, Slides &amp; Forms
+   679→          </p>
+   680→        </div>
+   681→      </div>
+   682→      <div className="flex flex-wrap gap-1.5">
+   683→        {TECH_STACK.map((tech) => (
+   684→          <span
+   685→            key={tech}
+   686→            className="rounded-full border px-2.5 py-0.5 text-[11px] text-muted-foreground"
+   687→          >
+   688→            {tech}
+   689→          </span>
+   690→        ))}
+   691→      </div>
+   692→      <p className="text-xs text-muted-foreground">
+   693→        Local demo — all data lives in your browser and local database.
+   694→      </p>
+   695→    </SectionCard>
+   696→  )
+   697→}
+   698→
+   699→/* ---------------------------------- page ------------------------------------ */
+   700→
+   701→export function SettingsView() {
+   702→  const goHome = useDocsStore((s) => s.goHome)
+   703→  const [tab, setTab] = React.useState<SettingsTab>("general")
+   704→
+   705→  return (
+   706→    <div className="flex min-h-screen flex-col">
+   707→      <header className="sticky top-0 z-40 flex h-16 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-5">
+   708→        <Tooltip>
+   709→          <TooltipTrigger asChild>
+   710→            <Button
+   711→              variant="ghost"
+   712→              size="icon"
+   713→              onClick={goHome}
+   714→              aria-label="Back to home"
+   715→              className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
+   716→            >
+   717→              <ArrowLeft className="h-5 w-5" />
+   718→            </Button>
+   719→          </TooltipTrigger>
+   720→          <TooltipContent side="bottom" className="text-xs">
+   721→            Back
+   722→          </TooltipContent>
+   723→        </Tooltip>
+   724→        <h1 className="text-lg font-medium">Settings</h1>
+   725→        <span
+   726→          className="ml-auto rounded-full border bg-background px-3 py-1 text-[11px] text-muted-foreground tnum"
+   727→          aria-label="Version"
+   728→        >
+   729→          Z-Docs v1.0
+   730→        </span>
+   731→      </header>
+   732→
+   733→      <main className="flex-1">
+   734→        <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-8 sm:px-6">
+   735→          <div className="flex flex-col gap-8 md:flex-row">
+   736→            <nav aria-label="Settings sections" className="shrink-0 md:w-48">
+   737→              <div
+   738→                role="tablist"
+   739→                aria-label="Settings sections"
+   740→                className="flex gap-1 overflow-x-auto pb-1 no-scrollbar md:flex-col md:overflow-x-visible md:pb-0 md:sticky md:top-24"
+   741→              >
+   742→                {TABS.map((t) => {
+   743→                  const Icon = t.icon
+   744→                  const active = tab === t.id
+   745→                  return (
+   746→                    <button
+   747→                      key={t.id}
+   748→                      type="button"
+   749→                      role="tab"
+   750→                      aria-selected={active}
+   751→                      onClick={() => setTab(t.id)}
+   752→                      className={cn(
+   753→                        "flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-md px-3 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+   754→                        active
+   755→                          ? "bg-accent font-medium text-foreground"
+   756→                          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+   757→                      )}
+   758→                    >
+   759→                      <Icon className="h-4 w-4 shrink-0" />
+   760→                      {t.label}
+   761→                    </button>
+   762→                  )
+   763→                })}
+   764→              </div>
+   765→            </nav>
+   766→            <div className="min-w-0 flex-1">
+   767→              {tab === "general" ? <GeneralSection /> : null}
+   768→              {tab === "appearance" ? <AppearanceSection /> : null}
+   769→              {tab === "workspace" ? <WorkspaceSection /> : null}
+   770→              {tab === "data" ? <DataSection /> : null}
+   771→              {tab === "about" ? <AboutSection /> : null}
+   772→            </div>
+   773→          </div>
+   774→        </div>
+   775→      </main>
+   776→    </div>
+   777→  )
+   778→}
+   779→

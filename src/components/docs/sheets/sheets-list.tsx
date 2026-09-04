@@ -25,6 +25,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { useDocsStore } from "@/store/docs-store"
 import { relativeTime } from "@/lib/doc-utils"
+import { useI18n } from "@/lib/i18n"
 import type { SheetMeta } from "@/lib/workspace-types"
 import { useSheetStore, type SheetFilter } from "./sheet-store"
 import { SheetCard } from "./sheet-card"
@@ -56,21 +57,22 @@ const TABS: { id: SheetFilter; label: string }[] = [
 function FilterTabs({ className = "" }: { className?: string }) {
   const filter = useSheetStore((s) => s.filter)
   const setFilter = useSheetStore((s) => s.setFilter)
+  const { t } = useI18n()
   return (
-    <div role="tablist" aria-label="Filter spreadsheets" className={`flex rounded-full bg-muted p-0.5 ${className}`}>
-      {TABS.map((t) => {
-        const on = filter === t.id
+    <div role="tablist" aria-label={t("Filter spreadsheets")} className={`flex rounded-full bg-muted p-0.5 ${className}`}>
+      {TABS.map((tab) => {
+        const on = filter === tab.id
         return (
           <button
-            key={t.id}
+            key={tab.id}
             role="tab"
             aria-selected={on}
-            onClick={() => setFilter(t.id)}
+            onClick={() => setFilter(tab.id)}
             className={`h-8 rounded-full px-3 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 ${
               on ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            {t.label}
+            {t(tab.label)}
           </button>
         )
       })}
@@ -85,13 +87,14 @@ function EmptyState({ filter, search }: { filter: SheetFilter; search: string })
   const creating = useSheetStore((s) => s.creating)
   const setSearch = useSheetStore((s) => s.setSearch)
   const loadSheets = useSheetStore((s) => s.loadSheets)
+  const { t } = useI18n()
 
-  let title = "No spreadsheets yet"
-  let desc = "Create a spreadsheet to get started."
+  let title = t("No spreadsheets yet")
+  let desc = t("Create a spreadsheet to get started.")
   let action: React.ReactNode = null
   if (search.trim()) {
-    title = "No matching spreadsheets"
-    desc = `Nothing matches “${search.trim()}”.`
+    title = t("No matching spreadsheets")
+    desc = t("Nothing matches “{q}”.", { q: search.trim() })
     action = (
       <Button
         variant="outline"
@@ -101,20 +104,20 @@ function EmptyState({ filter, search }: { filter: SheetFilter; search: string })
           void loadSheets()
         }}
       >
-        Clear search
+        {t("Clear search")}
       </Button>
     )
   } else if (filter === "starred") {
-    title = "No starred spreadsheets"
-    desc = "Star a spreadsheet to keep it close at hand."
+    title = t("No starred spreadsheets")
+    desc = t("Star a spreadsheet to keep it close at hand.")
   } else if (filter === "trashed") {
-    title = "Trash is empty"
-    desc = "Deleted spreadsheets will appear here before they're gone forever."
+    title = t("Trash is empty")
+    desc = t("Deleted spreadsheets will appear here before they're gone forever.")
   } else {
     action = (
       <Button size="sm" onClick={() => void createSheet()} disabled={creating}>
         {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-        New spreadsheet
+        {t("New spreadsheet")}
       </Button>
     )
   }
@@ -151,22 +154,23 @@ export function SheetsList() {
   const deleteForever = useSheetStore((s) => s.deleteForever)
 
   const { toast } = useToast()
+  const { t } = useI18n()
   const [local, setLocal] = React.useState("")
   const [renamingId, setRenamingId] = React.useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = React.useState<SheetMeta | null>(null)
 
   // debounced search → refetch (mirrors the Z-Docs home behavior)
   React.useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (local !== search) {
         setSearch(local)
         void loadSheets()
       }
     }, 300)
-    return () => clearTimeout(t)
+    return () => clearTimeout(timer)
   }, [local, search, setSearch, loadSheets])
 
-  const heading = filter === "starred" ? "Starred" : filter === "trashed" ? "Trash" : "All spreadsheets"
+  const heading = filter === "starred" ? t("Starred") : filter === "trashed" ? t("Trash") : t("All spreadsheets")
   const showSkeleton = listLoading && sheets.length === 0
   const showEmpty = !showSkeleton && sheets.length === 0
 
@@ -176,11 +180,11 @@ export function SheetsList() {
       <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-5">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full" aria-label="Back to Z-Docs" onClick={goHome}>
+            <Button variant="ghost" size="icon" className="h-11 w-11 rounded-full" aria-label={t("Back to Z-Docs")} onClick={goHome}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Back to Z-Docs</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">{t("Back to Z-Docs")}</TooltipContent>
         </Tooltip>
         <SheetsLogo />
         <div className="relative ml-2 hidden max-w-md flex-1 items-center sm:flex">
@@ -188,8 +192,8 @@ export function SheetsList() {
           <Input
             value={local}
             onChange={(e) => setLocal(e.target.value)}
-            placeholder="Search spreadsheets"
-            aria-label="Search spreadsheets"
+            placeholder={t("Search spreadsheets")}
+            aria-label={t("Search spreadsheets")}
             className="h-9 rounded-full border-transparent bg-muted pl-10 pr-4 text-[13px] focus-visible:border-border focus-visible:bg-background"
           />
         </div>
@@ -197,8 +201,8 @@ export function SheetsList() {
           <FilterTabs className="hidden sm:flex" />
           <Button onClick={() => void createSheet()} disabled={creating} className="h-10 rounded-full px-4">
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            <span className="hidden sm:inline">New spreadsheet</span>
-            <span className="sm:hidden">New</span>
+            <span className="hidden sm:inline">{t("New spreadsheet")}</span>
+            <span className="sm:hidden">{t("New")}</span>
           </Button>
         </div>
       </header>
@@ -210,8 +214,8 @@ export function SheetsList() {
           <Input
             value={local}
             onChange={(e) => setLocal(e.target.value)}
-            placeholder="Search spreadsheets"
-            aria-label="Search spreadsheets"
+            placeholder={t("Search spreadsheets")}
+            aria-label={t("Search spreadsheets")}
             className="h-9 rounded-full border-transparent bg-muted pl-9 pr-3 text-[13px] focus-visible:border-border focus-visible:bg-background"
           />
         </div>
@@ -225,7 +229,9 @@ export function SheetsList() {
             <h1 className="text-lg font-medium text-foreground">{heading}</h1>
             {!showSkeleton && !showEmpty && (
               <p className="text-xs text-muted-foreground tnum">
-                {sheets.length} spreadsheet{sheets.length === 1 ? "" : "s"}
+                {sheets.length === 1
+                  ? t("1 spreadsheet")
+                  : t("{n} spreadsheets", { n: sheets.length })}
               </p>
             )}
           </div>
@@ -279,24 +285,29 @@ export function SheetsList() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{deleteTarget?.title}” forever?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Delete “{title}” forever?", { title: deleteTarget?.title ?? "" })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This can't be undone. The spreadsheet and everything in it will be permanently removed.
+              {t(
+                "This can't be undone. The spreadsheet and everything in it will be permanently removed."
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90"
               onClick={() => {
                 if (deleteTarget) {
                   void deleteForever(deleteTarget.id)
-                  toast({ title: "Deleted forever", description: `“${deleteTarget.title}” is gone.` })
+                  toast({
+                    title: t("Deleted forever"),
+                    description: t("“{title}” is gone.", { title: deleteTarget.title }),
+                  })
                 }
                 setDeleteTarget(null)
               }}
             >
-              Delete forever
+              {t("Delete forever")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

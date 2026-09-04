@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { useDocsStore } from "@/store/docs-store"
+import { useI18n } from "@/lib/i18n"
 import { useSlidesStore } from "./deck-store"
 import { SlidesList } from "./slides-list"
 import { DeckEditor } from "./deck-editor"
@@ -20,8 +21,9 @@ import { PresentMode } from "./present-mode"
 type SlidesMode = "list" | "editor" | "present"
 
 function BootSkeleton() {
+  const { t } = useI18n()
   return (
-    <div className="flex min-h-dvh flex-col" aria-busy="true" aria-label="Loading Z-Slides">
+    <div className="flex min-h-dvh flex-col" aria-busy="true" aria-label={t("Loading Z-Slides")}>
       <div className="flex h-16 items-center gap-3 border-b px-5">
         <Skeleton className="h-9 w-9 rounded-full" />
         <Skeleton className="h-5 w-24" />
@@ -53,6 +55,7 @@ export function SlidesApp() {
   const editorData = useSlidesStore((s) => s.data)
 
   const { toast } = useToast()
+  const { t } = useI18n()
 
   const [mode, setMode] = React.useState<SlidesMode>("list")
   const [booting, setBooting] = React.useState(true)
@@ -71,8 +74,8 @@ export function SlidesApp() {
           setMode("editor")
         } else {
           toast({
-            title: "Couldn’t open that presentation",
-            description: "It may have been deleted.",
+            title: t("Couldn’t open that presentation"),
+            description: t("It may have been deleted."),
             variant: "destructive",
           })
           await fetchList()
@@ -85,7 +88,7 @@ export function SlidesApp() {
       setBooting(false)
     }
     void boot()
-  }, [consumeAppTarget, openDeck, fetchList, toast])
+  }, [consumeAppTarget, openDeck, fetchList, toast, t])
 
   /* ---------- mode transitions ---------- */
 
@@ -95,8 +98,8 @@ export function SlidesApp() {
       setMode("editor")
     } else {
       toast({
-        title: "Couldn’t open that presentation",
-        description: "It may have been deleted.",
+        title: t("Couldn’t open that presentation"),
+        description: t("It may have been deleted."),
         variant: "destructive",
       })
       await fetchList({ silent: true })
@@ -108,7 +111,7 @@ export function SlidesApp() {
     if (meta) {
       setMode("editor")
     } else {
-      toast({ title: "Couldn’t create the presentation", variant: "destructive" })
+      toast({ title: t("Couldn’t create the presentation"), variant: "destructive" })
     }
   }
 

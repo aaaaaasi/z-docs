@@ -24,13 +24,14 @@ const ACTION_PROMPTS: Record<AiAction, string> = {
 
 const MAX_INPUT = 12_000
 
-// POST /api/ai/transform { text, action, title? }
+// POST /api/ai/transform { text, action, title?, lang? }
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
       text?: string
       action?: string
       title?: string
+      lang?: string
     }
     const text = body.text?.trim()
     const action = body.action as AiAction | undefined
@@ -45,6 +46,9 @@ export async function POST(req: NextRequest) {
     if (!instruction) {
       return NextResponse.json({ error: "Unknown action" }, { status: 400 })
     }
+    // UI language is Chinese → every transformation responds in Simplified Chinese
+    const finalInstruction =
+      body.lang === "zh" ? instruction + " Respond in Simplified Chinese (简体中文)." : instruction
 
     const title = body.title?.trim().slice(0, 150) || "Untitled document"
 
@@ -61,7 +65,7 @@ export async function POST(req: NextRequest) {
         },
         {
           role: "user",
-          content: `The document is titled "${title}".\n\n${instruction}\n\n----- TEXT START -----\n${text}\n----- TEXT END -----`,
+          content: `The document is titled "${title}".\n\n${finalInstruction}\n\n----- TEXT START -----\n${text}\n----- TEXT END -----`,
         },
       ],
       thinking: { type: "disabled" },

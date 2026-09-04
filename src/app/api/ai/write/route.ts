@@ -4,10 +4,10 @@ import ZAI from "z-ai-web-dev-sdk"
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
 
-// POST /api/ai/write { prompt, title? }
+// POST /api/ai/write { prompt, title?, lang? }
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json().catch(() => ({}))) as { prompt?: string; title?: string }
+    const body = (await req.json().catch(() => ({}))) as { prompt?: string; title?: string; lang?: string }
     const prompt = body.prompt?.trim()
     if (!prompt) {
       return NextResponse.json({ error: "A prompt is required" }, { status: 400 })
@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     }
 
     const title = body.title?.trim().slice(0, 150) || "Untitled document"
+    const zh = body.lang === "zh"
 
     const zai = await ZAI.create()
     const completion = await zai.chat.completions.create({
@@ -27,7 +28,8 @@ export async function POST(req: NextRequest) {
             "You are the \"Help me write\" assistant inside Z-Docs, a collaborative document editor. " +
             "Write clear, well-structured draft content in plain text. Use short paragraphs separated by blank lines, " +
             "and use ALL-CAPS-free natural headings on their own lines when it helps. " +
-            "Match the requested tone and length. Output ONLY the draft text — no preamble, no explanations, no markdown fences.",
+            "Match the requested tone and length. Output ONLY the draft text — no preamble, no explanations, no markdown fences." +
+            (zh ? " Write the draft in Simplified Chinese (简体中文)." : ""),
         },
         {
           role: "user",

@@ -4,6 +4,7 @@ import * as React from "react"
 import { FilePlus2, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { useI18n } from "@/lib/i18n"
 import type { Question } from "@/lib/workspace-types"
 import { FormState, SaveStatus, BuilderTab, newQuestion } from "./forms-utils"
 import { FormTopBar } from "./form-top-bar"
@@ -33,6 +34,7 @@ export function FormBuilder({
   onDuplicate,
   onTrash,
 }: FormBuilderProps) {
+  const { t } = useI18n()
   const questions = form.questions
 
   /* Ctrl/⌘+Enter toggles the respondent preview */
@@ -92,21 +94,21 @@ export function FormBuilder({
       <main className="mx-auto w-full max-w-3xl flex-1 space-y-4 px-4 pb-32 pt-8 sm:px-6 sm:pt-10">
         {/* Form header — big borderless Google-style title + description */}
         <section
-          aria-label="Form title and description"
+          aria-label={t("Form title and description")}
           className="rounded-lg border bg-background p-5 shadow-sm sm:p-6"
         >
           <Input
             value={form.title}
             onChange={(e) => onFormChange({ title: e.target.value })}
-            placeholder="Form title"
-            aria-label="Form title"
+            placeholder={t("Form title")}
+            aria-label={t("Form title")}
             className="h-auto rounded-none border-0 border-b border-b-transparent px-0 py-1 text-2xl font-normal shadow-none focus-visible:border-b-primary focus-visible:ring-0 md:text-2xl"
           />
           <Input
             value={form.description}
             onChange={(e) => onFormChange({ description: e.target.value })}
-            placeholder="Form description"
-            aria-label="Form description"
+            placeholder={t("Form description")}
+            aria-label={t("Form description")}
             className="mt-3 h-auto rounded-none border-0 border-b border-b-transparent px-0 py-1 text-sm font-normal text-muted-foreground shadow-none focus-visible:border-b-primary focus-visible:ring-0"
           />
         </section>
@@ -127,12 +129,12 @@ export function FormBuilder({
         {questions.length === 0 && (
           <section className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-background/60 p-10 text-center">
             <FilePlus2 className="h-8 w-8 text-muted-foreground/50" aria-hidden="true" />
-            <p className="text-sm font-medium">No questions yet</p>
+            <p className="text-sm font-medium">{t("No questions yet")}</p>
             <p className="max-w-xs text-[13px] text-muted-foreground">
-              Add your first question — choose from short answer, multiple choice, checkboxes, dropdown or rating.
+              {t("Add your first question — choose from short answer, multiple choice, checkboxes, dropdown or rating.")}
             </p>
-            <Button onClick={addQuestion} className="mt-1 gap-2" aria-label="Add question">
-              <Plus className="h-4 w-4" /> Add question
+            <Button onClick={addQuestion} className="mt-1 gap-2" aria-label={t("Add question")}>
+              <Plus className="h-4 w-4" /> {t("Add question")}
             </Button>
           </section>
         )}
@@ -143,11 +145,11 @@ export function FormBuilder({
         <Button
           size="lg"
           onClick={addQuestion}
-          aria-label="Add question"
+          aria-label={t("Add question")}
           className="h-12 rounded-full gap-2 px-5 shadow-lg"
         >
           <Plus className="h-5 w-5" />
-          <span className="hidden text-sm sm:inline">Add question</span>
+          <span className="hidden text-sm sm:inline">{t("Add question")}</span>
         </Button>
       </div>
     </div>

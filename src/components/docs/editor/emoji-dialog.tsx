@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Smile, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 interface EmojiDef {
   emoji: string
@@ -198,6 +199,7 @@ export function EmojiDialog({
 }) {
   const [query, setQuery] = React.useState("")
   const [category, setCategory] = React.useState("smileys")
+  const { t } = useI18n()
 
   React.useEffect(() => {
     if (open) {
@@ -232,7 +234,7 @@ export function EmojiDialog({
       <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Smile className="h-4 w-4 text-primary" /> Emoji &amp; symbols
+            <Smile className="h-4 w-4 text-primary" /> {t("Emoji & symbols")}
           </DialogTitle>
         </DialogHeader>
 
@@ -242,14 +244,14 @@ export function EmojiDialog({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search… (e.g. check, rocket, arrow)"
+            placeholder={t("Search… (e.g. check, rocket, arrow)")}
             className="h-9 pl-9"
-            aria-label="Search emoji"
+            aria-label={t("Search emoji")}
           />
         </div>
 
         {!searching && (
-          <div className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto px-1" role="tablist" aria-label="Emoji categories">
+          <div className="no-scrollbar -mx-1 flex gap-1 overflow-x-auto px-1" role="tablist" aria-label={t("Emoji categories")}>
             {CATEGORIES.map((c) => (
               <button
                 key={c.id}
@@ -263,7 +265,7 @@ export function EmojiDialog({
                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                {c.label}
+                {t(c.label)}
               </button>
             ))}
           </div>
@@ -272,11 +274,11 @@ export function EmojiDialog({
         <div
           className="slim-scroll grid max-h-64 grid-cols-8 gap-1 overflow-y-auto p-1 sm:grid-cols-10"
           role="grid"
-          aria-label={searching ? "Search results" : active.label}
+          aria-label={searching ? t("Search results") : t(active.label)}
         >
           {active.emojis.length === 0 ? (
             <p className="col-span-full py-6 text-center text-sm text-muted-foreground">
-              No emoji matches “{query}”.
+              {t("No emoji matches “{query}”.", { query })}
             </p>
           ) : (
             active.emojis.map((e, i) => (
@@ -284,7 +286,7 @@ export function EmojiDialog({
                 key={`${e.emoji}-${i}`}
                 onClick={() => onInsert(e.emoji)}
                 title={e.name}
-                aria-label={`Insert ${e.name}`}
+                aria-label={t("Insert {name}", { name: e.name })}
                 className="flex h-9 w-9 items-center justify-center rounded-md text-xl leading-none transition-transform hover:scale-125 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
               >
                 {e.emoji}
@@ -294,9 +296,9 @@ export function EmojiDialog({
         </div>
 
         <div className="flex items-center justify-between text-xs text-foreground/70">
-          <span>Click an emoji to insert it at the caret.</span>
+          <span>{t("Click an emoji to insert it at the caret.")}</span>
           <Button variant="outline" size="sm" className="h-7 rounded-md px-4 text-xs font-medium shadow-sm" onClick={() => onOpenChange(false)}>
-            Done
+            {t("Done")}
           </Button>
         </div>
       </DialogContent>

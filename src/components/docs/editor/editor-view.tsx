@@ -8,6 +8,7 @@ import { useDocsStore } from "@/store/docs-store"
 import { useLocalUser } from "@/lib/identity"
 import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@/hooks/use-collab"
 import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
+import { useI18n, tForLang, getCurrentLang } from "@/lib/i18n"
 import {
   selectionOffsets, selectedBlocks, findQuoteRange,
   getTableContext, describeTableAt, insertTableRow, insertTableColumn, deleteTableRow,
@@ -55,10 +56,11 @@ export function EditorView() {
   const setOpenAiOnEditor = useDocsStore((s) => s.setOpenAiOnEditor)
   const { toast } = useToast()
   const user = useLocalUser()
+  const { t } = useI18n()
 
   /* ---------------- document state ---------------- */
   const [doc, setDoc] = React.useState<DocumentDTO | null>(null)
-  const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [loadError, setLoadError] = React.useState<"not-found" | "load-failed" | null>(null)
   const [title, setTitle] = React.useState("")
   const [starred, setStarred] = React.useState(false)
   const [saveStatus, setSaveStatus] = React.useState<"saved" | "saving" | "unsaved" | "error">("saved")
@@ -178,7 +180,7 @@ export function EditorView() {
       })
       .catch((e: Error) => {
         if (cancelled) return
-        setLoadError(e.message === "not-found" ? "This document doesn't exist anymore." : "Couldn't load this document.")
+        setLoadError(e.message === "not-found" ? "not-found" : "load-failed")
       })
     // restore per-document page margins
     try {
@@ -281,7 +283,8 @@ export function EditorView() {
     (p: CommentsChangedPayload) => {
       void refreshComments()
       if (p.action === "add" || p.action === "reply") {
-        toast({ title: "New comment activity", description: "A collaborator updated the discussion." })
+        const lang = getCurrentLang()
+        toast({ title: tForLang(lang, "New comment activity"), description: tForLang(lang, "A collaborator updated the discussion.") })
       }
     },
     [refreshComments, toast]
@@ -321,7 +324,7 @@ export function EditorView() {
           wordCount: countWords(htmlToText(content)),
           updatedAt: data.document.updatedAt,
         })
-        if (manual) toast({ title: "Saved", description: "All changes are safe." })
+        if (manual) toast({ title: tForLang(getCurrentLang(), "Saved"), description: tForLang(getCurrentLang(), "All changes are safe.") })
       } catch {
         setSaveStatus("error")
         // retry shortly
@@ -531,9 +534,10 @@ export function EditorView() {
       if (m === "suggest") {
         const el = pageRef.current
         if (el && collectSuggestions(el).length > 0) setCommentsOpen(true)
+        const lang = getCurrentLang()
         toast({
-          title: "You're in suggesting mode",
-          description: "Edits you make will show as suggestions others can accept or reject.",
+          title: tForLang(lang, "You're in suggesting mode"),
+          description: tForLang(lang, "Edits you make show as suggestions others can accept or reject."),
         })
       }
     },
@@ -831,7 +835,7 @@ export function EditorView() {
       }
       html += "</tbody></table><p><br></p>"
       insertHtmlAtCursor(html)
-      toast({ title: `Inserted ${r}×${c} table` })
+      toast({ title: tForLang(getCurrentLang(), "Inserted {r}×{c} table", { r, c }) })
     },
     [insertHtmlAtCursor, toast]
   )
@@ -852,7 +856,7 @@ export function EditorView() {
         case "row-below": {
           const tr = insertTableRow(ctx, op === "row-above" ? "above" : "below")
           placeCaretInCell(tr.cells[0])
-          toast({ title: "Row inserted" })
+          toast({ title: tForLang(getCurrentLang(), "Row inserted") })
           break
         }
         case "col-left":
@@ -860,7 +864,7 @@ export function EditorView() {
           const cells = insertTableColumn(ctx, op === "col-left" ? "left" : "right")
           const target = cells[Math.min(ctx.rowIndex, cells.length - 1)]
           if (target) placeCaretInCell(target)
-          toast({ title: "Column inserted" })
+          toast({ title: tForLang(getCurrentLang(), "Column inserted") })
           break
         }
         case "delete-row": {
@@ -869,7 +873,7 @@ export function EditorView() {
             const nextRow = ctx.table.rows[Math.min(ctx.rowIndex, ctx.table.rows.length - 1)]
             if (nextRow?.cells[0]) placeCaretInCell(nextRow.cells[0])
           }
-          toast({ title: removedTable ? "Last row removed, table deleted" : "Row deleted" })
+          toast({ title: tForLang(getCurrentLang(), removedTable ? "Last row removed, table deleted" : "Row deleted") })
           break
         }
         case "delete-col": {
@@ -879,7 +883,7 @@ export function EditorView() {
             const cell = row?.cells[Math.min(ctx.colIndex, row.cells.length - 1)]
             if (cell) placeCaretInCell(cell)
           }
-          toast({ title: removedTable ? "Last column removed, table deleted" : "Column deleted" })
+          toast({ title: tForLang(getCurrentLang(), removedTable ? "Last column removed, table deleted" : "Column deleted") })
           break
         }
         case "delete-table": {
@@ -889,24 +893,24 @@ export function EditorView() {
           // park the caret in a nearby block so typing keeps working
           const park = next?.querySelector("p, td, th") ?? prev?.querySelector("p, td, th")
           if (park) placeCaretInCell(park as HTMLElement)
-          toast({ title: "Table deleted" })
+          toast({ title: tForLang(getCurrentLang(), "Table deleted") })
           break
         }
         case "toggle-header": {
           const nowHeader = toggleTableHeader(ctx)
           placeCaretInCell(ctx.cell)
-          toast({ title: nowHeader ? "Header row on" : "Header row off" })
+          toast({ title: tForLang(getCurrentLang(), nowHeader ? "Header row on" : "Header row off") })
           break
         }
         case "merge-right":
         case "merge-down": {
           const ok = mergeTableCells(ctx, op === "merge-right" ? "right" : "down")
-          toast({ title: ok ? "Cells merged" : "Cells can’t be merged that way" })
+          toast({ title: tForLang(getCurrentLang(), ok ? "Cells merged" : "Cells can’t be merged that way") })
           break
         }
         case "split-cell": {
           const ok = splitTableCell(ctx)
-          toast({ title: ok ? "Cell split" : "This cell isn’t merged" })
+          toast({ title: tForLang(getCurrentLang(), ok ? "Cell split" : "This cell isn’t merged") })
           break
         }
       }
@@ -944,9 +948,9 @@ export function EditorView() {
         setActiveCommentId(data.comment.id)
         setPendingQuote(null)
         emitCommentsChanged("add", data.comment.id)
-        toast({ title: "Comment added" })
+        toast({ title: tForLang(getCurrentLang(), "Comment added") })
       } catch {
-        toast({ title: "Couldn’t add the comment", variant: "destructive" })
+        toast({ title: tForLang(getCurrentLang(), "Couldn’t add the comment"), variant: "destructive" })
       } finally {
         setCommentBusy(false)
       }
@@ -979,7 +983,7 @@ export function EditorView() {
         )
         emitCommentsChanged("reply", data.comment.id)
       } catch {
-        toast({ title: "Couldn’t post the reply", variant: "destructive" })
+        toast({ title: tForLang(getCurrentLang(), "Couldn’t post the reply"), variant: "destructive" })
       } finally {
         setCommentBusy(false)
       }
@@ -1002,7 +1006,7 @@ export function EditorView() {
         )
         emitCommentsChanged(c.resolved ? "unresolve" : "resolve", c.id)
       } catch {
-        toast({ title: "Couldn’t update the comment", variant: "destructive" })
+        toast({ title: tForLang(getCurrentLang(), "Couldn’t update the comment"), variant: "destructive" })
       } finally {
         setCommentBusy(false)
       }
@@ -1042,7 +1046,7 @@ export function EditorView() {
         if (!res.ok) throw new Error("failed")
         emitCommentsChanged("react", commentId)
       } catch {
-        toast({ title: "Couldn’t save the reaction", variant: "destructive" })
+        toast({ title: tForLang(getCurrentLang(), "Couldn’t save the reaction"), variant: "destructive" })
         void refreshComments()
       }
     },
@@ -1068,9 +1072,9 @@ export function EditorView() {
           })
         )
         emitCommentsChanged("edit", id)
-        toast({ title: "Comment updated" })
+        toast({ title: tForLang(getCurrentLang(), "Comment updated") })
       } catch {
-        toast({ title: "Couldn’t update the comment", variant: "destructive" })
+        toast({ title: tForLang(getCurrentLang(), "Couldn’t update the comment"), variant: "destructive" })
       } finally {
         setCommentBusy(false)
       }
@@ -1087,9 +1091,9 @@ export function EditorView() {
         setComments((prev) => prev.filter((t) => t.id !== c.id))
         if (activeCommentId === c.id) setActiveCommentId(null)
         emitCommentsChanged("delete", c.id)
-        toast({ title: "Comment deleted" })
+        toast({ title: tForLang(getCurrentLang(), "Comment deleted") })
       } catch {
-        toast({ title: "Couldn’t delete the comment", variant: "destructive" })
+        toast({ title: tForLang(getCurrentLang(), "Couldn’t delete the comment"), variant: "destructive" })
       } finally {
         setCommentBusy(false)
       }
@@ -1185,7 +1189,7 @@ export function EditorView() {
       if (!el) return
       const html = plainTextToHtml(text)
       if (!html) {
-        toast({ title: "Nothing to apply", description: "The AI result is empty." })
+        toast({ title: tForLang(getCurrentLang(), "Nothing to apply"), description: tForLang(getCurrentLang(), "The AI result is empty.") })
         return
       }
       const range = aiRangeRef.current
@@ -1213,10 +1217,10 @@ export function EditorView() {
         const after = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null
         if (after) savedRangeRef.current = after
         handleInput()
-        toast({ title: "Selection updated", description: "AI result applied to the selected text." })
+        toast({ title: tForLang(getCurrentLang(), "Selection updated"), description: tForLang(getCurrentLang(), "AI result applied to the selected text.") })
       } else {
         replaceDocumentHtml(html)
-        toast({ title: "Document updated", description: "AI result replaced the document." })
+        toast({ title: tForLang(getCurrentLang(), "Document updated"), description: tForLang(getCurrentLang(), "AI result replaced the document.") })
       }
     },
     [aiSource, plainTextToHtml, handleInput, replaceDocumentHtml, toast]
@@ -1370,7 +1374,7 @@ export function EditorView() {
       if (idx >= 0 && next[idx]) {
         selectMatchKeepFocus(next[idx])
       } else {
-        toast({ title: "No more matches" })
+        toast({ title: tForLang(getCurrentLang(), "No more matches") })
       }
     },
     [findMatches, findActiveIndex, findQuery, findCase, runFind, selectMatchKeepFocus, toast]
@@ -1428,7 +1432,9 @@ export function EditorView() {
         el.innerHTML = newHtml
       }
       handleInput()
-      toast({ title: `Replaced ${count} ${count === 1 ? "match" : "matches"}` })
+      toast({ title: count === 1
+        ? tForLang(getCurrentLang(), "Replaced 1 match")
+        : tForLang(getCurrentLang(), "Replaced {n} matches", { n: count }) })
       runFind(findQuery, findCase)
       return count
     },
@@ -1476,12 +1482,13 @@ export function EditorView() {
   /** Surface recognizer errors once (mic denied / network / unsupported). */
   React.useEffect(() => {
     if (!voice.error) return
+    const lang = getCurrentLang()
     if (voice.error === "unsupported") {
-      toast({ title: "Voice typing isn’t supported in this browser", description: "Try a Chromium-based browser." })
+      toast({ title: tForLang(lang, "Voice typing isn’t supported in this browser"), description: tForLang(lang, "Try a Chromium-based browser.") })
     } else if (voice.error === "not-allowed" || voice.error === "service-not-allowed") {
-      toast({ title: "Microphone access was denied", description: "Allow microphone access in your browser settings to dictate." })
+      toast({ title: tForLang(lang, "Microphone access was denied"), description: tForLang(lang, "Allow microphone access in your browser settings to dictate.") })
     } else if (voice.error !== "start-failed") {
-      toast({ title: "Voice typing stopped", description: `Reason: ${voice.error}` })
+      toast({ title: tForLang(lang, "Voice typing stopped"), description: tForLang(lang, "Reason: {reason}", { reason: voice.error }) })
     }
   }, [voice.error, toast])
 
@@ -1491,10 +1498,10 @@ export function EditorView() {
 
   /* ---------------- export & print ---------------- */
   const buildExportHtml = React.useCallback(() => {
-    const t = escapeHtml(latestTitleRef.current || "Untitled document")
+    const titleHtml = escapeHtml(latestTitleRef.current || tForLang(getCurrentLang(), "Untitled document"))
     return `<!DOCTYPE html>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><title>${t}</title>
+<head><meta charset="utf-8"><title>${titleHtml}</title>
 <style>
 @page { margin: 1in; }
 body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.15; color: #202124; }
@@ -1536,7 +1543,8 @@ img { max-width: 100%; }
   const downloadPdf = React.useCallback(async () => {
     const el = pageRef.current
     if (!el) return
-    toast({ title: "Preparing PDF…", description: "Rendering the document pages" })
+    const lang = getCurrentLang()
+    toast({ title: tForLang(lang, "Preparing PDF…"), description: tForLang(lang, "Rendering the document pages") })
     let wrap: HTMLElement | null = null
     let prevTransform = ""
     try {
@@ -1597,11 +1605,11 @@ img { max-width: 100%; }
         if (i > 0) pdf.addPage()
         pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, PW, PH, undefined, "FAST")
       }
-      const name = (latestTitleRef.current || "Untitled document").replace(/[^\w\d\-. ]+/g, "_").trim() || "document"
+      const name = (latestTitleRef.current || tForLang(lang, "Untitled document")).replace(/[^\w\d\-\u4e00-\u9fff ]+/g, "_").trim() || "document"
       pdf.save(`${name}.pdf`)
-      toast({ title: "Download started", description: `${name}.pdf` })
+      toast({ title: tForLang(lang, "Download started"), description: `${name}.pdf` })
     } catch {
-      toast({ title: "PDF export fell back to print", description: "Choose “Save as PDF” as the destination" })
+      toast({ title: tForLang(lang, "PDF export fell back to print"), description: tForLang(lang, "Choose “Save as PDF” as the destination") })
       printDoc()
     } finally {
       if (wrap) wrap.style.transform = prevTransform
@@ -1611,7 +1619,8 @@ img { max-width: 100%; }
 
   const downloadDoc = React.useCallback(
     (format: "doc" | "html" | "txt") => {
-      const name = (latestTitleRef.current || "Untitled document").replace(/[^\w\d\-. ]+/g, "_").trim() || "document"
+      const lang = getCurrentLang()
+      const name = (latestTitleRef.current || tForLang(lang, "Untitled document")).replace(/[^\w\d\-\u4e00-\u9fff ]+/g, "_").trim() || "document"
       let blob: Blob
       if (format === "txt") {
         blob = new Blob([htmlToText(contentRef.current)], { type: "text/plain;charset=utf-8" })
@@ -1628,7 +1637,7 @@ img { max-width: 100%; }
       a.click()
       a.remove()
       URL.revokeObjectURL(url)
-      toast({ title: "Download started", description: a.download })
+      toast({ title: tForLang(lang, "Download started"), description: a.download })
     },
     [buildExportHtml, toast]
   )
@@ -1662,7 +1671,7 @@ img { max-width: 100%; }
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ trashed: true }),
     })
-    toast({ title: "Moved to trash", description: latestTitleRef.current })
+    toast({ title: tForLang(getCurrentLang(), "Moved to trash"), description: latestTitleRef.current })
     goHomeStore()
   }, [docId, performSave, goHomeStore, toast])
 
@@ -1672,10 +1681,10 @@ img { max-width: 100%; }
       const res = await fetch(`/api/documents/${docId}/duplicate`, { method: "POST" })
       if (!res.ok) throw new Error()
       const data = (await res.json()) as { document: DocumentDTO }
-      toast({ title: "Copy created", description: data.document.title })
+      toast({ title: tForLang(getCurrentLang(), "Copy created"), description: data.document.title })
       openDoc(data.document.id)
     } catch {
-      toast({ title: "Couldn't duplicate this document", variant: "destructive" })
+      toast({ title: tForLang(getCurrentLang(), "Couldn't duplicate this document"), variant: "destructive" })
     }
   }, [docId, performSave, openDoc, toast])
 
@@ -1965,10 +1974,12 @@ img { max-width: 100%; }
       <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-background px-4 text-center">
         <FileWarning className="h-12 w-12 text-muted-foreground/40" />
         <div>
-          <p className="text-lg font-semibold">{loadError}</p>
-          <p className="mt-1 text-sm text-muted-foreground">It may have been deleted by someone else.</p>
+          <p className="text-lg font-semibold">
+            {loadError === "not-found" ? t("This document doesn't exist anymore.") : t("Couldn't load this document.")}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{t("It may have been deleted by someone else.")}</p>
         </div>
-        <Button onClick={goHomeStore} className="rounded-md px-6">Back to documents</Button>
+        <Button onClick={goHomeStore} className="rounded-md px-6">{t("Back to documents")}</Button>
       </div>
     )
   }
@@ -2051,22 +2062,22 @@ img { max-width: 100%; }
             </ContextMenuTrigger>
             <ContextMenuContent className="w-56">
               <ContextMenuItem onClick={() => tableOp("row-above")}>
-                <Rows3 className="h-4 w-4" /> Insert row above
+                <Rows3 className="h-4 w-4" /> {t("Insert row above")}
               </ContextMenuItem>
               <ContextMenuItem onClick={() => tableOp("row-below")}>
-                <Rows3 className="h-4 w-4" /> Insert row below
+                <Rows3 className="h-4 w-4" /> {t("Insert row below")}
               </ContextMenuItem>
               <ContextMenuSeparator />
               <ContextMenuItem onClick={() => tableOp("col-left")}>
-                <Columns3 className="h-4 w-4" /> Insert column left
+                <Columns3 className="h-4 w-4" /> {t("Insert column left")}
               </ContextMenuItem>
               <ContextMenuItem onClick={() => tableOp("col-right")}>
-                <Columns3 className="h-4 w-4" /> Insert column right
+                <Columns3 className="h-4 w-4" /> {t("Insert column right")}
               </ContextMenuItem>
               {menuTableInfo && <ContextMenuSeparator />}
               {menuTableInfo && (
                 <ContextMenuItem onClick={() => tableOp("toggle-header")}>
-                  <Heading className="h-4 w-4" /> {menuTableInfo.hasHeader ? "Remove header row" : "Make first row a header"}
+                  <Heading className="h-4 w-4" /> {menuTableInfo.hasHeader ? t("Remove header row") : t("Make first row a header")}
                 </ContextMenuItem>
               )}
               {menuTableInfo && (menuTableInfo.canMergeRight || menuTableInfo.canMergeDown || menuTableInfo.canSplit) && (
@@ -2074,17 +2085,17 @@ img { max-width: 100%; }
                   <ContextMenuSeparator />
                   {menuTableInfo.canMergeRight && (
                     <ContextMenuItem onClick={() => tableOp("merge-right")}>
-                      <TableCellsMerge className="h-4 w-4" /> Merge cell right
+                      <TableCellsMerge className="h-4 w-4" /> {t("Merge cell right")}
                     </ContextMenuItem>
                   )}
                   {menuTableInfo.canMergeDown && (
                     <ContextMenuItem onClick={() => tableOp("merge-down")}>
-                      <TableCellsMerge className="h-4 w-4 -rotate-90" /> Merge cell down
+                      <TableCellsMerge className="h-4 w-4 -rotate-90" /> {t("Merge cell down")}
                     </ContextMenuItem>
                   )}
                   {menuTableInfo.canSplit && (
                     <ContextMenuItem onClick={() => tableOp("split-cell")}>
-                      <TableCellsSplit className="h-4 w-4" /> Split cell
+                      <TableCellsSplit className="h-4 w-4" /> {t("Split cell")}
                     </ContextMenuItem>
                   )}
                 </>
@@ -2092,17 +2103,17 @@ img { max-width: 100%; }
               {menuTableInfo && <ContextMenuSeparator />}
               {menuTableInfo && (
                 <ContextMenuItem onClick={() => tableOp("delete-row")} className="text-destructive focus:text-destructive">
-                  <Trash2 className="h-4 w-4" /> Delete row
+                  <Trash2 className="h-4 w-4" /> {t("Delete row")}
                 </ContextMenuItem>
               )}
               {menuTableInfo && (
                 <ContextMenuItem onClick={() => tableOp("delete-col")} className="text-destructive focus:text-destructive">
-                  <Trash2 className="h-4 w-4" /> Delete column
+                  <Trash2 className="h-4 w-4" /> {t("Delete column")}
                 </ContextMenuItem>
               )}
               {menuTableInfo && (
                 <ContextMenuItem onClick={() => tableOp("delete-table")} className="text-destructive focus:text-destructive">
-                  <Trash2 className="h-4 w-4" /> Delete table
+                  <Trash2 className="h-4 w-4" /> {t("Delete table")}
                 </ContextMenuItem>
               )}
             </ContextMenuContent>
@@ -2136,7 +2147,7 @@ img { max-width: 100%; }
           <div className="w-full max-w-[816px] space-y-4 rounded-sm bg-white p-24 shadow-[0_1px_2px_rgba(35,32,28,0.08),0_12px_40px_rgba(35,32,28,0.1)]">
             <div className="flex items-center gap-3 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
-              <span className="text-sm">Loading document…</span>
+              <span className="text-sm">{t("Loading document…")}</span>
             </div>
             <Skeleton className="h-6 w-2/3" />
             <Skeleton className="h-4 w-full" />
@@ -2169,7 +2180,7 @@ img { max-width: 100%; }
         docId={docId}
         title={title}
         presence={presence}
-        me={{ name: user?.name ?? "You", color: user?.color ?? "#0e7c74" }}
+        me={{ name: user?.name ?? t("You"), color: user?.color ?? "#0e7c74" }}
       />
       <HelpWriteDialog
         open={dialog === "helpwrite"}

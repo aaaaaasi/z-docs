@@ -8,6 +8,7 @@ import type { TextMatch } from "@/lib/editor-dom"
 import { TableResizeOverlay } from "@/components/docs/editor/table-resize"
 import { DocRuler, DEFAULT_MARGINS, type PageMargins } from "@/components/docs/editor/ruler"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 interface CaretView {
   key: string
@@ -75,6 +76,7 @@ export function EditorCanvas({
   margins = DEFAULT_MARGINS,
   onMarginsChange,
 }: EditorCanvasProps) {
+  const { t } = useI18n()
   const [dims, setDims] = React.useState({ w: 816, h: 1056 })
   const [marginDragSide, setMarginDragSide] = React.useState<"left" | "right" | null>(null)
   const [caretViews, setCaretViews] = React.useState<CaretView[]>([])
@@ -265,7 +267,7 @@ export function EditorCanvas({
       className="print-reset doc-canvas-bg slim-scroll flex-1 overflow-auto"
       data-zoom={zoom}
       role="region"
-      aria-label="Document canvas"
+      aria-label={t("Document canvas")}
     >
       <div
         className="mx-auto"
@@ -295,9 +297,9 @@ export function EditorCanvas({
               suppressContentEditableWarning
               role="textbox"
               aria-multiline="true"
-              aria-label="Document body"
+              aria-label={t("Document body")}
               spellCheck={spellCheck}
-              data-placeholder={emptyPlaceholder}
+              data-placeholder={t(emptyPlaceholder)}
               onInput={onInput}
             />
           </div>
@@ -385,7 +387,9 @@ export function EditorCanvas({
               <button
                 key={`${h.key}-marker`}
                 role="button"
-                aria-label={`Open comment thread (${h.count} ${h.count === 1 ? "message" : "messages"})`}
+                aria-label={h.count === 1
+                  ? t("Open comment thread (1 message)")
+                  : t("Open comment thread ({n} messages)", { n: h.count })}
                 data-comment-marker={h.id}
                 className="comment-marker pointer-events-auto"
                 style={{

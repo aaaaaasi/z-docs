@@ -11,6 +11,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Palette, Type } from "lucide-react"
+import { useI18n } from "@/lib/i18n"
 import { useSlidesStore } from "./deck-store"
 import { ACCENTS } from "./slide-render"
 import { cn } from "@/lib/utils"
@@ -18,6 +19,7 @@ import { cn } from "@/lib/utils"
 export function ThemeControls() {
   const theme = useSlidesStore((s) => s.data?.theme)
   const setTheme = useSlidesStore((s) => s.setTheme)
+  const { t } = useI18n()
 
   const accent = theme?.accent
   const font = theme?.font === "serif" ? "serif" : "sans"
@@ -31,7 +33,7 @@ export function ThemeControls() {
             variant="ghost"
             size="icon"
             className="relative h-9 w-9 rounded-full"
-            aria-label={`Theme color${accent ? ` (${accent})` : ""}`}
+            aria-label={accent ? t("Theme color ({hex})", { hex: accent }) : t("Theme color")}
           >
             <Palette className="h-4.5 w-4.5" />
             {accent && (
@@ -44,7 +46,7 @@ export function ThemeControls() {
           </Button>
         </PopoverTrigger>
         <PopoverContent align="end" className="w-auto p-3">
-          <p className="mb-2.5 text-[13px] font-medium">Theme color</p>
+          <p className="mb-2.5 text-[13px] font-medium">{t("Theme color")}</p>
           <div className="grid grid-cols-6 gap-1.5">
             {ACCENTS.map((a) => (
               <Tooltip key={a.hex}>
@@ -52,7 +54,7 @@ export function ThemeControls() {
                   <button
                     type="button"
                     onClick={() => setTheme({ accent: a.hex })}
-                    aria-label={`${a.name} accent`}
+                    aria-label={t("{name} accent", { name: t(a.name) })}
                     aria-pressed={accent === a.hex}
                     className={cn(
                       "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-transform hover:scale-110 focus-visible:scale-110",
@@ -68,13 +70,13 @@ export function ThemeControls() {
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="top" className="text-xs">
-                  {a.name}
+                  {t(a.name)}
                 </TooltipContent>
               </Tooltip>
             ))}
           </div>
           <p className="mt-2.5 text-[11.5px] leading-relaxed text-muted-foreground">
-            Used for rules, bullets and quotes on every slide.
+            {t("Used for rules, bullets and quotes on every slide.")}
           </p>
         </PopoverContent>
       </Popover>
@@ -82,7 +84,7 @@ export function ThemeControls() {
       {/* sans / serif toggle */}
       <div
         role="group"
-        aria-label="Theme font"
+        aria-label={t("Theme font")}
         className="flex items-center rounded-md border p-0.5"
       >
         <Tooltip>
@@ -92,18 +94,18 @@ export function ThemeControls() {
               size="sm"
               onClick={() => setTheme({ font: "sans" })}
               aria-pressed={font === "sans"}
-              aria-label="Sans-serif font"
+              aria-label={t("Sans-serif font")}
               className={cn(
                 "h-7 gap-1.5 rounded-[5px] px-2.5 text-[13px]",
                 font === "sans" ? "bg-accent text-accent-foreground" : "text-muted-foreground"
               )}
             >
               <Type className="h-3.5 w-3.5" />
-              Sans
+              {t("Sans")}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Sans-serif theme
+            {t("Sans-serif theme")}
           </TooltipContent>
         </Tooltip>
         <Tooltip>
@@ -113,7 +115,7 @@ export function ThemeControls() {
               size="sm"
               onClick={() => setTheme({ font: "serif" })}
               aria-pressed={font === "serif"}
-              aria-label="Serif font"
+              aria-label={t("Serif font")}
               className={cn(
                 "h-7 gap-1.5 rounded-[5px] px-2.5 font-editorial text-[13px]",
                 font === "serif" ? "bg-accent text-accent-foreground" : "text-muted-foreground"
@@ -122,11 +124,11 @@ export function ThemeControls() {
               <span aria-hidden="true" className="font-editorial text-[13px] leading-none">
                 Aa
               </span>
-              Serif
+              {t("Serif")}
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Serif theme (editorial)
+            {t("Serif theme (editorial)")}
           </TooltipContent>
         </Tooltip>
       </div>

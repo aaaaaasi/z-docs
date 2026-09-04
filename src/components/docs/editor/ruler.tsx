@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useI18n } from "@/lib/i18n"
 
 export interface PageMargins {
   left: number
@@ -40,6 +41,7 @@ export function DocRuler({
 
   const [dragging, setDragging] = React.useState<"left" | "right" | null>(null)
   const [tip, setTip] = React.useState<{ x: number; text: string } | null>(null)
+  const { t } = useI18n()
   const handleRef = React.useRef<HTMLButtonElement | null>(null)
   const startRef = React.useRef({ clientX: 0, margin: 96 })
 
@@ -66,7 +68,7 @@ export function DocRuler({
     const m = dragging === "left" ? { ...margins, left: next } : { ...margins, right: next }
     onMarginsChange?.(m)
     const handleX = dragging === "left" ? m.left : pageWidth - m.right
-    setTip({ x: handleX, text: `${(next / PX_PER_IN).toFixed(2)} in` })
+    setTip({ x: handleX, text: t("{v} in", { v: (next / PX_PER_IN).toFixed(2) }) })
   }
 
   const endDrag = (e: React.PointerEvent) => {
@@ -130,27 +132,27 @@ export function DocRuler({
     <div
       className="no-print doc-ruler mx-auto flex h-[26px] items-end"
       role="img"
-      aria-label={`Page ruler — letter size, left margin ${(margins.left / PX_PER_IN).toFixed(2)} inches, right margin ${(margins.right / PX_PER_IN).toFixed(2)} inches. Drag the triangle handles to adjust.`}
+      aria-label={t("Page ruler — letter size, left margin {left} inches, right margin {right} inches. Drag the triangle handles to adjust.", { left: (margins.left / PX_PER_IN).toFixed(2), right: (margins.right / PX_PER_IN).toFixed(2) })}
     >
       {/* left margin zone */}
-      <div className="doc-ruler-margin" style={{ width: margins.left }} title={`Left margin: ${(margins.left / PX_PER_IN).toFixed(2)} in`} />
+      <div className="doc-ruler-margin" style={{ width: margins.left }} title={t("Left margin: {v} in", { v: (margins.left / PX_PER_IN).toFixed(2) })} />
       <div className="doc-ruler-track relative flex-1">
         {ticks}
         <span className="doc-ruler-edge" style={{ left: 0 }} aria-hidden />
         <span className="doc-ruler-edge" style={{ right: 0 }} aria-hidden />
       </div>
       {/* right margin zone */}
-      <div className="doc-ruler-margin" style={{ width: margins.right }} title={`Right margin: ${(margins.right / PX_PER_IN).toFixed(2)} in`} />
+      <div className="doc-ruler-margin" style={{ width: margins.right }} title={t("Right margin: {v} in", { v: (margins.right / PX_PER_IN).toFixed(2) })} />
 
       {/* margin drag handles */}
       <button
         type="button"
-        aria-label={`Left margin — ${(margins.left / PX_PER_IN).toFixed(2)} inches. Drag or use arrow keys to adjust.`}
+        aria-label={t("Left margin — {v} inches. Drag or use arrow keys to adjust.", { v: (margins.left / PX_PER_IN).toFixed(2) })}
         role="slider"
         aria-valuemin={MIN_MARGIN / PX_PER_IN}
         aria-valuemax={MAX_MARGIN / PX_PER_IN}
         aria-valuenow={Math.round((margins.left / PX_PER_IN) * 100) / 100}
-        aria-valuetext={`${(margins.left / PX_PER_IN).toFixed(2)} inches`}
+        aria-valuetext={t("{v} inches", { v: (margins.left / PX_PER_IN).toFixed(2) })}
         className="doc-ruler-handle"
         style={{ left: margins.left }}
         data-dragging={dragging === "left"}
@@ -160,17 +162,17 @@ export function DocRuler({
           if (e.key === "ArrowRight") { e.preventDefault(); nudge("left", 1) }
         }}
         onDoubleClick={() => reset("left")}
-        title="Drag to change the left margin (double-click to reset)"
+        title={t("Drag to change the left margin (double-click to reset)")}
         {...dragHandlers}
       />
       <button
         type="button"
-        aria-label={`Right margin — ${(margins.right / PX_PER_IN).toFixed(2)} inches. Drag or use arrow keys to adjust.`}
+        aria-label={t("Right margin — {v} inches. Drag or use arrow keys to adjust.", { v: (margins.right / PX_PER_IN).toFixed(2) })}
         role="slider"
         aria-valuemin={MIN_MARGIN / PX_PER_IN}
         aria-valuemax={MAX_MARGIN / PX_PER_IN}
         aria-valuenow={Math.round((margins.right / PX_PER_IN) * 100) / 100}
-        aria-valuetext={`${(margins.right / PX_PER_IN).toFixed(2)} inches`}
+        aria-valuetext={t("{v} inches", { v: (margins.right / PX_PER_IN).toFixed(2) })}
         className="doc-ruler-handle"
         style={{ left: pageWidth - margins.right }}
         data-dragging={dragging === "right"}
@@ -180,7 +182,7 @@ export function DocRuler({
           if (e.key === "ArrowRight") { e.preventDefault(); nudge("right", 1) }
         }}
         onDoubleClick={() => reset("right")}
-        title="Drag to change the right margin (double-click to reset)"
+        title={t("Drag to change the right margin (double-click to reset)")}
         {...dragHandlers}
       />
 

@@ -2,6 +2,7 @@
 
 import { api } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
+import { getCurrentLang, tForLang } from "@/lib/i18n"
 import type { SheetData } from "@/lib/workspace-types"
 import { cleanSheetData } from "./cells"
 import { useSheetStore, type SheetsState } from "./sheet-store"
@@ -39,9 +40,10 @@ export async function doSave() {
   } catch {
     if (useSheetStore.getState().sheetId === sheetId) {
       useSheetStore.setState({ saveState: "error" })
+      const lang = getCurrentLang()
       toast({
-        title: "Couldn't save spreadsheet",
-        description: "Your changes are still here — try editing again.",
+        title: tForLang(lang, "Couldn't save spreadsheet"),
+        description: tForLang(lang, "Your changes are still here — try editing again."),
         variant: "destructive",
       })
     }

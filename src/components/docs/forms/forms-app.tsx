@@ -4,6 +4,7 @@ import * as React from "react"
 import { Loader2 } from "lucide-react"
 import { useDocsStore } from "@/store/docs-store"
 import { useToast } from "@/hooks/use-toast"
+import { useI18n } from "@/lib/i18n"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -32,6 +33,7 @@ import {
  * fetches its own data via useFormsList.
  */
 export function FormsApp() {
+  const { t } = useI18n()
   const { toast } = useToast()
   const goHome = useDocsStore((s) => s.goHome)
   const consumeAppTarget = useDocsStore((s) => s.consumeAppTarget)
@@ -90,8 +92,8 @@ export function FormsApp() {
       if (!errorToastedRef.current) {
         errorToastedRef.current = true
         toast({
-          title: "Couldn't save your form",
-          description: "We'll retry automatically on your next edit.",
+          title: t("Couldn't save your form"),
+          description: t("We'll retry automatically on your next edit."),
           variant: "destructive",
         })
       }
@@ -102,7 +104,7 @@ export function FormsApp() {
         scheduleSaveRef.current()
       }
     }
-  }, [formPayload, toast])
+  }, [formPayload, t, toast])
 
   /** Debounce edits for 900ms, Google-style. */
   const scheduleSave = React.useCallback(() => {
@@ -160,12 +162,12 @@ export function FormsApp() {
         const list = await apiGetResponses(id)
         setResponses(list)
       } catch {
-        toast({ title: "Couldn't load responses", variant: "destructive" })
+        toast({ title: t("Couldn't load responses"), variant: "destructive" })
       } finally {
         setResponsesLoading(false)
       }
     },
-    [toast]
+    [t, toast]
   )
 
   const openFormById = React.useCallback(
@@ -182,8 +184,8 @@ export function FormsApp() {
         if (openMode === "responses") void loadResponses(id)
       } catch (e) {
         toast({
-          title: "Form unavailable",
-          description: e instanceof Error ? e.message : "Please try again.",
+          title: t("Form unavailable"),
+          description: e instanceof Error ? t(e.message) : t("Please try again."),
           variant: "destructive",
         })
         setMode("list")
@@ -191,7 +193,7 @@ export function FormsApp() {
         setFormLoading(false)
       }
     },
-    [formPayload, loadResponses, toast]
+    [formPayload, loadResponses, t, toast]
   )
 
   /* --------------------------------- navigation ---------------------------------- */
@@ -214,7 +216,7 @@ export function FormsApp() {
     try {
       const q = newQuestion("short")
       const created = await apiCreateForm({
-        title: "Untitled form",
+        title: t("Untitled form"),
         description: "",
         data: questionsToData([q]),
       })
@@ -236,9 +238,9 @@ export function FormsApp() {
       setSaveStatus("idle")
       setMode("builder")
     } catch {
-      toast({ title: "Couldn't create form", variant: "destructive" })
+      toast({ title: t("Couldn't create form"), variant: "destructive" })
     }
-  }, [formPayload, toast])
+  }, [formPayload, t, toast])
 
   /* ------------------------------ form-level actions ------------------------------ */
 
@@ -255,9 +257,9 @@ export function FormsApp() {
       await apiPatchForm(f.id, { starred: next })
     } catch {
       setForm({ ...f, starred: f.starred })
-      toast({ title: "Couldn't update star", variant: "destructive" })
+      toast({ title: t("Couldn't update star"), variant: "destructive" })
     }
-  }, [toast])
+  }, [t, toast])
 
   const renameCurrent = React.useCallback(
     async (title: string) => {
@@ -269,39 +271,40 @@ export function FormsApp() {
       try {
         await apiPatchForm(f.id, { title })
       } catch {
-        toast({ title: "Couldn't rename form", variant: "destructive" })
+        toast({ title: t("Couldn't rename form"), variant: "destructive" })
       }
     },
-    [formPayload, toast]
+    [formPayload, t, toast]
   )
 
   const duplicateCurrent = React.useCallback(async () => {
     const f = formRef.current
     if (!f) return
     try {
+      const copyTitle = t("Copy of {title}", { title: f.title })
       await apiCreateForm({
-        title: `Copy of ${f.title}`,
+        title: copyTitle,
         description: f.description,
         data: questionsToData(f.questions),
       })
-      toast({ title: "Form duplicated", description: `“Copy of ${f.title}” is in your forms list.` })
+      toast({ title: t("Form duplicated"), description: t("“{title}” is in your forms list.", { title: copyTitle }) })
     } catch {
-      toast({ title: "Couldn't duplicate form", variant: "destructive" })
+      toast({ title: t("Couldn't duplicate form"), variant: "destructive" })
     }
-  }, [toast])
+  }, [t, toast])
 
   const trashCurrent = React.useCallback(async () => {
     const f = formRef.current
     if (!f) return
     try {
       await apiPatchForm(f.id, { trashed: true })
-      toast({ title: "Moved to trash", description: `“${f.title}” was moved to trash.` })
+      toast({ title: t("Moved to trash"), description: t("“{title}” was moved to trash.", { title: f.title }) })
       setForm(null)
       setMode("list")
     } catch {
-      toast({ title: "Couldn't move form to trash", variant: "destructive" })
+      toast({ title: t("Couldn't move form to trash"), variant: "destructive" })
     }
-  }, [toast])
+  }, [t, toast])
 
   const submitAnswers = React.useCallback(
     async (answers: Record<string, AnswerValue>) => {
@@ -310,18 +313,18 @@ export function FormsApp() {
       try {
         await apiSubmitResponse(f.id, answers)
         setForm((prev) => (prev && prev.id === f.id ? { ...prev, responseCount: prev.responseCount + 1 } : prev))
-        toast({ title: "Response submitted", description: `Recorded for “${f.title}”.` })
+        toast({ title: t("Response submitted"), description: t("Recorded for “{title}”.", { title: f.title }) })
         return true
       } catch (e) {
         toast({
-          title: "Submission failed",
-          description: e instanceof Error ? e.message : undefined,
+          title: t("Submission failed"),
+          description: e instanceof Error ? t(e.message) : undefined,
           variant: "destructive",
         })
         return false
       }
     },
-    [toast]
+    [t, toast]
   )
 
   /* ------------------------------ mount + deep link ------------------------------- */
@@ -330,9 +333,9 @@ export function FormsApp() {
   React.useEffect(() => {
     if (mountedRef.current) return
     mountedRef.current = true
-    const t = consumeAppTarget()
-    if (t && t.app === "forms" && t.id) {
-      void openFormById(t.id, t.formMode ?? "edit")
+    const target = consumeAppTarget()
+    if (target && target.app === "forms" && target.id) {
+      void openFormById(target.id, target.formMode ?? "edit")
     }
   }, [consumeAppTarget, openFormById])
 
@@ -358,7 +361,7 @@ export function FormsApp() {
           onFormChange={updateForm}
           onToggleStar={() => void toggleCurrentStar()}
           onBack={backToList}
-          onTabChange={(t) => switchMode(t === "responses" ? "responses" : "builder")}
+          onTabChange={(tab) => switchMode(tab === "responses" ? "responses" : "builder")}
           onPreview={() => switchMode("fill")}
           onDuplicate={() => void duplicateCurrent()}
           onTrash={() => void trashCurrent()}
@@ -379,7 +382,7 @@ export function FormsApp() {
           onBack={backToList}
           onTitleCommit={(title) => void renameCurrent(title)}
           onToggleStar={() => void toggleCurrentStar()}
-          onTabChange={(t) => switchMode(t === "responses" ? "responses" : "builder")}
+          onTabChange={(tab) => switchMode(tab === "responses" ? "responses" : "builder")}
           onPreview={() => switchMode("fill")}
           onDuplicate={() => void duplicateCurrent()}
           onTrash={() => void trashCurrent()}
@@ -411,13 +414,14 @@ function FormLoading() {
 }
 
 function FormUnavailable({ onBack }: { onBack: () => void }) {
+  const { t } = useI18n()
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <div className="flex max-w-sm flex-col items-center gap-4 rounded-lg border bg-background p-8 text-center shadow-sm">
         <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" aria-hidden="true" />
-        <p className="text-sm font-medium">This form isn't available</p>
+        <p className="text-sm font-medium">{t("This form isn't available")}</p>
         <Button variant="outline" onClick={onBack} className="h-9">
-          Back to forms
+          {t("Back to forms")}
         </Button>
       </div>
     </div>

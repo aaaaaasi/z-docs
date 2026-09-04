@@ -12,6 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { EditorApi } from "./editor-types"
 import { ScrollFade } from "@/components/docs/scroll-fade"
+import { useI18n } from "@/lib/i18n"
 import { FONT_FAMILIES, FONT_SIZES, TEXT_COLOR_PALETTE } from "@/lib/doc-utils"
 import {
   Undo2, Redo2, Printer, Bold, Italic, Underline, Strikethrough, Link, ImagePlus,
@@ -71,6 +72,7 @@ const STYLES = [
 ]
 
 function PaletteGrid({ onPick, allowNone }: { onPick: (c: string) => void; allowNone?: boolean }) {
+  const { t } = useI18n()
   return (
     <div className="w-56 p-2">
       {allowNone && (
@@ -81,14 +83,14 @@ function PaletteGrid({ onPick, allowNone }: { onPick: (c: string) => void; allow
           <span className="relative h-4 w-4 rounded border bg-white">
             <span className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground">/</span>
           </span>
-          No highlight
+          {t("No highlight")}
         </button>
       )}
       <div className="grid grid-cols-10 gap-1">
         {TEXT_COLOR_PALETTE.map((c) => (
           <button
             key={c}
-            aria-label={`Use color ${c}`}
+            aria-label={t("Use color {c}", { c })}
             onClick={() => onPick(c)}
             className="h-4.5 w-4.5 rounded-[3px] border border-black/10 transition-transform hover:scale-125"
             style={{ backgroundColor: c }}
@@ -96,12 +98,12 @@ function PaletteGrid({ onPick, allowNone }: { onPick: (c: string) => void; allow
         ))}
       </div>
       <label className="mt-3 flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-xs hover:bg-muted">
-        Custom color
+        {t("Custom color")}
         <input
           type="color"
           className="h-6 w-8 cursor-pointer rounded border bg-transparent"
           onChange={(e) => onPick(e.target.value)}
-          aria-label="Custom color"
+          aria-label={t("Custom color")}
         />
       </label>
     </div>
@@ -109,6 +111,7 @@ function PaletteGrid({ onPick, allowNone }: { onPick: (c: string) => void; allow
 }
 
 export function Toolbar({ api }: { api: EditorApi }) {
+  const { t } = useI18n()
   const [lastTextColor, setLastTextColor] = React.useState("#0b6b62")
   const [lastHighlight, setLastHighlight] = React.useState("#fff2cc")
 
@@ -118,24 +121,24 @@ export function Toolbar({ api }: { api: EditorApi }) {
     <div
       className="no-print no-scrollbar relative flex h-12 items-center gap-0.5 overflow-x-auto border-b bg-background px-2 max-sm:px-1"
       role="toolbar"
-      aria-label="Text formatting toolbar"
+      aria-label={t("Text formatting toolbar")}
     >
       <ScrollFade className="max-sm:block sm:hidden" />
-      <TB icon={Undo2} label="Undo (Ctrl+Z)" onClick={() => api.exec("undo")} />
-      <TB icon={Redo2} label="Redo (Ctrl+Y)" onClick={() => api.exec("redo")} />
-      <TB icon={Printer} label="Print (Ctrl+P)" onClick={api.printDoc} className="max-sm:hidden" />
+      <TB icon={Undo2} label={t("Undo (Ctrl+Z)")} onClick={() => api.exec("undo")} />
+      <TB icon={Redo2} label={t("Redo (Ctrl+Y)")} onClick={() => api.exec("redo")} />
+      <TB icon={Printer} label={t("Print (Ctrl+P)")} onClick={api.printDoc} className="max-sm:hidden" />
 
       {/* Paragraph style */}
       <Select value={blockValue} onValueChange={(v) => api.exec("formatBlock", v)}>
         <SelectTrigger
-          aria-label="Paragraph style"
+          aria-label={t("Paragraph style")}
           className="mx-1 h-9 w-[132px] shrink-0 rounded-md border-transparent bg-muted/60 text-sm focus-visible:ring-1 max-sm:mx-0.5 max-sm:w-[92px] max-sm:px-2"
         >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {STYLES.map((s) => (
-            <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            <SelectItem key={s.value} value={s.value}>{t(s.label)}</SelectItem>
           ))}
         </SelectContent>
       </Select>
@@ -143,7 +146,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
       {/* Font family */}
       <Select value={api.fmt.fontName} onValueChange={(v) => api.exec("fontName", v)}>
         <SelectTrigger
-          aria-label="Font family"
+          aria-label={t("Font family")}
           className="mx-1 h-9 w-[118px] shrink-0 rounded-md border-transparent bg-muted/60 text-sm focus-visible:ring-1 max-sm:mx-0.5 max-sm:w-[76px] max-sm:px-2"
         >
           <div className="flex items-center gap-1.5 truncate">
@@ -161,7 +164,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
       {/* Font size stepper */}
       <div className="mx-1 flex h-9 shrink-0 items-center rounded-md bg-muted/60">
         <Button
-          variant="ghost" size="icon" aria-label="Decrease font size"
+          variant="ghost" size="icon" aria-label={t("Decrease font size")}
           className="h-9 w-7 rounded-none rounded-l-md text-muted-foreground"
           onClick={() => {
             const i = FONT_SIZES.indexOf(api.fmt.fontSize)
@@ -173,7 +176,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
         </Button>
         <span className="w-8 text-center text-sm tabular-nums">{api.fmt.fontSize}</span>
         <Button
-          variant="ghost" size="icon" aria-label="Increase font size"
+          variant="ghost" size="icon" aria-label={t("Increase font size")}
           className="h-9 w-7 rounded-none rounded-r-md text-muted-foreground"
           onClick={() => {
             const i = FONT_SIZES.indexOf(api.fmt.fontSize)
@@ -187,10 +190,10 @@ export function Toolbar({ api }: { api: EditorApi }) {
 
       <div className="mx-1 h-6 w-px shrink-0 bg-border" />
 
-      <TB icon={Bold} label="Bold (Ctrl+B)" active={api.fmt.bold} onClick={() => api.exec("bold")} iconClassName="font-black" />
-      <TB icon={Italic} label="Italic (Ctrl+I)" active={api.fmt.italic} onClick={() => api.exec("italic")} iconClassName="italic" />
-      <TB icon={Underline} label="Underline (Ctrl+U)" active={api.fmt.underline} onClick={() => api.exec("underline")} />
-      <TB icon={Strikethrough} label="Strikethrough" active={api.fmt.strike} onClick={() => api.exec("strikeThrough")} />
+      <TB icon={Bold} label={t("Bold (Ctrl+B)")} active={api.fmt.bold} onClick={() => api.exec("bold")} iconClassName="font-black" />
+      <TB icon={Italic} label={t("Italic (Ctrl+I)")} active={api.fmt.italic} onClick={() => api.exec("italic")} iconClassName="italic" />
+      <TB icon={Underline} label={t("Underline (Ctrl+U)")} active={api.fmt.underline} onClick={() => api.exec("underline")} />
+      <TB icon={Strikethrough} label={t("Strikethrough")} active={api.fmt.strike} onClick={() => api.exec("strikeThrough")} />
 
       {/* Text color */}
       <Popover>
@@ -198,7 +201,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
               <Button
-                variant="ghost" size="icon" aria-label="Text color"
+                variant="ghost" size="icon" aria-label={t("Text color")}
                 className="relative h-9 w-9 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
               >
                 <Text className="h-4.5 w-4.5" strokeWidth={1.75} />
@@ -206,7 +209,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
               </Button>
             </PopoverTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Text color</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">{t("Text color")}</TooltipContent>
         </Tooltip>
         <PopoverContent align="start" className="w-60 p-0">
           <PaletteGrid
@@ -224,7 +227,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
               <Button
-                variant="ghost" size="icon" aria-label="Highlight color"
+                variant="ghost" size="icon" aria-label={t("Highlight color")}
                 className="relative h-9 w-9 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
               >
                 <Highlighter className="h-4.5 w-4.5" strokeWidth={1.75} />
@@ -232,7 +235,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
               </Button>
             </PopoverTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Highlight</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">{t("Highlight")}</TooltipContent>
         </Tooltip>
         <PopoverContent align="start" className="w-60 p-0">
           <PaletteGrid
@@ -251,8 +254,8 @@ export function Toolbar({ api }: { api: EditorApi }) {
 
       <div className="mx-1 h-6 w-px shrink-0 bg-border" />
 
-      <TB icon={Link} label="Insert link (Ctrl+K)" active={api.fmt.link} onClick={() => api.openDialog("link")} />
-      <TB icon={ImagePlus} label="Insert image" onClick={() => api.openDialog("image")} />
+      <TB icon={Link} label={t("Insert link (Ctrl+K)")} active={api.fmt.link} onClick={() => api.openDialog("link")} />
+      <TB icon={ImagePlus} label={t("Insert image")} onClick={() => api.openDialog("image")} />
 
       <div className="mx-1 h-6 w-px shrink-0 bg-border" />
 
@@ -260,14 +263,14 @@ export function Toolbar({ api }: { api: EditorApi }) {
       <div className="relative shrink-0">
         <TB
           icon={MessageSquarePlus}
-          label="Add comment (Ctrl+Alt+M)"
+          label={t("Add comment (Ctrl+Alt+M)")}
           onClick={api.openCommentComposer}
           className={cn(api.unresolvedCommentCount > 0 && "text-primary")}
         />
         {api.unresolvedCommentCount > 0 && (
           <span
             className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-semibold leading-none text-primary-foreground shadow"
-            aria-label={`${api.unresolvedCommentCount} unresolved comments`}
+            aria-label={t("{n} unresolved comments", { n: api.unresolvedCommentCount })}
           >
             {api.unresolvedCommentCount > 9 ? "9+" : api.unresolvedCommentCount}
           </span>
@@ -282,7 +285,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="ghost" size="icon" aria-label="Alignment"
+                variant="ghost" size="icon" aria-label={t("Alignment")}
                 className="h-9 w-9 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
               >
                 {api.fmt.align === "center" ? (
@@ -297,13 +300,13 @@ export function Toolbar({ api }: { api: EditorApi }) {
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Align</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">{t("Align")}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start">
-          <DropdownMenuItem onClick={() => api.applyAlignment("left")}><AlignLeft className="h-4 w-4" /> Left</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => api.applyAlignment("center")}><AlignCenter className="h-4 w-4" /> Center</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => api.applyAlignment("right")}><AlignRight className="h-4 w-4" /> Right</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => api.applyAlignment("full")}><AlignJustify className="h-4 w-4" /> Justified</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => api.applyAlignment("left")}><AlignLeft className="h-4 w-4" /> {t("Left")}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => api.applyAlignment("center")}><AlignCenter className="h-4 w-4" /> {t("Center")}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => api.applyAlignment("right")}><AlignRight className="h-4 w-4" /> {t("Right")}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => api.applyAlignment("full")}><AlignJustify className="h-4 w-4" /> {t("Justified")}</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -313,7 +316,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
               <Button
-                variant="ghost" size="icon" aria-label="Line spacing"
+                variant="ghost" size="icon" aria-label={t("Line spacing")}
                 className="h-9 w-9 shrink-0 rounded-md text-muted-foreground hover:text-foreground"
               >
                 <div className="flex flex-col items-center gap-[3px]">
@@ -324,7 +327,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
               </Button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Line &amp; paragraph spacing</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">{t("Line & paragraph spacing")}</TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start">
           {[1, 1.15, 1.5, 2].map((v) => (
@@ -337,11 +340,11 @@ export function Toolbar({ api }: { api: EditorApi }) {
 
       <div className="mx-1 h-6 w-px shrink-0 bg-border" />
 
-      <TB icon={ListOrdered} label="Numbered list" active={api.fmt.ol} onClick={() => api.exec("insertOrderedList")} />
-      <TB icon={List} label="Bulleted list" active={api.fmt.ul} onClick={() => api.exec("insertUnorderedList")} />
-      <TB icon={Outdent} label="Decrease indent" onClick={() => api.exec("outdent")} />
-      <TB icon={Indent} label="Increase indent" onClick={() => api.exec("indent")} />
-      <TB icon={RemoveFormatting} label="Clear formatting (Ctrl+\)" onClick={api.clearFormatting} />
+      <TB icon={ListOrdered} label={t("Numbered list")} active={api.fmt.ol} onClick={() => api.exec("insertOrderedList")} />
+      <TB icon={List} label={t("Bulleted list")} active={api.fmt.ul} onClick={() => api.exec("insertUnorderedList")} />
+      <TB icon={Outdent} label={t("Decrease indent")} onClick={() => api.exec("outdent")} />
+      <TB icon={Indent} label={t("Increase indent")} onClick={() => api.exec("indent")} />
+      <TB icon={RemoveFormatting} label={t("Clear formatting (Ctrl+\)")} onClick={api.clearFormatting} />
 
       <div className="ml-1 mr-1 h-6 w-px shrink-0 bg-border" />
 
@@ -354,10 +357,10 @@ export function Toolbar({ api }: { api: EditorApi }) {
             className="h-9 shrink-0 gap-1.5 rounded-md text-muted-foreground hover:border-border hover:bg-accent/60 hover:text-foreground"
           >
             <Sparkles className="h-4 w-4" strokeWidth={1.75} />
-            <span className="hidden text-xs font-medium sm:inline">Help me write</span>
+            <span className="hidden text-xs font-medium sm:inline">{t("Help me write")}</span>
           </Button>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="text-xs">Draft content with AI</TooltipContent>
+        <TooltipContent side="bottom" className="text-xs">{t("Draft content with AI")}</TooltipContent>
       </Tooltip>
 
       <Tooltip>
@@ -366,15 +369,15 @@ export function Toolbar({ api }: { api: EditorApi }) {
             variant="outline"
             size="sm"
             onClick={() => api.openDialog("aitools")}
-            aria-label="AI polish"
+            aria-label={t("AI polish")}
             className="h-9 shrink-0 gap-1.5 rounded-md border-border bg-background text-muted-foreground transition-[background-color,border-color,color] hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
           >
             <Wand2 className="h-4 w-4" />
-            <span className="hidden text-xs font-medium sm:inline">Polish</span>
+            <span className="hidden text-xs font-medium sm:inline">{t("Polish")}</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">
-          AI polish: improve, fix grammar, shorten (⌥⌘A)
+          {t("AI polish: improve, fix grammar, shorten (⌥⌘A)")}
         </TooltipContent>
       </Tooltip>
 
@@ -384,7 +387,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
             variant="outline"
             size="sm"
             onClick={api.toggleVoiceTyping}
-            aria-label={api.voiceListening ? "Stop voice typing" : "Voice typing (Ctrl+Shift+S)"}
+            aria-label={api.voiceListening ? t("Stop voice typing") : t("Voice typing (Ctrl+Shift+S)")}
             aria-pressed={api.voiceListening}
             className={cn(
               "relative h-9 shrink-0 gap-1.5 rounded-md border-border bg-background text-muted-foreground transition-all active:scale-95",
@@ -395,7 +398,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
           >
             <Mic className="h-4 w-4" strokeWidth={1.75} />
             <span className="hidden text-xs font-medium sm:inline">
-              {api.voiceListening ? "Listening" : "Voice"}
+              {api.voiceListening ? t("Listening") : t("Voice")}
             </span>
             {api.voiceListening && (
               <span aria-hidden className="absolute -right-0.5 -top-0.5 flex h-2 w-2">
@@ -406,7 +409,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">
-          Voice typing — dictate into the document (⇧⌘S)
+          {t("Voice typing — dictate into the document (⇧⌘S)")}
         </TooltipContent>
       </Tooltip>
 
@@ -417,7 +420,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
             <Button
               variant="ghost"
               size="sm"
-              aria-label={`Mode: ${api.mode === "suggest" ? "Suggesting" : "Editing"}. Switch editing mode.`}
+              aria-label={t("Mode: {mode}. Switch editing mode.", { mode: api.mode === "suggest" ? t("Suggesting") : t("Editing") })}
               aria-haspopup="menu"
               className={cn(
                 "h-9 gap-1.5 rounded-md px-2.5 text-xs font-medium transition-colors",
@@ -431,12 +434,12 @@ export function Toolbar({ api }: { api: EditorApi }) {
               ) : (
                 <Pencil className="h-4 w-4" strokeWidth={1.9} />
               )}
-              <span className="hidden sm:inline">{api.mode === "suggest" ? "Suggesting" : "Editing"}</span>
+              <span className="hidden sm:inline">{api.mode === "suggest" ? t("Suggesting") : t("Editing")}</span>
               <ChevronDown className="h-3.5 w-3.5 opacity-60" />
               {api.suggestions.length > 0 && (
                 <span
                   className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-md bg-primary px-1 text-[10px] font-semibold leading-none tabular-nums text-primary-foreground shadow-sm"
-                  aria-label={`${api.suggestions.length} pending suggestions`}
+                  aria-label={t("{n} pending suggestions", { n: api.suggestions.length })}
                 >
                   {api.suggestions.length > 9 ? "9+" : api.suggestions.length}
                 </span>
@@ -449,7 +452,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
               aria-checked={api.mode === "edit"}
               className="gap-2"
             >
-              <Pencil className="h-4 w-4" /> Editing
+              <Pencil className="h-4 w-4" /> {t("Editing")}
               {api.mode === "edit" && <Check className="ml-auto h-4 w-4 text-primary" />}
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -457,14 +460,14 @@ export function Toolbar({ api }: { api: EditorApi }) {
               aria-checked={api.mode === "suggest"}
               className="gap-2"
             >
-              <PencilLine className="h-4 w-4" /> Suggesting
+              <PencilLine className="h-4 w-4" /> {t("Suggesting")}
               {api.mode === "suggest" && <Check className="ml-auto h-4 w-4 text-primary" />}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-2 pb-1.5 pt-1 text-[11px] leading-relaxed text-muted-foreground">
               {api.mode === "suggest"
-                ? "Edits you make show as suggestions others can accept or reject."
-                : "Edits apply directly to the document."}
+                ? t("Edits you make show as suggestions others can accept or reject.")
+                : t("Edits apply directly to the document.")}
             </div>
           </DropdownMenuContent>
         </DropdownMenu>

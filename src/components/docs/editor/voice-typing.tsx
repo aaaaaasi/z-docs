@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Mic, Square } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { getCurrentLang, useI18n } from "@/lib/i18n"
 
 /* ---------------------------------------------------------------- typings */
 
@@ -115,7 +116,8 @@ export function useVoiceTyping(onFinalText: (text: string) => void): VoiceTyping
     try {
       const rec = new Ctor()
       recRef.current = rec
-      rec.lang = navigator.language || "en-US"
+      // match the dictation language to the UI language (zh → Mandarin)
+      rec.lang = getCurrentLang() === "zh" ? "zh-CN" : navigator.language || "en-US"
       rec.continuous = true
       rec.interimResults = true
       rec.maxAlternatives = 1
@@ -198,11 +200,12 @@ export function VoicePill({
   interim: string
   onStop: () => void
 }) {
+  const { t } = useI18n()
   if (!listening) return null
   return (
     <div
       role="status"
-      aria-label="Voice typing"
+      aria-label={t("Voice typing")}
       className="no-print elev-2 animate-in fade-in-0 slide-in-from-bottom-2 absolute bottom-6 left-2 z-20 flex max-w-[360px] items-center gap-2.5 rounded-full border bg-background/95 py-2 pl-3.5 pr-2 backdrop-blur-md duration-200"
     >
       <span className="relative flex h-3.5 w-3.5 shrink-0 items-center justify-center" aria-hidden>
@@ -213,12 +216,12 @@ export function VoicePill({
         {interim ? (
           <span className="text-foreground">{interim}</span>
         ) : (
-          <span className="text-muted-foreground">Listening…</span>
+          <span className="text-muted-foreground">{t("Listening…")}</span>
         )}
       </span>
       <button
         type="button"
-        aria-label="Stop voice typing"
+        aria-label={t("Stop voice typing")}
         onClick={onStop}
         className={cn(
           "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",

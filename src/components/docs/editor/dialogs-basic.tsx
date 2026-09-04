@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
 import { Link2 } from "lucide-react"
+import { useI18n } from "@/lib/i18n"
 
 /* ---------------- Link dialog ---------------- */
 
@@ -21,6 +22,7 @@ export function LinkDialog({
 }) {
   const [text, setText] = React.useState("")
   const [url, setUrl] = React.useState("")
+  const { t } = useI18n()
 
   React.useEffect(() => {
     if (open) {
@@ -35,22 +37,22 @@ export function LinkDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Insert link</DialogTitle>
+          <DialogTitle>{t("Insert link")}</DialogTitle>
         </DialogHeader>
         {!hasSelection && (
           <div className="space-y-2">
-            <Label htmlFor="link-text">Text</Label>
+            <Label htmlFor="link-text">{t("Text")}</Label>
             <Input
               id="link-text"
               autoFocus
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Text to display"
+              placeholder={t("Text to display")}
             />
           </div>
         )}
         <div className="space-y-2">
-          <Label htmlFor="link-url">URL</Label>
+          <Label htmlFor="link-url">{t("URL")}</Label>
           <Input
             id="link-url"
             autoFocus={hasSelection}
@@ -67,11 +69,11 @@ export function LinkDialog({
             }}
           />
           {url.trim() && !valid && (
-            <p className="text-xs text-destructive">Enter a valid URL starting with http:// or https://</p>
+            <p className="text-xs text-destructive">{t("Enter a valid URL starting with http:// or https://")}</p>
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
           <Button
             disabled={!valid || (!hasSelection && !text.trim())}
             onClick={() => {
@@ -82,7 +84,7 @@ export function LinkDialog({
               setTimeout(() => onInsert(url2, text2), 220)
             }}
           >
-            Apply
+            {t("Apply")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -104,6 +106,7 @@ export function ImageDialog({
   const [fileSrc, setFileSrc] = React.useState("")
   const [fileName, setFileName] = React.useState("")
   const { toast } = useToast()
+  const { t } = useI18n()
 
   React.useEffect(() => {
     if (open) {
@@ -117,7 +120,7 @@ export function ImageDialog({
   const onFile = (f: File | undefined) => {
     if (!f) return
     if (f.size > 2.5 * 1024 * 1024) {
-      toast({ title: "Image too large", description: "Please pick an image under 2.5 MB.", variant: "destructive" })
+      toast({ title: t("Image too large"), description: t("Please pick an image under 2.5 MB."), variant: "destructive" })
       return
     }
     const reader = new FileReader()
@@ -134,16 +137,16 @@ export function ImageDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Insert image</DialogTitle>
+          <DialogTitle>{t("Insert image")}</DialogTitle>
         </DialogHeader>
         <Tabs defaultValue="by-url">
           <TabsList className="w-full">
-            <TabsTrigger value="by-url" className="flex-1">From URL</TabsTrigger>
-            <TabsTrigger value="upload" className="flex-1">Upload</TabsTrigger>
+            <TabsTrigger value="by-url" className="flex-1">{t("From URL")}</TabsTrigger>
+            <TabsTrigger value="upload" className="flex-1">{t("Upload")}</TabsTrigger>
           </TabsList>
           <TabsContent value="by-url" className="space-y-4 pt-2">
             <div className="space-y-2">
-              <Label htmlFor="img-url">Image URL</Label>
+              <Label htmlFor="img-url">{t("Image URL")}</Label>
               <Input
                 id="img-url"
                 value={url}
@@ -153,22 +156,22 @@ export function ImageDialog({
             </div>
           </TabsContent>
           <TabsContent value="upload" className="space-y-2 pt-2">
-            <Label htmlFor="img-file">Choose a file (≤ 2.5 MB)</Label>
+            <Label htmlFor="img-file">{t("Choose a file (≤ 2.5 MB)")}</Label>
             <Input id="img-file" type="file" accept="image/*" onChange={(e) => onFile(e.target.files?.[0])} />
             {fileSrc && (
               <div className="mt-2 space-y-1">
-                <img src={fileSrc} alt="preview" className="max-h-36 rounded border" />
+                <img src={fileSrc} alt={t("preview")} className="max-h-36 rounded border" />
                 <p className="text-xs text-muted-foreground">{fileName}</p>
               </div>
             )}
           </TabsContent>
         </Tabs>
         <div className="space-y-2">
-          <Label htmlFor="img-alt">Alt text (optional)</Label>
-          <Input id="img-alt" value={alt} onChange={(e) => setAlt(e.target.value)} placeholder="Describe the image" />
+          <Label htmlFor="img-alt">{t("Alt text (optional)")}</Label>
+          <Input id="img-alt" value={alt} onChange={(e) => setAlt(e.target.value)} placeholder={t("Describe the image")} />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
           <Button
             disabled={!ready}
             onClick={() => {
@@ -178,7 +181,7 @@ export function ImageDialog({
               setTimeout(() => onInsert(src, alt2), 220)
             }}
           >
-            Insert
+            {t("Insert")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -198,6 +201,7 @@ export function TableDialog({
   onInsert: (rows: number, cols: number) => void
 }) {
   const [hover, setHover] = React.useState({ rows: 0, cols: 0 })
+  const { t } = useI18n()
 
   React.useEffect(() => {
     if (open) setHover({ rows: 0, cols: 0 })
@@ -213,10 +217,10 @@ export function TableDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Insert table</DialogTitle>
+          <DialogTitle>{t("Insert table")}</DialogTitle>
         </DialogHeader>
         <div className="flex justify-center py-2">
-          <div className="flex flex-col gap-1" onMouseLeave={() => setHover({ rows: 0, cols: 0 })} role="grid" aria-label="Table size picker">
+          <div className="flex flex-col gap-1" onMouseLeave={() => setHover({ rows: 0, cols: 0 })} role="grid" aria-label={t("Table size picker")}>
             {Array.from({ length: GRID_MAX }).map((_, r) => (
               <div key={r} className="flex gap-1">
                 {Array.from({ length: GRID_MAX }).map((_, c) => {
@@ -224,7 +228,7 @@ export function TableDialog({
                   return (
                     <button
                       key={c}
-                      aria-label={`Insert ${r + 1} by ${c + 1} table`}
+                      aria-label={t("Insert {r} by {c} table", { r: r + 1, c: c + 1 })}
                       onMouseEnter={() => setHover({ rows: r + 1, cols: c + 1 })}
                       onClick={() => pick(r + 1, c + 1)}
                       className={`h-7 w-7 rounded-[3px] border transition-[background-color,border-color,transform] ${
@@ -238,10 +242,10 @@ export function TableDialog({
           </div>
         </div>
         <p className="text-center text-sm tabular-nums text-muted-foreground" role="status">
-          {hover.rows > 0 ? `${hover.rows} × ${hover.cols} table` : "Hover to pick a size, click to insert"}
+          {hover.rows > 0 ? t("{r} × {c} table", { r: hover.rows, c: hover.cols }) : t("Hover to pick a size, click to insert")}
         </p>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -8,6 +8,7 @@
 
 import * as React from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { useI18n } from "@/lib/i18n"
 import { LAYOUTS, LayoutGlyph } from "./layout-glyph"
 import type { SlideLayout } from "@/lib/workspace-types"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,7 @@ export function LayoutPickerPopover({
   align?: "start" | "center" | "end"
 }) {
   const [open, setOpen] = React.useState(false)
+  const { t } = useI18n()
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
@@ -41,7 +43,7 @@ export function LayoutPickerPopover({
                 onPick(l.id)
                 setOpen(false)
               }}
-              aria-label={l.label}
+              aria-label={t(l.label)}
               aria-pressed={current === l.id}
               className={cn(
                 "flex min-h-11 flex-col items-center gap-1 rounded-md p-1.5 outline-none transition-colors",
@@ -50,7 +52,7 @@ export function LayoutPickerPopover({
               )}
             >
               <LayoutGlyph layout={l.id} />
-              <span className="text-[11px] leading-tight text-muted-foreground">{l.label}</span>
+              <span className="text-[11px] leading-tight text-muted-foreground">{t(l.label)}</span>
             </button>
           ))}
         </div>

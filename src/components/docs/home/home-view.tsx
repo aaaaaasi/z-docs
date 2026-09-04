@@ -6,8 +6,10 @@ import { TemplateGallery } from "./template-gallery"
 import { WorkspaceQuickstart } from "./quickstart"
 import { DocsGrid } from "./docs-grid"
 import { HomeDndContext } from "./doc-dnd"
+import { useI18n } from "@/lib/i18n"
 
 export function HomeView() {
+  const { t } = useI18n()
   return (
     <HomeDndContext>
       <div className="flex min-h-screen flex-col bg-background">
@@ -24,7 +26,7 @@ export function HomeView() {
           <span className="inline-flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
             <span className="font-editorial text-[13px] font-medium tracking-tight text-foreground/70">Z-Docs</span>
             <span aria-hidden="true" className="hidden sm:inline">·</span>
-            <span className="hidden sm:inline">documents for teams</span>
+            <span className="hidden sm:inline">{t("documents for teams")}</span>
           </span>
         </footer>
       </div>

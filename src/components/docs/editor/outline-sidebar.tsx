@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ListTree, X, Heading1 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 export interface OutlineItem {
   /** data-oid stamped on the heading element in the live DOM */
@@ -28,9 +29,10 @@ const LEVEL_STYLES: Record<number, string> = {
 }
 
 export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarProps) {
+  const { t } = useI18n()
   return (
     <aside
-      aria-label="Document outline"
+      aria-label={t("Document outline")}
       data-open={open}
       className={cn(
         "no-print relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-r bg-background/95 backdrop-blur-sm",
@@ -44,7 +46,7 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
         {/* header */}
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
           <ListTree className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Document outline</h2>
+          <h2 className="text-sm font-semibold">{t("Document outline")}</h2>
           {items.length > 0 && (
             <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
               {items.length}
@@ -53,7 +55,7 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Close document outline"
+            aria-label={t("Close document outline")}
             className="ml-auto h-8 w-8 rounded-md text-muted-foreground"
             onClick={onClose}
           >
@@ -67,15 +69,15 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
             <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
               <Heading1 className="h-8 w-8 text-muted-foreground/40" />
               <div>
-                <p className="font-editorial text-[14.5px] font-medium italic tracking-tight text-foreground/80">No headings yet</p>
+                <p className="font-editorial text-[14.5px] font-medium italic tracking-tight text-foreground/80">{t("No headings yet")}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Add headings with <span className="font-medium">Format → Paragraph styles</span> or the
-                  style dropdown to build a navigable outline.
+                  {t("Add headings with")} <span className="font-medium">{t("Format → Paragraph styles")}</span>{" "}
+                  {t("or the style dropdown to build a navigable outline.")}
                 </p>
               </div>
             </div>
           ) : (
-            <nav aria-label="Outline items" className="flex flex-col gap-0.5">
+            <nav aria-label={t("Outline items")} className="flex flex-col gap-0.5">
               {items.map((item) => (
                 <Tooltip key={item.oid}>
                   <TooltipTrigger asChild>
@@ -88,14 +90,14 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
                         "hover:bg-muted focus-visible:bg-muted",
                         LEVEL_STYLES[item.level] ?? LEVEL_STYLES[3]
                       )}
-                      aria-label={`Jump to ${item.text}`}
+                      aria-label={t("Jump to {text}", { text: item.text })}
                     >
                       {item.level === 1 && <span className="h-1 w-1 shrink-0 rounded-full bg-primary/70" />}
-                      <span className="truncate">{item.text || "Untitled heading"}</span>
+                      <span className="truncate">{item.text || t("Untitled heading")}</span>
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="right" className="max-w-48 truncate text-xs">
-                    {item.text || "Untitled heading"}
+                    {item.text || t("Untitled heading")}
                   </TooltipContent>
                 </Tooltip>
               ))}

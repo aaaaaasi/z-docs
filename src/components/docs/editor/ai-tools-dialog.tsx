@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { countWords } from "@/lib/doc-utils"
+import { useI18n } from "@/lib/i18n"
 
 export type AiAction = "summarize" | "improve" | "proofread" | "shorten" | "lengthen" | "simplify"
 
@@ -48,6 +49,7 @@ export function AiToolsDialog({
   const [copied, setCopied] = React.useState(false)
   const [showSource, setShowSource] = React.useState(false)
   const { toast } = useToast()
+  const { t, lang } = useI18n()
 
   React.useEffect(() => {
     if (open) {
@@ -68,13 +70,13 @@ export function AiToolsDialog({
       const res = await fetch("/api/ai/transform", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: source.text, action, title: docTitle }),
+        body: JSON.stringify({ text: source.text, action, title: docTitle, lang }),
       })
       const data = (await res.json()) as { text?: string; error?: string }
-      if (!res.ok || !data.text) throw new Error(data.error ?? "The AI service is unavailable right now.")
+      if (!res.ok || !data.text) throw new Error(data.error ?? t("The AI service is unavailable right now."))
       setResult(data.text)
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong")
+      setError(e instanceof Error ? e.message : t("Something went wrong"))
     } finally {
       setLoading(false)
     }
@@ -89,22 +91,22 @@ export function AiToolsDialog({
       <DialogContent className="flex flex-col gap-4 overflow-hidden p-4 sm:max-w-xl sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-4.5 w-4.5 text-primary" /> AI polish
+            <Sparkles className="h-4.5 w-4.5 text-primary" /> {t("AI polish")}
           </DialogTitle>
           <DialogDescription className="text-left">
-            One-click transformations on{" "}
+            {t("One-click transformations on")}{lang === "en" ? " " : null}
             {source?.isSelection ? (
-              <span className="font-medium text-foreground">your selection ({srcWords} words)</span>
+              <span className="font-medium text-foreground">{t("your selection ({n} words)", { n: srcWords })}</span>
             ) : (
-              <span className="font-medium text-foreground">the whole document ({srcWords} words)</span>
+              <span className="font-medium text-foreground">{t("the whole document ({n} words)", { n: srcWords })}</span>
             )}
-            . Review the result before applying it.
+            {t(". Review the result before applying it.")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="slim-scroll -mr-2 min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
           {/* action grid */}
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="AI action">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label={t("AI action")}>
             {ACTIONS.map((a) => {
               const Icon = a.icon
               const selected = action === a.id
@@ -128,9 +130,9 @@ export function AiToolsDialog({
                 >
                   <span className="flex items-center gap-1.5 text-xs font-semibold">
                     <Icon className={cn("h-3.5 w-3.5 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
-                    {a.label}
+                    {t(a.label)}
                   </span>
-                  <span className="text-[10.5px] leading-tight text-foreground/60">{a.hint}</span>
+                  <span className="text-[10.5px] leading-tight text-foreground/60">{t(a.hint)}</span>
                 </button>
               )
             })}
@@ -145,7 +147,7 @@ export function AiToolsDialog({
             >
               <summary className="flex cursor-pointer select-none items-center justify-between rounded-lg px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground">
                 <span>
-                  {source.isSelection ? "Selected text" : "Document text"} · {srcWords.toLocaleString()} words
+                  {source.isSelection ? t("Selected text") : t("Document text")} · {t("{n} words", { n: srcWords.toLocaleString() })}
                 </span>
                 <ChevronDown className="h-3.5 w-3.5 shrink-0 transition-transform duration-200 group-open:rotate-180" />
               </summary>
@@ -158,7 +160,7 @@ export function AiToolsDialog({
 
           <Button onClick={run} disabled={!source?.text.trim() || loading} className="gap-2">
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {loading ? "Working…" : "Run AI polish"}
+            {loading ? t("Working…") : t("Run AI polish")}
           </Button>
 
           {error && (
@@ -170,7 +172,7 @@ export function AiToolsDialog({
           {result && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-muted-foreground">Result (editable)</p>
+                <p className="text-xs font-medium text-muted-foreground">{t("Result (editable)")}</p>
                 {delta !== 0 && (
                   <p
                     className={cn(
@@ -178,8 +180,10 @@ export function AiToolsDialog({
                       delta > 0 ? "text-emerald-600" : "text-red-600"
                     )}
                   >
-                    {delta > 0 ? "+" : ""}
-                    {delta.toLocaleString()} words vs {source?.isSelection ? "selection" : "document"}
+                    {t("{delta} words vs {target}", {
+                      delta: `${delta > 0 ? "+" : ""}${delta.toLocaleString()}`,
+                      target: source?.isSelection ? t("selection") : t("document"),
+                    })}
                   </p>
                 )}
               </div>
@@ -187,7 +191,7 @@ export function AiToolsDialog({
                 value={result}
                 onChange={(e) => setResult(e.target.value)}
                 className="max-h-[min(20rem,45dvh)] min-h-36 text-sm"
-                aria-label="AI result"
+                aria-label={t("AI result")}
               />
             </div>
           )}
@@ -204,7 +208,7 @@ export function AiToolsDialog({
               }}
             >
               <Replace className="h-3.5 w-3.5" />
-              {source?.isSelection ? "Replace selection" : "Replace document"}
+              {source?.isSelection ? t("Replace selection") : t("Replace document")}
             </Button>
             <Button
               size="sm"
@@ -215,10 +219,10 @@ export function AiToolsDialog({
                 setTimeout(() => onInsert(result), 240)
               }}
             >
-              <CornerDownLeft className="h-3.5 w-3.5" /> Insert below cursor
+              <CornerDownLeft className="h-3.5 w-3.5" /> {t("Insert below cursor")}
             </Button>
             <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void run()} disabled={loading}>
-              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Retry
+              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> {t("Retry")}
             </Button>
             <Button
               size="sm"
@@ -227,17 +231,17 @@ export function AiToolsDialog({
               onClick={async () => {
                 await navigator.clipboard.writeText(result).catch(() => {})
                 setCopied(true)
-                toast({ title: "Copied to clipboard" })
+                toast({ title: t("Copied to clipboard") })
                 setTimeout(() => setCopied(false), 1800)
               }}
             >
-              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} Copy
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {t("Copy")}
             </Button>
           </div>
         )}
 
         <DialogFooter className="text-xs text-muted-foreground">
-          Generated by Z-AI · always review AI edits
+          {t("Generated by Z-AI · always review AI edits")}
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1,0 +1,659 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useDraggable } from "@dnd-kit/core"
+     5→import {
+     6→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+     7→  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuCheckboxItem,
+     8→} from "@/components/ui/dropdown-menu"
+     9→import {
+    10→  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+    11→} from "@/components/ui/dialog"
+    12→import {
+    13→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+    14→  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    15→} from "@/components/ui/alert-dialog"
+    16→import {
+    17→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    18→} from "@/components/ui/select"
+    19→import { Button } from "@/components/ui/button"
+    20→import { Input } from "@/components/ui/input"
+    21→import { Skeleton } from "@/components/ui/skeleton"
+    22→import { useToast } from "@/hooks/use-toast"
+    23→import { useDocsStore } from "@/store/docs-store"
+    24→import type { DocumentMeta, FolderDTO, TagDTO } from "@/lib/docs-types"
+    25→import { relativeTime } from "@/lib/doc-utils"
+    26→import { DocPreview } from "@/components/docs/doc-preview"
+    27→import { docDragId } from "./doc-dnd"
+    28→import { DEFAULT_TAG_COLOR, TagChip, TagColorPalette, TagFilterChip, TagOverflowChip } from "./tag-ui"
+    29→import {
+    30→  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder, Tag, Plus
+    31→} from "lucide-react"
+    32→import { cn } from "@/lib/utils"
+    33→
+    34→type SortKey = "updated" | "created" | "title"
+    35→
+    36→function titleFor(filter: string, folders: FolderDTO[], activeFolderId: string | null) {
+    37→  if (filter === "trash") return "Trash"
+    38→  if (filter === "starred") return "Starred"
+    39→  if (filter === "folder") {
+    40→    const f = folders.find((x) => x.id === activeFolderId)
+    41→    return f ? f.name : "Folder"
+    42→  }
+    43→  return "Recent documents"
+    44→}
+    45→
+    46→export function DocsGrid() {
+    47→  const documents = useDocsStore((s) => s.documents)
+    48→  const loading = useDocsStore((s) => s.loading)
+    49→  const error = useDocsStore((s) => s.error)
+    50→  const filter = useDocsStore((s) => s.filter)
+    51→  const layout = useDocsStore((s) => s.layout)
+    52→  const setLayout = useDocsStore((s) => s.setLayout)
+    53→  const searchQuery = useDocsStore((s) => s.searchQuery)
+    54→  const openDoc = useDocsStore((s) => s.openDoc)
+    55→  const toggleStar = useDocsStore((s) => s.toggleStar)
+    56→  const renameDoc = useDocsStore((s) => s.renameDoc)
+    57→  const setTrashed = useDocsStore((s) => s.setTrashed)
+    58→  const deleteForever = useDocsStore((s) => s.deleteForever)
+    59→  const duplicateDoc = useDocsStore((s) => s.duplicateDoc)
+    60→  const folders = useDocsStore((s) => s.folders)
+    61→  const activeFolderId = useDocsStore((s) => s.activeFolderId)
+    62→  const moveToFolder = useDocsStore((s) => s.moveToFolder)
+    63→  const tags = useDocsStore((s) => s.tags)
+    64→  const tagFilter = useDocsStore((s) => s.tagFilter)
+    65→  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+    66→  const { toast } = useToast()
+    67→
+    68→  const [sort, setSort] = React.useState<SortKey>("updated")
+    69→  const [renaming, setRenaming] = React.useState<DocumentMeta | null>(null)
+    70→  const [renameValue, setRenameValue] = React.useState("")
+    71→  const [deleting, setDeleting] = React.useState<DocumentMeta | null>(null)
+    72→
+    73→  const sorted = React.useMemo(() => {
+    74→    const list = [...documents]
+    75→    if (sort === "title") list.sort((a, b) => a.title.localeCompare(b.title))
+    76→    else if (sort === "created") list.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    77→    else list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    78→    return list
+    79→  }, [documents, sort])
+    80→
+    81→  // tag filter narrows the current view (folder / starred / search all compose with it)
+    82→  const visible = React.useMemo(
+    83→    () => (tagFilter ? sorted.filter((d) => (d.tags ?? []).some((t) => t.id === tagFilter)) : sorted),
+    84→    [sorted, tagFilter]
+    85→  )
+    86→  const activeTag = tagFilter ? tags.find((t) => t.id === tagFilter) ?? null : null
+    87→
+    88→  const confirmRename = async () => {
+    89→    if (!renaming) return
+    90→    const name = renameValue.trim()
+    91→    if (!name) return
+    92→    await renameDoc(renaming.id, name)
+    93→    toast({ title: "Renamed", description: `“${name}”` })
+    94→    setRenaming(null)
+    95→  }
+    96→
+    97→  const confirmDelete = async () => {
+    98→    if (!deleting) return
+    99→    await deleteForever(deleting.id)
+   100→    toast({ title: "Deleted permanently", variant: "destructive" })
+   101→    setDeleting(null)
+   102→  }
+   103→
+   104→  return (
+   105→    <section aria-label="Document list" className="flex-1 px-4 py-6 sm:px-8">
+   106→      <div className="mx-auto max-w-6xl">
+   107→        <div className="mb-4 flex flex-wrap items-center gap-3">
+   108→          <h2 className="text-base font-semibold">{titleFor(filter, folders, activeFolderId)}</h2>
+   109→          {!loading && (
+   110→            <span className="tnum text-[13px] text-muted-foreground">
+   111→              {visible.length} {visible.length === 1 ? "document" : "documents"}
+   112→              {searchQuery ? ` matching “${searchQuery}”` : ""}
+   113→            </span>
+   114→          )}
+   115→          <div className="ml-auto flex items-center gap-2">
+   116→            <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+   117→              <SelectTrigger className="h-8 w-[128px] rounded-md text-[13px] text-muted-foreground" aria-label="Sort documents">
+   118→                <SelectValue />
+   119→              </SelectTrigger>
+   120→              <SelectContent>
+   121→                <SelectItem value="updated">Last edited</SelectItem>
+   122→                <SelectItem value="created">Date created</SelectItem>
+   123→                <SelectItem value="title">Title A–Z</SelectItem>
+   124→              </SelectContent>
+   125→            </Select>
+   126→            <div className="flex items-center rounded-md border p-0.5">
+   127→              <Button
+   128→                variant="ghost" size="icon"
+   129→                aria-label="Grid view"
+   130→                onClick={() => setLayout("grid")}
+   131→                className={cn("h-7 w-7 rounded-[5px]", layout === "grid" ? "bg-accent text-accent-foreground" : "text-muted-foreground")}
+   132→              >
+   133→                <LayoutGrid className="h-4 w-4" />
+   134→              </Button>
+   135→              <Button
+   136→                variant="ghost" size="icon"
+   137→                aria-label="List view"
+   138→                onClick={() => setLayout("list")}
+   139→                className={cn("h-7 w-7 rounded-[5px]", layout === "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground")}
+   140→              >
+   141→                <List className="h-4 w-4" />
+   142→              </Button>
+   143→            </div>
+   144→          </div>
+   145→        </div>
+   146→
+   147→        {/* Google Drive style filter chip while a tag filter is active */}
+   148→        {activeTag && !loading && (
+   149→          <div className="mb-4 flex flex-wrap items-center gap-2">
+   150→            <TagFilterChip tag={activeTag} onClear={() => setTagFilter(null)} />
+   151→          </div>
+   152→        )}
+   153→
+   154→        {error && (
+   155→          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+   156→            {error}. <button className="font-medium underline underline-offset-2" onClick={() => useDocsStore.getState().refresh()}>Retry</button>
+   157→          </div>
+   158→        )}
+   159→
+   160→        {loading ? (
+   161→          <div className="flex flex-wrap gap-5">
+   162→            {Array.from({ length: 8 }).map((_, i) => (
+   163→              <div key={i} className="w-[168px] space-y-2">
+   164→                <Skeleton className="h-[220px] w-[168px] rounded-sm" />
+   165→                <Skeleton className="h-4 w-3/4" />
+   166→                <Skeleton className="h-3 w-1/2" />
+   167→              </div>
+   168→            ))}
+   169→          </div>
+   170→        ) : sorted.length === 0 || visible.length === 0 ? (
+   171→          <EmptyState filter={filter} search={!!searchQuery} tag={activeTag} />
+   172→        ) : layout === "grid" ? (
+   173→          <div className="flex flex-wrap gap-5">
+   174→            {visible.map((doc, i) => (
+   175→              <DocCard
+   176→                key={doc.id}
+   177→                doc={doc}
+   178→                index={i}
+   179→                inTrash={filter === "trash"}
+   180→                folders={folders}
+   181→                onOpen={() => openDoc(doc.id)}
+   182→                onStar={() => toggleStar(doc.id)}
+   183→                onRename={() => { setRenaming(doc); setRenameValue(doc.title) }}
+   184→                onTrash={() => { void setTrashed(doc.id, true); toast({ title: "Moved to trash", description: doc.title }) }}
+   185→                onRestore={() => { void setTrashed(doc.id, false); toast({ title: "Restored", description: doc.title }) }}
+   186→                onDelete={() => setDeleting(doc)}
+   187→                onDuplicate={() => { void duplicateDoc(doc.id); toast({ title: "Copy created" }) }}
+   188→                onMoveToFolder={(folderId) => {
+   189→                  void moveToFolder(doc.id, folderId)
+   190→                  const f = folders.find((x) => x.id === folderId)
+   191→                  toast({ title: f ? `Moved to “${f.name}”` : "Removed from folder" })
+   192→                }}
+   193→              />
+   194→            ))}
+   195→          </div>
+   196→        ) : (
+   197→          <div className="overflow-hidden rounded-lg border">
+   198→            {visible.map((doc, i) => (
+   199→              <DocRow
+   200→                key={doc.id}
+   201→                doc={doc}
+   202→                index={i}
+   203→                inTrash={filter === "trash"}
+   204→                folders={folders}
+   205→                onOpen={() => openDoc(doc.id)}
+   206→                onStar={() => toggleStar(doc.id)}
+   207→                onRename={() => { setRenaming(doc); setRenameValue(doc.title) }}
+   208→                onTrash={() => { void setTrashed(doc.id, true); toast({ title: "Moved to trash", description: doc.title }) }}
+   209→                onRestore={() => { void setTrashed(doc.id, false); toast({ title: "Restored", description: doc.title }) }}
+   210→                onDelete={() => setDeleting(doc)}
+   211→                onDuplicate={() => { void duplicateDoc(doc.id); toast({ title: "Copy created" }) }}
+   212→                onMoveToFolder={(folderId) => {
+   213→                  void moveToFolder(doc.id, folderId)
+   214→                  const f = folders.find((x) => x.id === folderId)
+   215→                  toast({ title: f ? `Moved to “${f.name}”` : "Removed from folder" })
+   216→                }}
+   217→              />
+   218→            ))}
+   219→          </div>
+   220→        )}
+   221→      </div>
+   222→
+   223→      {/* Rename dialog */}
+   224→      <Dialog open={!!renaming} onOpenChange={(o) => !o && setRenaming(null)}>
+   225→        <DialogContent className="sm:max-w-md">
+   226→          <DialogHeader>
+   227→            <DialogTitle>Rename document</DialogTitle>
+   228→          </DialogHeader>
+   229→          <Input
+   230→            autoFocus
+   231→            value={renameValue}
+   232→            onChange={(e) => setRenameValue(e.target.value)}
+   233→            onKeyDown={(e) => e.key === "Enter" && confirmRename()}
+   234→            maxLength={120}
+   235→            className="h-10"
+   236→          />
+   237→          <DialogFooter>
+   238→            <Button variant="outline" onClick={() => setRenaming(null)}>Cancel</Button>
+   239→            <Button onClick={confirmRename} disabled={!renameValue.trim()}>Rename</Button>
+   240→          </DialogFooter>
+   241→        </DialogContent>
+   242→      </Dialog>
+   243→
+   244→      {/* Delete forever confirm */}
+   245→      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+   246→        <AlertDialogContent>
+   247→          <AlertDialogHeader>
+   248→            <AlertDialogTitle>Delete “{deleting?.title}” forever?</AlertDialogTitle>
+   249→            <AlertDialogDescription>
+   250→              This can’t be undone. The document will be permanently removed.
+   251→            </AlertDialogDescription>
+   252→          </AlertDialogHeader>
+   253→          <AlertDialogFooter>
+   254→            <AlertDialogCancel>Cancel</AlertDialogCancel>
+   255→            <AlertDialogAction
+   256→              className="bg-destructive text-white hover:bg-destructive/90"
+   257→              onClick={confirmDelete}
+   258→            >
+   259→              Delete forever
+   260→            </AlertDialogAction>
+   261→          </AlertDialogFooter>
+   262→        </AlertDialogContent>
+   263→      </AlertDialog>
+   264→    </section>
+   265→  )
+   266→}
+   267→
+   268→interface DocActions {
+   269→  onOpen: () => void
+   270→  onStar: () => void
+   271→  onRename: () => void
+   272→  onTrash: () => void
+   273→  onRestore: () => void
+   274→  onDelete: () => void
+   275→  onDuplicate: () => void
+   276→  onMoveToFolder: (folderId: string | null) => void
+   277→}
+   278→
+   279→function MoveToSubmenu({
+   280→  folders,
+   281→  docFolderId,
+   282→  onPick,
+   283→}: {
+   284→  folders: FolderDTO[]
+   285→  docFolderId: string | null | undefined
+   286→  onPick: (folderId: string | null) => void
+   287→}) {
+   288→  return (
+   289→    <DropdownMenuSub>
+   290→      <DropdownMenuSubTrigger className="gap-2">
+   291→        <FolderInput className="h-4 w-4" /> Move to
+   292→      </DropdownMenuSubTrigger>
+   293→      <DropdownMenuSubContent className="w-48">
+   294→        <DropdownMenuItem onClick={() => onPick(null)}>
+   295→          <Folder className="h-4 w-4" /> No folder
+   296→          {!docFolderId && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+   297→        </DropdownMenuItem>
+   298→        {folders.length > 0 && <DropdownMenuSeparator />}
+   299→        {folders.map((f) => (
+   300→          <DropdownMenuItem key={f.id} onClick={() => onPick(f.id)}>
+   301→            <Folder className="h-4 w-4" style={{ color: f.color }} /> {f.name}
+   302→            {docFolderId === f.id && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+   303→          </DropdownMenuItem>
+   304→        ))}
+   305→      </DropdownMenuSubContent>
+   306→    </DropdownMenuSub>
+   307→  )
+   308→}
+   309→
+   310→/** "Add tags" submenu: checkbox per tag + inline "New tag…" creation (applied to this doc) */
+   311→function AddTagsSubmenu({ doc }: { doc: DocumentMeta }) {
+   312→  const tags = useDocsStore((s) => s.tags)
+   313→  const setDocTags = useDocsStore((s) => s.setDocTags)
+   314→  const createTag = useDocsStore((s) => s.createTag)
+   315→  const { toast } = useToast()
+   316→  const [creating, setCreating] = React.useState(false)
+   317→  const [name, setName] = React.useState("")
+   318→  const [color, setColor] = React.useState<string>(DEFAULT_TAG_COLOR)
+   319→  const docTagIds = new Set((doc.tags ?? []).map((t) => t.id))
+   320→
+   321→  const toggleTag = (tagId: string) => {
+   322→    const ids = (doc.tags ?? []).map((t) => t.id)
+   323→    void setDocTags(doc.id, ids.includes(tagId) ? ids.filter((i) => i !== tagId) : [...ids, tagId])
+   324→  }
+   325→
+   326→  const confirmCreate = async () => {
+   327→    const trimmed = name.trim()
+   328→    if (!trimmed) return
+   329→    const tag = await createTag(trimmed, color)
+   330→    if (tag) {
+   331→      const ids = (doc.tags ?? []).map((t) => t.id)
+   332→      if (!ids.includes(tag.id)) void setDocTags(doc.id, [...ids, tag.id])
+   333→      toast({ title: "Tag created", description: `“${tag.name}” added to this document.` })
+   334→      setCreating(false)
+   335→      setName("")
+   336→    } else {
+   337→      toast({ title: "Couldn’t create tag", description: "Names must be unique.", variant: "destructive" })
+   338→    }
+   339→  }
+   340→
+   341→  return (
+   342→    <DropdownMenuSub>
+   343→      <DropdownMenuSubTrigger className="gap-2">
+   344→        <Tag className="h-4 w-4" /> Add tags
+   345→      </DropdownMenuSubTrigger>
+   346→      <DropdownMenuSubContent className="w-52">
+   347→        {tags.map((t) => (
+   348→          <DropdownMenuCheckboxItem
+   349→            key={t.id}
+   350→            checked={docTagIds.has(t.id)}
+   351→            onCheckedChange={() => toggleTag(t.id)}
+   352→            onSelect={(e) => e.preventDefault()}
+   353→          >
+   354→            <span
+   355→              aria-hidden="true"
+   356→              className="h-2 w-2 shrink-0 rounded-full"
+   357→              style={{ backgroundColor: t.color }}
+   358→            />
+   359→            <span className="truncate">{t.name}</span>
+   360→          </DropdownMenuCheckboxItem>
+   361→        ))}
+   362→        {tags.length > 0 && <DropdownMenuSeparator />}
+   363→        {creating ? (
+   364→          <div
+   365→            className="flex flex-col gap-1.5 px-2 py-1.5"
+   366→            onBlur={(e) => {
+   367→              // cancel only when focus leaves the whole creation form (palette clicks stay inside)
+   368→              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCreating(false)
+   369→            }}
+   370→          >
+   371→            <div className="flex items-center gap-2">
+   372→              <span
+   373→                aria-hidden="true"
+   374→                className="h-2 w-2 shrink-0 rounded-full"
+   375→                style={{ backgroundColor: color }}
+   376→              />
+   377→              <Input
+   378→                autoFocus
+   379→                value={name}
+   380→                onChange={(e) => setName(e.target.value)}
+   381→                onKeyDown={(e) => {
+   382→                  // stop the Radix menu typeahead from stealing printable keys / arrows
+   383→                  e.stopPropagation()
+   384→                  if (e.key === "Enter") void confirmCreate()
+   385→                  if (e.key === "Escape") setCreating(false)
+   386→                }}
+   387→                placeholder="Tag name"
+   388→                aria-label="New tag name"
+   389→                className="h-8 rounded-md text-[13px]"
+   390→                maxLength={24}
+   391→              />
+   392→            </div>
+   393→            <div className="pl-6">
+   394→              <TagColorPalette value={color} onChange={setColor} />
+   395→            </div>
+   396→          </div>
+   397→        ) : (
+   398→          <DropdownMenuItem
+   399→            onSelect={(e) => {
+   400→              e.preventDefault()
+   401→              setCreating(true)
+   402→              setName("")
+   403→            }}
+   404→          >
+   405→            <Plus className="h-4 w-4" /> New tag…
+   406→          </DropdownMenuItem>
+   407→        )}
+   408→        {tags.length === 0 && !creating && (
+   409→          <p className="px-2 py-1.5 text-[11.5px] leading-relaxed text-muted-foreground/80">
+   410→            No tags yet. Create one to label documents.
+   411→          </p>
+   412→        )}
+   413→      </DropdownMenuSubContent>
+   414→    </DropdownMenuSub>
+   415→  )
+   416→}
+   417→
+   418→function CardMenu({
+   419→  doc,
+   420→  inTrash,
+   421→  folders,
+   422→  ...a
+   423→}: DocActions & { doc: DocumentMeta; inTrash: boolean; folders: FolderDTO[] }) {
+   424→  return (
+   425→    <DropdownMenu>
+   426→      <DropdownMenuTrigger asChild>
+   427→        <Button
+   428→          variant="ghost" size="icon"
+   429→          aria-label={`Actions for ${doc.title}`}
+   430→          className="h-8 w-8 rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+   431→          onClick={(e) => e.stopPropagation()}
+   432→        >
+   433→          <MoreVertical className="h-4 w-4" />
+   434→        </Button>
+   435→      </DropdownMenuTrigger>
+   436→      <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
+   437→        <DropdownMenuItem onClick={a.onOpen}><FolderOpen className="h-4 w-4" /> Open</DropdownMenuItem>
+   438→        {!inTrash && (
+   439→          <>
+   440→            <DropdownMenuItem onClick={a.onStar}>
+   441→              {doc.starred ? <StarOff className="h-4 w-4" /> : <Star className="h-4 w-4" />}
+   442→              {doc.starred ? "Remove star" : "Add star"}
+   443→            </DropdownMenuItem>
+   444→            <DropdownMenuItem onClick={a.onRename}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
+   445→            <DropdownMenuItem onClick={a.onDuplicate}><Copy className="h-4 w-4" /> Make a copy</DropdownMenuItem>
+   446→            <AddTagsSubmenu doc={doc} />
+   447→            <MoveToSubmenu folders={folders} docFolderId={doc.folderId} onPick={a.onMoveToFolder} />
+   448→            <DropdownMenuSeparator />
+   449→            <DropdownMenuItem onClick={a.onTrash} className="text-destructive focus:text-destructive">
+   450→              <Trash2 className="h-4 w-4" /> Move to trash
+   451→            </DropdownMenuItem>
+   452→          </>
+   453→        )}
+   454→        {inTrash && (
+   455→          <>
+   456→            <DropdownMenuItem onClick={a.onRestore}><RotateCcw className="h-4 w-4" /> Restore</DropdownMenuItem>
+   457→            <DropdownMenuSeparator />
+   458→            <DropdownMenuItem onClick={a.onDelete} className="text-destructive focus:text-destructive">
+   459→              <Trash2 className="h-4 w-4" /> Delete forever
+   460→            </DropdownMenuItem>
+   461→          </>
+   462→        )}
+   463→      </DropdownMenuContent>
+   464→    </DropdownMenu>
+   465→  )
+   466→}
+   467→
+   468→function DocCard({
+   469→  doc,
+   470→  index,
+   471→  inTrash,
+   472→  folders,
+   473→  ...actions
+   474→}: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean; folders: FolderDTO[] }) {
+   475→  const folder = folders.find((f) => f.id === doc.folderId)
+   476→  const tagFilter = useDocsStore((s) => s.tagFilter)
+   477→  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+   478→  const docTags = doc.tags ?? []
+   479→  const { attributes: dragAttrs, listeners: dragListeners, setNodeRef: dragRef, isDragging } = useDraggable({
+   480→    id: docDragId(doc.id),
+   481→    disabled: inTrash,
+   482→  })
+   483→  return (
+   484→    <div
+   485→      ref={dragRef}
+   486→      {...dragAttrs}
+   487→      {...dragListeners}
+   488→      role="button"
+   489→      tabIndex={0}
+   490→      onClick={actions.onOpen}
+   491→      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && actions.onOpen()}
+   492→      className={cn(
+   493→        "animate-card-in group flex w-[168px] cursor-pointer flex-col rounded-lg p-2 transition-colors outline-none hover:bg-muted/60 focus-visible:bg-muted/60",
+   494→        isDragging && "opacity-40"
+   495→      )}
+   496→      style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
+   497→      aria-label={`Open ${doc.title}`}
+   498→    >
+   499→      <div className="relative overflow-hidden rounded-sm border elev-1 transition-[border-color,box-shadow] duration-200 group-hover:border-foreground/25 group-hover:elev-2 group-focus-visible:border-foreground/25 group-focus-visible:elev-2">
+   500→        <DocPreview html={doc.content ?? doc.snippet} width={152} className="mx-auto" />
+   501→        {doc.starred && !inTrash && (
+   502→          <Star className="absolute right-1.5 top-1.5 h-4 w-4 fill-amber-400 text-amber-400 drop-shadow transition-transform duration-200 group-hover:scale-110" aria-label="Starred" />
+   503→        )}
+   504→        {inTrash && (
+   505→          <div className="absolute left-1.5 top-1.5 rounded-[4px] bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white">
+   506→            In trash
+   507→          </div>
+   508→        )}
+   509→      </div>
+   510→      <div className="mt-2 flex items-start gap-1">
+   511→        <div className="min-w-0 flex-1">
+   512→          <p className="truncate text-sm font-medium leading-tight">{doc.title}</p>
+   513→          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+   514→            {folder && (
+   515→              <span className="mr-1 inline-flex items-center gap-0.5 align-baseline text-[11px]" style={{ color: folder.color }}>
+   516→                <Folder className="inline h-3 w-3" /> {folder.name}
+   517→              </span>
+   518→            )}
+   519→            {relativeTime(doc.updatedAt)}
+   520→          </p>
+   521→          {docTags.length > 0 && !inTrash && (
+   522→            <div className="mt-1.5 flex flex-wrap gap-1">
+   523→              {docTags.slice(0, 3).map((t) => (
+   524→                <TagChip
+   525→                  key={t.id}
+   526→                  tag={t}
+   527→                  active={tagFilter === t.id}
+   528→                  onFilter={() => setTagFilter(tagFilter === t.id ? null : t.id)}
+   529→                />
+   530→              ))}
+   531→              {docTags.length > 3 && (
+   532→                <TagOverflowChip count={docTags.length - 3} names={docTags.slice(3).map((t) => t.name).join(", ")} />
+   533→              )}
+   534→            </div>
+   535→          )}
+   536→        </div>
+   537→        <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
+   538→      </div>
+   539→    </div>
+   540→  )
+   541→}
+   542→
+   543→function DocRow({
+   544→  doc,
+   545→  index,
+   546→  inTrash,
+   547→  folders,
+   548→  ...actions
+   549→}: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean; folders: FolderDTO[] }) {
+   550→  const folder = folders.find((f) => f.id === doc.folderId)
+   551→  const tagFilter = useDocsStore((s) => s.tagFilter)
+   552→  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+   553→  const docTags = doc.tags ?? []
+   554→  const { attributes: dragAttrs, listeners: dragListeners, setNodeRef: dragRef, isDragging } = useDraggable({
+   555→    id: docDragId(doc.id),
+   556→    disabled: inTrash,
+   557→  })
+   558→  return (
+   559→    <div
+   560→      ref={dragRef}
+   561→      {...dragAttrs}
+   562→      {...dragListeners}
+   563→      role="button"
+   564→      tabIndex={0}
+   565→      onClick={actions.onOpen}
+   566→      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && actions.onOpen()}
+   567→      className={cn(
+   568→        "animate-card-in group flex cursor-pointer items-center gap-3 border-b px-4 py-3 outline-none last:border-b-0 hover:bg-muted/50 focus-visible:bg-muted/50",
+   569→        index === 0 && "rounded-t-lg", index % 2 === 1 && "bg-muted/30",
+   570→        isDragging && "opacity-40"
+   571→      )}
+   572→      aria-label={`Open ${doc.title}`}
+   573→    >
+   574→      <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+   575→      <div className="min-w-0 flex-1">
+   576→        <p className="truncate text-sm font-medium">
+   577→          {doc.title}
+   578→          {doc.starred && !inTrash && <Star className="ml-1.5 inline h-3.5 w-3.5 fill-amber-400 text-amber-400" />}
+   579→        </p>
+   580→        <p className="truncate text-xs text-muted-foreground">
+   581→          {folder && (
+   582→            <span className="mr-1 inline-flex items-center gap-0.5 align-baseline text-[11px]" style={{ color: folder.color }}>
+   583→              <Folder className="inline h-3 w-3" /> {folder.name}
+   584→            </span>
+   585→          )}
+   586→          {doc.snippet || "Empty document"}
+   587→        </p>
+   588→        {docTags.length > 0 && !inTrash && (
+   589→          <div className="mt-1 flex flex-wrap gap-1">
+   590→            {docTags.slice(0, 3).map((t) => (
+   591→              <TagChip
+   592→                key={t.id}
+   593→                tag={t}
+   594→                active={tagFilter === t.id}
+   595→                onFilter={() => setTagFilter(tagFilter === t.id ? null : t.id)}
+   596→              />
+   597→            ))}
+   598→            {docTags.length > 3 && (
+   599→              <TagOverflowChip count={docTags.length - 3} names={docTags.slice(3).map((t) => t.name).join(", ")} />
+   600→            )}
+   601→          </div>
+   602→        )}
+   603→      </div>
+   604→      <span className="tnum hidden w-20 shrink-0 text-right text-xs text-muted-foreground sm:block">{doc.wordCount} words</span>
+   605→      <span className="tnum hidden w-32 shrink-0 text-right text-xs text-muted-foreground md:block">{relativeTime(doc.updatedAt)}</span>
+   606→      <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
+   607→    </div>
+   608→  )
+   609→}
+   610→
+   611→function EmptyState({ filter, search, tag }: { filter: string; search: boolean; tag?: TagDTO | null }) {
+   612→  const createDoc = useDocsStore((s) => s.createDoc)
+   613→  const openDoc = useDocsStore((s) => s.openDoc)
+   614→  return (
+   615→    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+   616→      {search ? (
+   617→        <SearchX className="h-10 w-10 text-muted-foreground/40" />
+   618→      ) : tag ? (
+   619→        <Tag className="h-10 w-10 text-muted-foreground/40" strokeWidth={1.5} />
+   620→      ) : filter === "trash" ? (
+   621→        <Trash className="h-10 w-10 text-muted-foreground/40" />
+   622→      ) : (
+   623→        <FileText className="h-10 w-10 text-muted-foreground/40" />
+   624→      )}
+   625→      <p className="font-editorial mt-4 text-[15.5px] font-medium italic tracking-tight text-foreground/80">
+   626→        {search
+   627→          ? "No documents match your search"
+   628→          : tag
+   629→            ? "No documents with this tag"
+   630→            : filter === "trash"
+   631→              ? "Trash is empty"
+   632→              : filter === "starred"
+   633→                ? "No starred documents yet"
+   634→                : "No documents yet"}
+   635→      </p>
+   636→      <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground">
+   637→        {search
+   638→          ? "Try a different keyword or clear the search field."
+   639→          : tag
+   640→            ? `No documents in this view carry the “${tag.name}” label.`
+   641→            : filter === "trash"
+   642→              ? "Deleted documents will appear here before being removed forever."
+   643→              : "Pick a template above or start from a blank page to create your first document."}
+   644→      </p>
+   645→      {!search && !tag && filter === "all" && (
+   646→        <Button
+   647→          className="mt-4"
+   648→          onClick={async () => {
+   649→            const id = await createDoc({ templateId: "blank" })
+   650→            if (id) openDoc(id)
+   651→          }}
+   652→        >
+   653→          Create a document
+   654→        </Button>
+   655→      )}
+   656→    </div>
+   657→  )
+   658→}
+   659→

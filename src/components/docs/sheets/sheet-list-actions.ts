@@ -2,6 +2,7 @@
 
 import { api } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
+import { getCurrentLang, tForLang } from "@/lib/i18n"
 import { EMPTY_SHEET, type SheetDTO, type SheetMeta } from "@/lib/workspace-types"
 import { cleanSheetData, countCells, parseSheetData } from "./cells"
 import { evaluateSheet } from "./formula"
@@ -46,7 +47,19 @@ export function createListActions(set: Set, get: Get) {
       // lazily hydrate "N cells" meta (list endpoint has no cell counts)
       void hydrateCellCounts(sheets, set, get)
     } catch (e) {
-      set({ listError: e instanceof Error ? e.message : "Something went wrong" })
+      const lang = getCurrentLang()
+      const raw = e instanceof Error ? e.message : "Something went wrong"
+      // localize known list-error phrases, keep unknown/technical text as-is
+      set({
+        listError:
+          raw === "Something went wrong"
+            ? tForLang(lang, "Something went wrong")
+            : /^Failed to load spreadsheets \(\d+\)$/.test(raw)
+              ? tForLang(lang, "Failed to load spreadsheets ({status})", {
+                  status: raw.match(/\((\d+)\)/)?.[1] ?? "",
+                })
+              : raw,
+      })
     } finally {
       set({ listLoading: false })
     }
@@ -66,13 +79,21 @@ export function createListActions(set: Set, get: Get) {
       const res = await api("/api/sheets", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ title: "Untitled spreadsheet", data: JSON.stringify(EMPTY_SHEET) }),
+        body: JSON.stringify({
+          title: tForLang(getCurrentLang(), "Untitled spreadsheet"),
+          data: JSON.stringify(EMPTY_SHEET),
+        }),
       })
       if (!res.ok) throw new Error("create failed")
       const data = (await res.json()) as { sheet: SheetDTO }
       get().openSheet(data.sheet.id)
     } catch {
-      toast({ title: "Couldn't create spreadsheet", description: "Please try again.", variant: "destructive" })
+      const lang = getCurrentLang()
+      toast({
+        title: tForLang(lang, "Couldn't create spreadsheet"),
+        description: tForLang(lang, "Please try again."),
+        variant: "destructive",
+      })
     } finally {
       set({ creating: false })
     }
@@ -104,7 +125,12 @@ export function createListActions(set: Set, get: Get) {
       })
     } catch {
       set({ view: "list", loadingSheet: false })
-      toast({ title: "Couldn't open spreadsheet", description: "It may have been deleted.", variant: "destructive" })
+      const lang = getCurrentLang()
+      toast({
+        title: tForLang(lang, "Couldn't open spreadsheet"),
+        description: tForLang(lang, "It may have been deleted."),
+        variant: "destructive",
+      })
       void get().loadSheets()
     }
   },
@@ -123,7 +149,7 @@ export function createListActions(set: Set, get: Get) {
       await api(`/api/sheets/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ title }) })
     } catch {
       set({ sheets: prev })
-      toast({ title: "Rename failed", variant: "destructive" })
+      toast({ title: tForLang(getCurrentLang(), "Rename failed"), variant: "destructive" })
     }
   },
 
@@ -169,6 +195,7 @@ export function createListActions(set: Set, get: Get) {
   },
 
   duplicateSheet: async (id) => {
+    const lang = getCurrentLang()
     try {
       const src = get().sheets.find((s) => s.id === id)
       let dataStr: string | undefined
@@ -183,16 +210,22 @@ export function createListActions(set: Set, get: Get) {
       } catch {
         // copy without data beats failing outright
       }
+      const copyTitle = tForLang(lang, "Copy of {title}", {
+        title: src?.title ?? tForLang(lang, "Untitled spreadsheet"),
+      })
       const res = await api("/api/sheets", {
         method: "POST",
         headers: JSON_HEADERS,
-        body: JSON.stringify({ title: `Copy of ${src?.title ?? "Untitled spreadsheet"}`, data: dataStr }),
+        body: JSON.stringify({ title: copyTitle, data: dataStr }),
       })
       if (!res.ok) throw new Error("duplicate failed")
       await get().loadSheets({ silent: true })
-      toast({ title: "Spreadsheet copied", description: `“Copy of ${src?.title ?? "Untitled"}” is ready.` })
+      toast({
+        title: tForLang(lang, "Spreadsheet copied"),
+        description: tForLang(lang, "“{title}” is ready.", { title: copyTitle }),
+      })
     } catch {
-      toast({ title: "Couldn't copy spreadsheet", variant: "destructive" })
+      toast({ title: tForLang(lang, "Couldn't copy spreadsheet"), variant: "destructive" })
     }
   },
   }

@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ChevronLeft, ChevronRight, Presentation, StickyNote, X } from "lucide-react"
 import { SlideCard, useElementSize } from "./slide-render"
+import { useI18n } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
 import type { DeckData } from "@/lib/workspace-types"
 
@@ -31,6 +32,7 @@ export function PresentMode({
 }) {
   const slides = deck.slides
   const total = slides.length
+  const { t } = useI18n()
 
   const [index, setIndex] = React.useState(() =>
     Math.min(Math.max(startIndex, 0), Math.max(total - 1, 0))
@@ -147,7 +149,7 @@ export function PresentMode({
   return createPortal(
     <div
       role="dialog"
-      aria-label="Presenting"
+      aria-label={t("Presenting")}
       className="fixed inset-0 z-50 flex flex-col bg-neutral-950"
       onClick={advance}
       onMouseMove={poke}
@@ -156,8 +158,8 @@ export function PresentMode({
         {atEnd ? (
           <div className="flex select-none flex-col items-center gap-5 px-6 text-center">
             <Presentation className="h-12 w-12 text-neutral-700" strokeWidth={1.5} aria-hidden="true" />
-            <p className="font-editorial text-2xl text-neutral-400">End of presentation</p>
-            <p className="text-sm text-neutral-600">Press Esc or click to exit</p>
+            <p className="font-editorial text-2xl text-neutral-400">{t("End of presentation")}</p>
+            <p className="text-sm text-neutral-600">{t("Press Esc or click to exit")}</p>
           </div>
         ) : current && presentW > 0 ? (
           <SlideCard
@@ -196,7 +198,7 @@ export function PresentMode({
           e.stopPropagation()
           setNotesOpen((o) => !o)
         }}
-        aria-label="Toggle speaker notes (n)"
+        aria-label={t("Toggle speaker notes (n)")}
         aria-pressed={notesOpen}
         className={cn(
           "absolute bottom-3 right-3 flex h-10 w-10 items-center justify-center rounded-full text-neutral-700 outline-none transition-colors hover:bg-white/10 hover:text-neutral-400",
@@ -218,7 +220,7 @@ export function PresentMode({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Previous slide"
+              aria-label={t("Previous slide")}
               disabled={index <= 0}
               onClick={(e) => {
                 e.stopPropagation()
@@ -234,7 +236,7 @@ export function PresentMode({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="right" className="text-xs">
-            Previous (←)
+            {t("Previous (←)")}
           </TooltipContent>
         </Tooltip>
         <Tooltip>
@@ -242,7 +244,7 @@ export function PresentMode({
             <Button
               variant="ghost"
               size="icon"
-              aria-label={atEnd ? "Exit presentation" : "Next slide"}
+              aria-label={atEnd ? t("Exit presentation") : t("Next slide")}
               onClick={(e) => {
                 e.stopPropagation()
                 advance()
@@ -256,7 +258,7 @@ export function PresentMode({
             </Button>
           </TooltipTrigger>
           <TooltipContent side="left" className="text-xs">
-            {atEnd ? "Exit (Esc)" : "Next (→)"}
+            {atEnd ? t("Exit (Esc)") : t("Next (→)")}
           </TooltipContent>
         </Tooltip>
       </div>
@@ -264,28 +266,32 @@ export function PresentMode({
       {/* speaker notes drawer */}
       {notesOpen && (
         <aside
-          aria-label="Speaker notes"
+          aria-label={t("Speaker notes")}
           className="absolute inset-x-0 bottom-0 max-h-[32vh] overflow-y-auto border-t border-neutral-800 bg-neutral-900/95 p-4 backdrop-blur"
           onClick={(e) => e.stopPropagation()}
         >
           <div className="mb-2 flex items-center justify-between">
             <p className="text-[13px] font-medium text-neutral-300">
-              Speaker notes{" "}
+              {t("Speaker notes")}{" "}
               <span className="tnum ml-1 text-neutral-500">
-                · slide {Math.min(index + 1, total)} of {total}
+                ·{" "}
+                {t("slide {n} of {total}", {
+                  n: Math.min(index + 1, total),
+                  total,
+                })}
               </span>
             </p>
             <button
               type="button"
               onClick={() => setNotesOpen(false)}
-              aria-label="Close speaker notes"
+              aria-label={t("Close speaker notes")}
               className="flex h-8 w-8 items-center justify-center rounded-full text-neutral-500 outline-none transition-colors hover:bg-white/10 hover:text-neutral-300"
             >
               <X className="h-4 w-4" />
             </button>
           </div>
           <p className="whitespace-pre-wrap text-sm leading-relaxed text-neutral-300">
-            {notes || <span className="text-neutral-600">No notes for this slide.</span>}
+            {notes || <span className="text-neutral-600">{t("No notes for this slide.")}</span>}
           </p>
         </aside>
       )}

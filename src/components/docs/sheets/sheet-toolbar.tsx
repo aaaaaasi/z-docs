@@ -16,6 +16,7 @@ import {
   Undo2,
 } from "lucide-react"
 import type { CellData } from "@/lib/workspace-types"
+import { useI18n } from "@/lib/i18n"
 import { cellRef } from "./cells"
 import { useSheetStore } from "./sheet-store"
 
@@ -72,33 +73,34 @@ function ToolbarButton({
 function FillPicker({ activeBg }: { activeBg: string | undefined }) {
   const applyFormat = useSheetStore((s) => s.applyFormat)
   const [open, setOpen] = React.useState(false)
+  const { t } = useI18n()
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <Tooltip>
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button variant="ghost" className="h-11 gap-1.5 px-2 text-muted-foreground hover:bg-accent hover:text-foreground sm:h-8 sm:px-2.5" aria-label="Fill color">
+            <Button variant="ghost" className="h-11 gap-1.5 px-2 text-muted-foreground hover:bg-accent hover:text-foreground sm:h-8 sm:px-2.5" aria-label={t("Fill color")}>
               <span
                 aria-hidden
                 className="h-4 w-4 rounded-[3px] border border-border shadow-inner"
                 style={{ background: activeBg ?? "transparent" }}
               />
-              <span className="text-[13px]">Fill</span>
+              <span className="text-[13px]">{t("Fill")}</span>
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">
-          Fill color
+          {t("Fill color")}
         </TooltipContent>
       </Tooltip>
       <PopoverContent align="start" className="w-auto p-3">
-        <p className="mb-2 text-xs font-medium text-foreground">Fill color</p>
+        <p className="mb-2 text-xs font-medium text-foreground">{t("Fill color")}</p>
         <div className="grid grid-cols-4 gap-1.5">
           {FILL_SWATCHES.map((hex) => (
             <button
               key={hex}
               type="button"
-              aria-label={`Fill ${hex}`}
+              aria-label={t("Fill {hex}", { hex })}
               onClick={() => {
                 applyFormat({ bg: hex })
                 setOpen(false)
@@ -120,7 +122,7 @@ function FillPicker({ activeBg }: { activeBg: string | undefined }) {
           }}
         >
           <Eraser className="h-3.5 w-3.5" />
-          None
+          {t("None")}
         </Button>
       </PopoverContent>
     </Popover>
@@ -136,6 +138,7 @@ export function Toolbar() {
   const redo = useSheetStore((s) => s.redo)
   const applyFormat = useSheetStore((s) => s.applyFormat)
   const clearFormatting = useSheetStore((s) => s.clearFormatting)
+  const { t } = useI18n()
 
   const cell: CellData | undefined = data.cells[cellRef(active.r, active.c)]
   const boldOn = cell?.bold === true
@@ -146,24 +149,24 @@ export function Toolbar() {
     <div
       className="no-scrollbar flex h-auto min-h-12 flex-wrap items-center gap-0.5 overflow-x-auto border-b px-1 py-1 sm:px-2"
       role="toolbar"
-      aria-label="Formatting toolbar"
+      aria-label={t("Formatting toolbar")}
     >
-      <ToolbarButton label="Undo (Ctrl+Z)" disabled={!canUndo} onClick={undo}>
+      <ToolbarButton label={t("Undo (Ctrl+Z)")} disabled={!canUndo} onClick={undo}>
         <Undo2 className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton label="Redo (Ctrl+Y)" disabled={!canRedo} onClick={redo}>
+      <ToolbarButton label={t("Redo (Ctrl+Y)")} disabled={!canRedo} onClick={redo}>
         <Redo2 className="h-4 w-4" />
       </ToolbarButton>
       <Separator orientation="vertical" className="mx-1 h-6" />
       <ToolbarButton
-        label="Bold (selection)"
+        label={t("Bold (selection)")}
         active={boldOn}
         onClick={() => applyFormat({ bold: !boldOn })}
       >
         <Bold className="h-4 w-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="Italic (selection)"
+        label={t("Italic (selection)")}
         active={italicOn}
         onClick={() => applyFormat({ italic: !italicOn })}
       >
@@ -171,21 +174,21 @@ export function Toolbar() {
       </ToolbarButton>
       <Separator orientation="vertical" className="mx-1 h-6" />
       <ToolbarButton
-        label="Align left"
+        label={t("Align left")}
         active={align === "left"}
         onClick={() => applyFormat({ align: "left" })}
       >
         <AlignLeft className="h-4 w-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="Align center"
+        label={t("Align center")}
         active={align === "center"}
         onClick={() => applyFormat({ align: "center" })}
       >
         <AlignCenter className="h-4 w-4" />
       </ToolbarButton>
       <ToolbarButton
-        label="Align right"
+        label={t("Align right")}
         active={align === "right"}
         onClick={() => applyFormat({ align: "right" })}
       >
@@ -193,7 +196,7 @@ export function Toolbar() {
       </ToolbarButton>
       <Separator orientation="vertical" className="mx-1 h-6" />
       <FillPicker activeBg={cell?.bg} />
-      <ToolbarButton label="Clear formatting (selection)" onClick={clearFormatting}>
+      <ToolbarButton label={t("Clear formatting (selection)")} onClick={clearFormatting}>
         <Eraser className="h-4 w-4" />
       </ToolbarButton>
     </div>

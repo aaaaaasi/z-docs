@@ -10,6 +10,7 @@ import { useDocsStore } from "@/store/docs-store"
 import { useToast } from "@/hooks/use-toast"
 import type { DocumentMeta } from "@/lib/docs-types"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 /** dnd-kit synthetic listener map (onPointerDown etc.), kept structurally typed */
 type DragListeners = Record<string, (event: React.SyntheticEvent) => void> | undefined
@@ -40,6 +41,7 @@ export type DocDragHandle = {
 export function HomeDndContext({ children }: { children: React.ReactNode }) {
   const [activeDoc, setActiveDoc] = React.useState<DocumentMeta | null>(null)
   const { toast } = useToast()
+  const { t } = useI18n()
   const sensors = useSensors(
     useSensor(PointerSensor, {
       // small distance so plain clicks still open the document
@@ -72,7 +74,7 @@ export function HomeDndContext({ children }: { children: React.ReactNode }) {
       matched = true
       if (!doc.trashed) {
         void useDocsStore.getState().setTrashed(active, true)
-        toast({ title: "Moved to trash", description: doc.title })
+        toast({ title: t("Moved to trash"), description: doc.title })
       }
       return
     }
@@ -81,7 +83,7 @@ export function HomeDndContext({ children }: { children: React.ReactNode }) {
     if ((doc.folderId ?? null) === targetFolder) return
     void useDocsStore.getState().moveToFolder(active, targetFolder)
     const f = useDocsStore.getState().folders.find((x) => x.id === targetFolder)
-    toast({ title: f ? `Moved to “${f.name}”` : "Removed from folder", description: doc.title })
+    toast({ title: f ? t("Moved to “{name}”", { name: f.name }) : t("Removed from folder"), description: doc.title })
   }
 
   return (

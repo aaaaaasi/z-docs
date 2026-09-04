@@ -40,6 +40,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useDocsStore } from "@/store/docs-store"
 import { useLocalUser, saveLocalUser } from "@/lib/identity"
 import { initialsOf, PRESENCE_COLORS } from "@/lib/doc-utils"
+import { useI18n, type Lang } from "@/lib/i18n"
 import { useToast } from "@/hooks/use-toast"
 import { cn } from "@/lib/utils"
 import {
@@ -161,6 +162,7 @@ function formatBytes(bytes: number): string {
 /* --------------------------------- General ---------------------------------- */
 
 function GeneralSection() {
+  const { t } = useI18n()
   const user = useLocalUser()
   const { toast } = useToast()
   const [draftName, setDraftName] = React.useState<string | null>(null)
@@ -170,19 +172,19 @@ function GeneralSection() {
   // 400ms debounced save of the display name
   React.useEffect(() => {
     if (draftName === null || !user) return
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       const trimmed = draftName.trim()
       if (trimmed && trimmed !== user.name) {
         saveLocalUser({ ...user, name: trimmed })
-        toast({ title: "Name saved" })
+        toast({ title: t("Name saved") })
       }
     }, 400)
-    return () => clearTimeout(t)
-  }, [draftName, user, toast])
+    return () => clearTimeout(timer)
+  }, [draftName, user, toast, t])
 
   if (!user) {
     return (
-      <SectionCard title="Profile">
+      <SectionCard title={t("Profile")}>
         <div className="flex items-center gap-4">
           <Skeleton className="h-10 w-10 rounded-full" />
           <div className="flex-1 space-y-2">
@@ -195,30 +197,30 @@ function GeneralSection() {
   }
 
   return (
-    <SectionCard title="Profile" description="How you appear across the Z workspace.">
+    <SectionCard title={t("Profile")} description={t("How you appear across the Z workspace.")}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ring-1 ring-black/5"
           style={{ backgroundColor: user.color }}
-          aria-label={`Avatar preview: ${initialsOf(name)}`}
+          aria-label={t("Avatar preview: {initials}", { initials: initialsOf(name) })}
         >
           {initialsOf(name)}
         </div>
         <div className="min-w-0 max-w-sm flex-1">
-          <Label htmlFor="display-name">Display name</Label>
+          <Label htmlFor="display-name">{t("Display name")}</Label>
           <Input
             id="display-name"
             value={name}
             onChange={(e) => setDraftName(e.target.value)}
             maxLength={40}
-            placeholder="Your name"
+            placeholder={t("Your name")}
             className="mt-1.5 h-10"
           />
-          <p className="mt-1.5 text-xs text-muted-foreground">Saved automatically as you type.</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t("Saved automatically as you type.")}</p>
         </div>
       </div>
       <div>
-        <Label>Avatar color</Label>
+        <Label>{t("Avatar color")}</Label>
         <div className="mt-2 flex flex-wrap gap-2">
           {PRESENCE_COLORS.slice(0, 10).map((c) => {
             const selected = user.color === c
@@ -226,11 +228,11 @@ function GeneralSection() {
               <button
                 key={c}
                 type="button"
-                aria-label={`Use color ${c}`}
+                aria-label={t("Use color {color}", { color: c })}
                 aria-pressed={selected}
                 onClick={() => {
                   saveLocalUser({ ...user, color: c })
-                  toast({ title: "Avatar color updated" })
+                  toast({ title: t("Avatar color updated") })
                 }}
                 className={cn(
                   "flex h-8 w-8 items-center justify-center rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
@@ -245,7 +247,7 @@ function GeneralSection() {
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Your name and color appear in comments, presence and the activity feed.
+        {t("Your name and color appear in comments, presence and the activity feed.")}
       </p>
     </SectionCard>
   )
@@ -301,10 +303,27 @@ const THEME_CARDS: { value: ThemeMode; label: string; hint: string; preview: "li
   { value: "system", label: "System", hint: "Follows your device", preview: "split" },
 ]
 
+/* Native names shown as-is in every language (same convention as lang-toggle). */
+const LANG_CARDS: { value: Lang; label: string; sample: string }[] = [
+  { value: "zh", label: "中文", sample: "你好，Z-Docs" },
+  { value: "en", label: "English", sample: "Hello, Z-Docs" },
+]
+
+function LanguagePreview({ text }: { text: string }) {
+  return (
+    <div className="flex h-[72px] items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
+      <span className="px-3 text-center text-[11px] leading-tight text-neutral-500 dark:text-neutral-400">
+        {text}
+      </span>
+    </div>
+  )
+}
+
 function AppearanceSection() {
   const { mode, setMode } = useThemeMode()
   const { resolvedTheme } = useTheme()
   const { toast } = useToast()
+  const { lang, setLang, t } = useI18n()
   const [accent, setAccent] = React.useState<string | null>(null)
   const [mounted, setMounted] = React.useState(false)
 
@@ -322,19 +341,81 @@ function AppearanceSection() {
   const activeAccent = accent ?? DEFAULT_ACCENT_HEX
 
   return (
-    <SectionCard title="Appearance" description="Choose how Z-Docs looks and feels.">
-      <div>
-        <Label>Theme</Label>
-        <div role="radiogroup" aria-label="Theme" className="mt-2 grid grid-cols-3 gap-3 sm:max-w-lg">
-          {THEME_CARDS.map((card) => {
-            const selected = mounted && mode === card.value
+    <div className="space-y-8">
+      <SectionCard title={t("Appearance")} description={t("Choose how Z-Docs looks and feels.")}>
+        <div>
+          <Label>{t("Theme")}</Label>
+          <div role="radiogroup" aria-label={t("Theme")} className="mt-2 grid grid-cols-3 gap-3 sm:max-w-lg">
+            {THEME_CARDS.map((card) => {
+              const selected = mounted && mode === card.value
+              return (
+                <button
+                  key={card.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setMode(card.value)}
+                  className={cn(
+                    "rounded-xl border p-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+                    selected
+                      ? "border-transparent ring-2 ring-primary"
+                      : "border-border hover:bg-accent/50"
+                  )}
+                >
+                  <WindowPreview variant={card.preview} />
+                  <span className="mt-2 flex items-center justify-between">
+                    <span className="text-[13px] font-medium">{t(card.label)}</span>
+                    {selected ? <Check className="h-4 w-4 text-primary" /> : null}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{t(card.hint)}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+        <div>
+          <Label>{t("Accent color")}</Label>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {t("Recolors buttons, links and highlights across the workspace.")}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2.5">
+            {ACCENT_OPTIONS.map((option) => {
+              const selected = mounted && activeAccent === option.hex
+              return (
+                <button
+                  key={option.hex}
+                  type="button"
+                  aria-label={t("Accent color: {name}", { name: t(option.name) })}
+                  aria-pressed={selected}
+                  onClick={() => {
+                    setAccent(option.hex)
+                    saveAccent(option.hex)
+                    toast({ title: t("Accent set to {name}", { name: t(option.name) }) })
+                  }}
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
+                    selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
+                  )}
+                  style={{ backgroundColor: option.hex }}
+                >
+                  {selected ? <Check className="h-4 w-4 text-white" /> : null}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </SectionCard>
+      <SectionCard title={t("Language")} description={t("Choose the display language for the workspace.")}>
+        <div role="radiogroup" aria-label={t("Language")} className="grid grid-cols-2 gap-3 sm:max-w-md">
+          {LANG_CARDS.map((card) => {
+            const selected = lang === card.value
             return (
               <button
                 key={card.value}
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                onClick={() => setMode(card.value)}
+                onClick={() => setLang(card.value)}
                 className={cn(
                   "rounded-xl border p-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                   selected
@@ -342,55 +423,24 @@ function AppearanceSection() {
                     : "border-border hover:bg-accent/50"
                 )}
               >
-                <WindowPreview variant={card.preview} />
+                <LanguagePreview text={card.sample} />
                 <span className="mt-2 flex items-center justify-between">
                   <span className="text-[13px] font-medium">{card.label}</span>
                   {selected ? <Check className="h-4 w-4 text-primary" /> : null}
                 </span>
-                <span className="mt-0.5 block text-[11px] text-muted-foreground">{card.hint}</span>
               </button>
             )
           })}
         </div>
-      </div>
-      <div>
-        <Label>Accent color</Label>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          Recolors buttons, links and highlights across the workspace.
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2.5">
-          {ACCENT_OPTIONS.map((option) => {
-            const selected = mounted && activeAccent === option.hex
-            return (
-              <button
-                key={option.hex}
-                type="button"
-                aria-label={`Accent color: ${option.name}`}
-                aria-pressed={selected}
-                onClick={() => {
-                  setAccent(option.hex)
-                  saveAccent(option.hex)
-                  toast({ title: `Accent set to ${option.name}` })
-                }}
-                className={cn(
-                  "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
-                  selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
-                )}
-                style={{ backgroundColor: option.hex }}
-              >
-                {selected ? <Check className="h-4 w-4 text-white" /> : null}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-    </SectionCard>
+      </SectionCard>
+    </div>
   )
 }
 
 /* --------------------------- Workspace defaults ----------------------------- */
 
 function WorkspaceSection() {
+  const { t } = useI18n()
   const { toast } = useToast()
   const [font, setFont] = React.useState<"sans" | "serif">("sans")
   const [zoom, setZoom] = React.useState<"100" | "125" | "150">("100")
@@ -414,7 +464,7 @@ function WorkspaceSection() {
     } catch {
       // ignore
     }
-    toast({ title: value === "sans" ? "Default font set to Sans" : "Default font set to Serif" })
+    toast({ title: value === "sans" ? t("Default font set to Sans") : t("Default font set to Serif") })
   }
 
   const saveZoom = (value: string) => {
@@ -425,30 +475,30 @@ function WorkspaceSection() {
     } catch {
       // ignore
     }
-    toast({ title: `Default zoom set to ${value}%` })
+    toast({ title: t("Default zoom set to {value}%", { value }) })
   }
 
   return (
     <SectionCard
-      title="Workspace defaults"
-      description="Preferences used when creating new documents."
+      title={t("Workspace defaults")}
+      description={t("Preferences used when creating new documents.")}
     >
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label htmlFor="default-font">Default font</Label>
+          <Label htmlFor="default-font">{t("Default font")}</Label>
           <Select value={font} onValueChange={saveFont}>
             <SelectTrigger id="default-font" className="mt-1.5 h-10 w-full">
-              <SelectValue placeholder="Sans" />
+              <SelectValue placeholder={t("Sans")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="sans">Sans (Arial)</SelectItem>
-              <SelectItem value="serif">Serif (Georgia)</SelectItem>
+              <SelectItem value="sans">{t("Sans (Arial)")}</SelectItem>
+              <SelectItem value="serif">{t("Serif (Georgia)")}</SelectItem>
             </SelectContent>
           </Select>
-          <p className="mt-1.5 text-xs text-muted-foreground">Used when creating new documents</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t("Used when creating new documents")}</p>
         </div>
         <div>
-          <Label htmlFor="default-zoom">Default editor zoom</Label>
+          <Label htmlFor="default-zoom">{t("Default editor zoom")}</Label>
           <Select value={zoom} onValueChange={saveZoom}>
             <SelectTrigger id="default-zoom" className="mt-1.5 h-10 w-full">
               <SelectValue placeholder="100%" />
@@ -459,7 +509,7 @@ function WorkspaceSection() {
               <SelectItem value="150">150%</SelectItem>
             </SelectContent>
           </Select>
-          <p className="mt-1.5 text-xs text-muted-foreground">Used when creating new documents</p>
+          <p className="mt-1.5 text-xs text-muted-foreground">{t("Used when creating new documents")}</p>
         </div>
       </div>
     </SectionCard>
@@ -491,6 +541,7 @@ const STORAGE_STATS: { key: keyof NonNullable<ExportPayload["counts"]>; label: s
 ]
 
 function DataSection() {
+  const { t } = useI18n()
   const { toast } = useToast()
   const [counts, setCounts] = React.useState<NonNullable<ExportPayload["counts"]> | null>(null)
   const [bytes, setBytes] = React.useState(0)
@@ -502,7 +553,7 @@ function DataSection() {
       setError(null)
       try {
         const res = await fetch("/api/export")
-        if (!res.ok) throw new Error(`Failed to load storage stats (${res.status})`)
+        if (!res.ok) throw new Error("Failed to load storage stats")
         const text = await res.text()
         if (!live) return
         const payload = JSON.parse(text) as ExportPayload
@@ -526,7 +577,7 @@ function DataSection() {
     document.body.appendChild(a)
     a.click()
     a.remove()
-    toast({ title: "Download started", description: "Your workspace is exporting as JSON." })
+    toast({ title: t("Download started"), description: t("Your workspace is exporting as JSON.") })
   }
 
   const resetLocal = () => {
@@ -550,27 +601,27 @@ function DataSection() {
 
   return (
     <SectionCard
-      title="Data & storage"
-      description="Everything you create lives in your local Z workspace database."
+      title={t("Data & storage")}
+      description={t("Everything you create lives in your local Z workspace database.")}
     >
       {error ? (
         <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
-          {error}
+          {t(error)}
         </p>
       ) : counts ? (
         <>
           <div>
             <div className="flex items-baseline justify-between gap-3">
-              <p className="text-[13px] font-medium">Workspace storage</p>
+              <p className="text-[13px] font-medium">{t("Workspace storage")}</p>
               <p className="text-xs text-muted-foreground">
-                <span className="tnum font-medium text-foreground">{formatBytes(bytes)}</span> used
-                <span className="opacity-70"> · 10 MB quota</span>
+                <span className="tnum font-medium text-foreground">{t("{size} used", { size: formatBytes(bytes) })}</span>
+                <span className="opacity-70"> · {t("10 MB quota")}</span>
               </p>
             </div>
             <div
               className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
               role="progressbar"
-              aria-label="Workspace storage used"
+              aria-label={t("Workspace storage used")}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(usedPercent)}
@@ -591,7 +642,7 @@ function DataSection() {
                     <p className="tnum text-[15px] font-medium leading-tight">
                       {counts[stat.key] ?? 0}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">{stat.label}</p>
+                    <p className="text-[11px] text-muted-foreground">{t(stat.label)}</p>
                   </div>
                 </div>
               )
@@ -615,7 +666,7 @@ function DataSection() {
       <div className="flex flex-wrap gap-3">
         <Button onClick={exportAll} className="h-10">
           <Download className="h-4 w-4" />
-          Export all your data
+          {t("Export all your data")}
         </Button>
         <AlertDialog>
           <AlertDialogTrigger asChild>
@@ -624,24 +675,23 @@ function DataSection() {
               className="h-10 text-destructive hover:bg-destructive/5 hover:text-destructive"
             >
               <RotateCcw className="h-4 w-4" />
-              Reset local profile
+              {t("Reset local profile")}
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Reset local profile?</AlertDialogTitle>
+              <AlertDialogTitle>{t("Reset local profile?")}</AlertDialogTitle>
               <AlertDialogDescription>
-                This clears your saved name, avatar color, theme, accent and workspace defaults
-                from this browser. Your documents, spreadsheets, decks and forms are kept.
+                {t("This clears your saved name, avatar color, theme, accent and workspace defaults from this browser. Your documents, spreadsheets, decks and forms are kept.")}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={resetLocal}
                 className="bg-destructive text-white hover:bg-destructive/90"
               >
-                Reset &amp; reload
+                {t("Reset & reload")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -663,8 +713,9 @@ const TECH_STACK = [
 ]
 
 function AboutSection() {
+  const { t } = useI18n()
   return (
-    <SectionCard title="About">
+    <SectionCard title={t("About")}>
       <div className="flex items-center gap-4">
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary"
@@ -675,7 +726,7 @@ function AboutSection() {
         <div className="min-w-0">
           <p className="font-editorial text-xl font-medium tracking-tight">Z-Docs</p>
           <p className="mt-0.5 text-[13px] text-muted-foreground">
-            A Google-style workspace: Docs, Sheets, Slides &amp; Forms
+            {t("A Google-style workspace: Docs, Sheets, Slides & Forms")}
           </p>
         </div>
       </div>
@@ -690,7 +741,7 @@ function AboutSection() {
         ))}
       </div>
       <p className="text-xs text-muted-foreground">
-        Local demo — all data lives in your browser and local database.
+        {t("Local demo — all data lives in your browser and local database.")}
       </p>
     </SectionCard>
   )
@@ -699,6 +750,7 @@ function AboutSection() {
 /* ---------------------------------- page ------------------------------------ */
 
 export function SettingsView() {
+  const { t } = useI18n()
   const goHome = useDocsStore((s) => s.goHome)
   const [tab, setTab] = React.useState<SettingsTab>("general")
 
@@ -711,20 +763,20 @@ export function SettingsView() {
               variant="ghost"
               size="icon"
               onClick={goHome}
-              aria-label="Back to home"
+              aria-label={t("Back to home")}
               className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Back
+            {t("Back")}
           </TooltipContent>
         </Tooltip>
-        <h1 className="text-lg font-medium">Settings</h1>
+        <h1 className="text-lg font-medium">{t("Settings")}</h1>
         <span
           className="ml-auto rounded-full border bg-background px-3 py-1 text-[11px] text-muted-foreground tnum"
-          aria-label="Version"
+          aria-label={t("Version")}
         >
           Z-Docs v1.0
         </span>
@@ -733,22 +785,22 @@ export function SettingsView() {
       <main className="flex-1">
         <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-8 sm:px-6">
           <div className="flex flex-col gap-8 md:flex-row">
-            <nav aria-label="Settings sections" className="shrink-0 md:w-48">
+            <nav aria-label={t("Settings sections")} className="shrink-0 md:w-48">
               <div
                 role="tablist"
-                aria-label="Settings sections"
+                aria-label={t("Settings sections")}
                 className="flex gap-1 overflow-x-auto pb-1 no-scrollbar md:flex-col md:overflow-x-visible md:pb-0 md:sticky md:top-24"
               >
-                {TABS.map((t) => {
-                  const Icon = t.icon
-                  const active = tab === t.id
+                {TABS.map((tabItem) => {
+                  const Icon = tabItem.icon
+                  const active = tab === tabItem.id
                   return (
                     <button
-                      key={t.id}
+                      key={tabItem.id}
                       type="button"
                       role="tab"
                       aria-selected={active}
-                      onClick={() => setTab(t.id)}
+                      onClick={() => setTab(tabItem.id)}
                       className={cn(
                         "flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-md px-3 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
                         active
@@ -757,7 +809,7 @@ export function SettingsView() {
                       )}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
-                      {t.label}
+                      {t(tabItem.label)}
                     </button>
                   )
                 })}

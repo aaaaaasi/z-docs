@@ -595,3 +595,27 @@ Stage Summary:
 - Responsive/mobile hardening applied generally: all dialogs capped at the base level; all auto-growing textareas capped; menubar fits 375px; broken scroll fades replaced with a proper shared ScrollFade component (toolbar + menubar + template gallery).
 - App-wide mobile sweep passed for every view (docs/sheets/slides/forms/activity/settings) and every overlay type (dialog/sheet/panel).
 - Known remaining (from prior rounds, unchanged): suggestion-mode Ctrl+Z/IME gaps, raster PDF text layer, dev-only Radix useId hydration flake, taste-skill repo research parked.
+
+---
+Task ID: 16
+Agent: main (Z.ai Code) + 4 parallel i18n subagents (16-a / 16-b / 16-c / 16-d)
+Task: 全部增加中文翻译 — 全应用中英双语 i18n（默认中文，可切换 English）
+
+Work Log:
+- INFRA (main): src/lib/i18n.tsx — I18nProvider 挂载于 DocsApp 根（TooltipProvider 外层），useI18n() 返回 { lang, setLang, t }；t(key, params) 以英文原文为 key 查 zh 词典、{name} 插值、缺 key 回落英文；默认 zh（满足"全部增加中文翻译"），localStorage(zdocs-lang) 在 mount 后回放（避免 SSR hydration mismatch）；getCurrentLang() 供非 React 代码（store action/toast）使用；localeOf() 供 Intl 格式化；document.documentElement.lang 同步。
+- INFRA (main): 7 个分组词典 src/lib/i18n/dict-{common,home,editor,sheets,slides,forms,apps}.ts 合并（组间零冲突：每组独占文件）；lang-toggle.tsx（Languages 图标 + DropdownMenu：中文/English + Check 选中态）；home-header 加 LangToggle（AppGridMenu 与 ThemeToggle 之间）；doc-utils.ts relativeTime/fullTime 增加 lang 参数（date-fns zhCN locale，zh 用 "yyyy年M月d日 HH:mm"）。
+- 16-a (home/shell): 首页/侧边栏/模板库/快捷入口/文档网格/拖拽/AppGrid/UserMenu/DocPreview 全量 t() 化；templates.ts 双语化（6 模板 + blank：nameZh/descriptionZh/titleZh/contentZh + localizedTemplate(tpl, lang) 辅助；docs-store.createDoc 按 getCurrentLang() 取本地化标题/正文）；dict-home 139 条。
+- 16-b (editor, 超时中断但工作已完成并经主代理核验): 编辑器全组件 t()/tForLang 化——menubar 七菜单+全部菜单项、toolbar 全 tooltip、editor-view 全对话框/toast、find-replace、comments-sidebar、version-history、share-dialog、info/emoji/AI/voice/ruler/outline/status-pill/table-resize；editor-header 加 LangToggle；AI 路由 /api/ai/write 与 /api/ai/transform 增加可选 lang 参数（zh 时 prompt 追加"用简体中文输出"，en 缺省不变，向后兼容）；dict-editor 428 条。中断后主代理核验：全部 editor 文件 useI18n 已接入、tsc/lint 0 错误（其临时的 editor-header/toolbar 语法笔误已自行修复）、浏览器 QA 菜单/查找/AI 对话框全中文。
+- 16-c (sheets+slides): 两应用 19 个组件文件翻译（grid 状态栏 求和/平均值/计数、公式栏、列表页、布局名、主题色名、占位符"点击添加标题"、演示模式结束页/演讲者备注、Copy of X→X 的副本）；两个编辑器头部加 LangToggle（sheets 的包在 hidden min-[420px]:inline-flex 防溢出）；dict-sheets 84 条 + dict-slides 115 条。
+- 16-d (forms+activity+settings): forms 11 文件（题型名/必填/选项编辑/填写校验"此题为必填"/成功页/回复分析/CSV）；activity（过滤 chips 全部/文档/表格/幻灯片/表单、今天/昨天、动词 t(KIND_META[kind].verb) 创建了/编辑了/…）；settings 5 标签页全量 + 新增「语言」区块（外观页，单选卡 中文/English 带示例行"你好，Z-Docs"/"Hello, Z-Docs"，点击实时 setLang）；dict-forms 157 条 + dict-apps 92 条。
+- main 补漏: theme-toggle.tsx（aria/tooltip 词条）+ dict-common 3 条；quickstart 动态模板 key（New ${label}/Couldn't create the ${label}/tag color）核验为运行时可解析（词条在 dict-home/dict-sheets/dict-slides 均存在）。
+- QA 覆盖率脚本（主代理）: 提取全部 t()/tForLang() key 与 7 词典交叉比对 → 词典 1005 条 / 使用 key 858 / 缺失 0；裸英文扫描 → 仅数据-key 模式（渲染处均已 t()）。
+- QA (agent-browser E2E): 首页全中文（搜索文档/新建文档/全部文档/已加星标/回收站/文件夹/标签/近期动态/存储空间/开始新文档/模板库 8 模板中文名+描述/更多开始方式/最近文档/13 个文档/最后修改时间）；语言切换 EN↔ZH 实时生效（下拉 + 设置页两处）；编辑器（文档标题/所有更改已保存/文件-编辑-查看-插入-格式-工具-帮助/创建副本/重命名/版本历史/下载四格式/打印/移至回收站；工具菜单 AI 润色/语音输入/字数统计）；Ctrl+F 查找面板（查找和替换/在文档中查找/区分大小写 Aa/上下一个匹配项）；文档大纲（暂无标题+引导文案）；标尺 aria 全中文；AI 润色对话框（六操作+字数提示）；Sheets（无标题电子表格/公式输入/电子表格网格/全选所有单元格/Sheet1 · 60 行 × 26 列/加粗斜体 tooltip）；Slides（新建演示文稿/点击添加标题/副标题/布局/切换演讲者备注/从当前幻灯片开始演示/幻灯片缩略图/幻灯片画布）；Forms（问题/回复 标签/简答题/必填/添加问题/表单标题）；Activity（近期动态/全部 35/文档 16/表格 6/今天/昨天）；Settings（设置/常规/外观/工作区默认设置/数据和存储/关于/语言区块）。编辑器中文输入回归（"你好"成功写入）。控制台无业务错误（仅遗留 Radix useId dev-only 抖动，移动导航 Sheet 实测正常打开）。
+- QA (mobile 375px): 修复 home-header 因新增 LangToggle 导致的 15px 溢出（移动搜索框 w-28→w-20、focus w-40→w-32）；全 7 视图 scrollWidth=clientWidth=375 零溢出；VLM 截图审查桌面+移动端通过（VLM 标记项均为预期：Projects=用户文件夹名、Z-*=产品名、"1 Issue"=Next dev 浮层、模板卡片右缘截断=轮播提示）。
+- dev server 中途死亡一次（子代理并行期间），setsid 重启恢复；collab :3003 全程健康。
+
+Stage Summary:
+- 全应用（Docs 编辑器 + 首页 + Z-Sheets + Z-Slides + Z-Forms + 动态 + 设置 + 全部对话框/面板/toast/aria）默认简体中文，语言可通过 3 处切换（首页头部/编辑器头部/Sheets/Slides 头部 LangToggle + 设置页语言区块）并持久化；AI 写作助手按界面语言输出中文；模板内容双语；日期本地化（date-fns zhCN）。
+- 质量门: bunx tsc --noEmit src 0 错误；bun run lint 干净；dev :3000 200；collab :3003 健康；词典 1005 条 0 缺失。
+- 子代理详情: agent-ctx/16-a.md、16-c.md、16-d.md（16-b 超时未留档，其成果由本节记录）。
+- 遗留（低风险）: Radix useId hydration 抖动为 dev-only（worklog Task 15 已记录）；未翻译项均为刻意保留（产品名/字体名/DB 内容/公式/错误码/CSV 字段）；workspace 其他 app 的 AI 无（仅 Docs 有 AI）；后续可考虑：语言切换动画、zh 下首字母头像逻辑、AI 对话输入 placeholder 语言跟随（已做）。

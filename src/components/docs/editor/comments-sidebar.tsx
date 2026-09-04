@@ -11,6 +11,7 @@ import {
   MessageSquarePlus, X, Check, RotateCcw, Trash2, CornerDownRight, MessageCircle, Loader2, CheckCircle2, Quote, Pencil, SmilePlus, PencilLine
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 /* ---------------------------------------------------------------- helpers */
 
@@ -54,13 +55,14 @@ function Composer({
 }) {
   const [text, setText] = React.useState("")
   const ref = React.useRef<HTMLTextAreaElement | null>(null)
+  const { t } = useI18n()
 
   React.useEffect(() => {
     setText("")
     if (quote != null) {
       // focus the textarea when a new quote is captured
-      const t = setTimeout(() => ref.current?.focus(), 60)
-      return () => clearTimeout(t)
+      const t2 = setTimeout(() => ref.current?.focus(), 60)
+      return () => clearTimeout(t2)
     }
   }, [quote])
 
@@ -83,14 +85,14 @@ function Composer({
           }
           if (e.key === "Escape") onCancel()
         }}
-        placeholder="Write a comment… (Ctrl+Enter to post)"
+        placeholder={t("Write a comment… (Ctrl+Enter to post)")}
         className="min-h-[72px] max-h-56 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
         maxLength={2000}
-        aria-label="Comment text"
+        aria-label={t("Comment text")}
       />
       <div className="mt-2 flex items-center justify-end gap-2">
         <Button variant="ghost" size="sm" className="h-8 rounded-md text-muted-foreground" onClick={onCancel}>
-          Cancel
+          {t("Cancel")}
         </Button>
         <Button
           size="sm"
@@ -99,7 +101,7 @@ function Composer({
           onClick={() => onSubmit(text.trim())}
         >
           {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquarePlus className="h-3.5 w-3.5" />}
-          Comment
+          {t("Comment")}
         </Button>
       </div>
     </div>
@@ -117,9 +119,10 @@ function ReplyForm({
 }) {
   const [text, setText] = React.useState("")
   const ref = React.useRef<HTMLTextAreaElement | null>(null)
+  const { t } = useI18n()
   React.useEffect(() => {
-    const t = setTimeout(() => ref.current?.focus(), 40)
-    return () => clearTimeout(t)
+    const t2 = setTimeout(() => ref.current?.focus(), 40)
+    return () => clearTimeout(t2)
   }, [])
 
   return (
@@ -135,17 +138,17 @@ function ReplyForm({
           }
           if (e.key === "Escape") onCancel()
         }}
-        placeholder="Reply…"
+        placeholder={t("Reply…")}
         className="min-h-[52px] max-h-48 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
         maxLength={2000}
-        aria-label="Reply text"
+        aria-label={t("Reply text")}
       />
       <div className="mt-1 flex justify-end gap-2">
         <Button variant="ghost" size="sm" className="h-7 rounded-md text-muted-foreground" onClick={onCancel}>
-          Cancel
+          {t("Cancel")}
         </Button>
         <Button size="sm" className="h-7 rounded-md px-3 text-xs" disabled={!text.trim()} onClick={() => onSubmit(text.trim())}>
-          Reply
+          {t("Reply")}
         </Button>
       </div>
     </div>
@@ -167,9 +170,10 @@ function EditForm({
 }) {
   const [text, setText] = React.useState(initial)
   const ref = React.useRef<HTMLTextAreaElement | null>(null)
+  const { t } = useI18n()
   React.useEffect(() => {
-    const t = setTimeout(() => ref.current?.focus(), 40)
-    return () => clearTimeout(t)
+    const t2 = setTimeout(() => ref.current?.focus(), 40)
+    return () => clearTimeout(t2)
   }, [])
 
   return (
@@ -185,14 +189,14 @@ function EditForm({
           }
           if (e.key === "Escape") onCancel()
         }}
-        placeholder="Edit comment…"
+        placeholder={t("Edit comment…")}
         className="min-h-[52px] max-h-48 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
         maxLength={2000}
-        aria-label="Edit comment text"
+        aria-label={t("Edit comment text")}
       />
       <div className="mt-1 flex justify-end gap-2">
         <Button variant="ghost" size="sm" className="h-7 rounded-md text-muted-foreground" onClick={onCancel}>
-          Cancel
+          {t("Cancel")}
         </Button>
         <Button
           size="sm"
@@ -200,7 +204,7 @@ function EditForm({
           disabled={!text.trim() || text.trim() === initial || busy}
           onClick={() => onSubmit(text.trim())}
         >
-          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : t("Save")}
         </Button>
       </div>
     </div>
@@ -234,6 +238,7 @@ function ReactionRow({
   onToggle: (emoji: string) => void
 }) {
   const [picking, setPicking] = React.useState(false)
+  const { t } = useI18n()
   const groups = React.useMemo(() => {
     const g = groupReactions(reactions)
     for (const item of g) item.mine = meId != null && reactions.some((r) => r.emoji === item.emoji && r.userId === meId)
@@ -263,7 +268,9 @@ function ReactionRow({
           <TooltipTrigger asChild>
             <button
               type="button"
-              aria-label={`${g.emoji} reaction, ${g.count}. ${g.mine ? "Click to remove yours" : "Click to react"}`}
+              aria-label={g.mine
+                ? t("{emoji} reaction, {count}. Click to remove yours", { emoji: g.emoji, count: g.count })
+                : t("{emoji} reaction, {count}. Click to react", { emoji: g.emoji, count: g.count })}
               aria-pressed={g.mine}
               disabled={busy}
               onClick={() => onToggle(g.emoji)}
@@ -279,7 +286,7 @@ function ReactionRow({
             </button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            {g.names.join(", ")} reacted with {g.emoji}
+            {t("{names} reacted with {emoji}", { names: g.names.join(", "), emoji: g.emoji })}
           </TooltipContent>
         </Tooltip>
       ))}
@@ -287,7 +294,7 @@ function ReactionRow({
       <div className="relative" data-reaction-picker>
         <button
           type="button"
-          aria-label="Add reaction"
+          aria-label={t("Add reaction")}
           aria-expanded={picking}
           disabled={busy}
           onClick={() => setPicking((p) => !p)}
@@ -298,7 +305,7 @@ function ReactionRow({
         {picking && (
           <div
             role="menu"
-            aria-label="Pick a reaction"
+            aria-label={t("Pick a reaction")}
             className="elev-2 animate-in fade-in-0 zoom-in-95 absolute bottom-8 left-0 z-10 flex origin-bottom-left items-center gap-0.5 rounded-lg border bg-background/95 p-1 backdrop-blur-md duration-150"
           >
             {REACTION_EMOJI.map((emoji) => (
@@ -306,7 +313,7 @@ function ReactionRow({
                 key={emoji}
                 type="button"
                 role="menuitem"
-                aria-label={`React with ${emoji}`}
+                aria-label={t("React with {emoji}", { emoji })}
                 onClick={() => {
                   onToggle(emoji)
                   setPicking(false)
@@ -338,12 +345,13 @@ function MessageBody({
   children: React.ReactNode
   resolved: boolean
 }) {
+  const { t, lang } = useI18n()
   return (
     <div className="min-w-0 flex-1">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
         <span className="text-sm font-medium leading-tight">{authorName}</span>
-        <span className="tnum text-[11px] text-muted-foreground">{relativeTime(time)}</span>
-        {resolved && <CheckCircle2 className="h-3.5 w-3.5 text-primary" aria-label="Resolved" />}
+        <span className="tnum text-[11px] text-muted-foreground">{relativeTime(time, lang)}</span>
+        {resolved && <CheckCircle2 className="h-3.5 w-3.5 text-primary" aria-label={t("Resolved")} />}
       </div>
       <div
         className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed"
@@ -369,6 +377,7 @@ interface ThreadCardProps {
 }
 
 function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onDelete, onFocusClick, onEdit, onToggleReaction }: ThreadCardProps) {
+  const { t } = useI18n()
   const [replying, setReplying] = React.useState(false)
   const [editing, setEditing] = React.useState<string | null>(null)
   const ref = React.useRef<HTMLDivElement | null>(null)
@@ -415,7 +424,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
         <button
           onClick={onFocusClick}
           className="mt-2 flex w-full items-start gap-2 rounded-lg bg-muted/70 p-2 text-left transition-colors hover:bg-muted"
-          aria-label="Show quoted text in document"
+          aria-label={t("Show quoted text in document")}
         >
           <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
           <p className="line-clamp-2 text-xs italic leading-snug text-muted-foreground">{comment.quote}</p>
@@ -461,7 +470,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
                   <Button
                     variant="ghost"
                     size="icon"
-                    aria-label="Edit reply"
+                    aria-label={t("Edit reply")}
                     className="h-6 w-6 shrink-0 rounded-md text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/thread:opacity-100 focus-visible:opacity-100"
                     onClick={() => setEditing(r.id)}
                     disabled={busy}
@@ -508,7 +517,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
             onClick={() => setReplying(true)}
             disabled={busy}
           >
-            <CornerDownRight className="h-3.5 w-3.5" /> Reply
+            <CornerDownRight className="h-3.5 w-3.5" /> {t("Reply")}
           </Button>
           {(meId === comment.authorId || meId === null) && onEdit && editing !== comment.id && (
             <Button
@@ -518,7 +527,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
               onClick={() => setEditing(comment.id)}
               disabled={busy}
             >
-              <Pencil className="h-3.5 w-3.5" /> Edit
+              <Pencil className="h-3.5 w-3.5" /> {t("Edit")}
             </Button>
           )}
           <Tooltip>
@@ -531,11 +540,11 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
                 disabled={busy}
               >
                 {comment.resolved ? <RotateCcw className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
-                {comment.resolved ? "Reopen" : "Resolve"}
+                {comment.resolved ? t("Reopen") : t("Resolve")}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              {comment.resolved ? "Reopen this thread" : "Mark as resolved"}
+              {comment.resolved ? t("Reopen this thread") : t("Mark as resolved")}
             </TooltipContent>
           </Tooltip>
           {(meId === comment.authorId || meId === null) && (
@@ -544,7 +553,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label="Delete comment thread"
+                  aria-label={t("Delete comment thread")}
                   className="ml-auto h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-destructive"
                   onClick={onDelete}
                   disabled={busy}
@@ -552,7 +561,7 @@ function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onD
                   {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="bottom" className="text-xs">Delete thread</TooltipContent>
+              <TooltipContent side="bottom" className="text-xs">{t("Delete thread")}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -576,8 +585,9 @@ function SuggestionCard({
   onReject: (sid: string) => void
   onFocus: (sid: string) => void
 }) {
+  const { t, lang } = useI18n()
   const verb =
-    s.kind === "del" ? "deleted" : s.kind === "para" ? "suggested a paragraph break" : "inserted"
+    s.kind === "del" ? t("deleted") : s.kind === "para" ? t("suggested a paragraph break") : t("inserted")
   const preview =
     s.kind === "para" ? "¶" : s.text.length > 120 ? s.text.slice(0, 120).trimEnd() + "…" : s.text
 
@@ -596,20 +606,20 @@ function SuggestionCard({
             <button
               className="font-semibold text-foreground hover:underline"
               onClick={() => onFocus(s.sid)}
-              title="Show in document"
+              title={t("Show in document")}
             >
               {s.authorName}
             </button>{" "}
             <span className="text-muted-foreground">{verb}</span>
             {s.createdAt > 0 && (
-              <span className="text-muted-foreground"> · {relativeTime(new Date(s.createdAt).toISOString())}</span>
+              <span className="text-muted-foreground"> · {relativeTime(new Date(s.createdAt).toISOString(), lang)}</span>
             )}
           </p>
           {s.kind !== "para" && (
             <button
               className="mt-1.5 block w-full rounded-md bg-muted/60 px-2 py-1.5 text-left text-xs leading-snug transition-colors hover:bg-muted"
               onClick={() => onFocus(s.sid)}
-              aria-label="Show this suggestion in the document"
+              aria-label={t("Show this suggestion in the document")}
             >
               <span
                 className="line-clamp-3"
@@ -621,7 +631,7 @@ function SuggestionCard({
                   color: s.kind === "del" ? s.authorColor : undefined,
                 }}
               >
-                {preview || "(empty)"}
+                {preview || t("(empty)")}
               </span>
             </button>
           )}
@@ -634,14 +644,14 @@ function SuggestionCard({
           className="h-7 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
           onClick={() => onReject(s.sid)}
         >
-          <X className="h-3.5 w-3.5" /> Reject
+          <X className="h-3.5 w-3.5" /> {t("Reject")}
         </Button>
         <Button
           size="sm"
           className="h-7 gap-1.5 rounded-md px-2.5 text-xs"
           onClick={() => onAccept(s.sid)}
         >
-          <Check className="h-3.5 w-3.5" /> Accept
+          <Check className="h-3.5 w-3.5" /> {t("Accept")}
         </Button>
       </div>
     </div>
@@ -686,10 +696,11 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
   const openThreads = React.useMemo(() => comments.filter((c) => !c.resolved), [comments])
   const resolvedThreads = React.useMemo(() => comments.filter((c) => c.resolved), [comments])
   const [showResolved, setShowResolved] = React.useState(false)
+  const { t } = useI18n()
 
   return (
     <aside
-      aria-label="Comments and suggestions"
+      aria-label={t("Comments and suggestions")}
       data-open={open}
       className={cn(
         "no-print relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-l bg-background/95 backdrop-blur-sm",
@@ -703,16 +714,16 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
         {/* header */}
         <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
           <MessageCircle className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold">Comments</h2>
+          <h2 className="text-sm font-semibold">{t("Comments")}</h2>
           {!loading && (
             <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
-              {openThreads.length} open
+              {t("{n} open", { n: openThreads.length })}
             </span>
           )}
           <Button
             variant="ghost"
             size="icon"
-            aria-label="Close comments panel"
+            aria-label={t("Close comments panel")}
             className="ml-auto h-8 w-8 rounded-md text-muted-foreground"
             onClick={onClose}
           >
@@ -727,7 +738,7 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
               <div className="sticky top-0 z-[1] -mx-1 flex items-center gap-2 bg-background/95 px-1 py-1 backdrop-blur-sm">
                 <PencilLine className="h-3.5 w-3.5 text-primary" />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Suggestions
+                  {t("Suggestions")}
                 </h3>
                 <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-primary">
                   {suggestions.length}
@@ -756,15 +767,15 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
 
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading comments…
+              <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading comments…")}
             </div>
           ) : comments.length === 0 && pendingQuote == null ? (
             <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-center">
               <MessageSquarePlus className="h-8 w-8 text-muted-foreground/40" />
               <div>
-                <p className="font-editorial text-[14.5px] font-medium italic tracking-tight text-foreground/80">No comments yet</p>
+                <p className="font-editorial text-[14.5px] font-medium italic tracking-tight text-foreground/80">{t("No comments yet")}</p>
                 <p className="mt-1 max-w-[240px] text-xs text-muted-foreground">
-                  Select text in the document and press the comment button to start a discussion.
+                  {t("Select text in the document and press the comment button to start a discussion.")}
                 </p>
               </div>
             </div>
@@ -794,8 +805,10 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
                     aria-expanded={showResolved}
                   >
                     <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                    {resolvedThreads.length} resolved {resolvedThreads.length === 1 ? "thread" : "threads"}
-                    <span className="ml-auto text-[10px]">{showResolved ? "Hide" : "Show"}</span>
+                    {resolvedThreads.length === 1
+                      ? t("{n} resolved thread", { n: resolvedThreads.length })
+                      : t("{n} resolved threads", { n: resolvedThreads.length })}
+                    <span className="ml-auto text-[10px]">{showResolved ? t("Hide") : t("Show")}</span>
                   </button>
                   {showResolved &&
                     resolvedThreads.map((c) => (
@@ -835,10 +848,11 @@ export function CommentBubble({
   y: number
   onAdd: () => void
 }) {
+  const { t } = useI18n()
   return (
     <button
       role="button"
-      aria-label="Add comment on selected text"
+      aria-label={t("Add comment on selected text")}
       data-testid="comment-bubble"
       onMouseDown={(e) => e.preventDefault()} // keep the text selection
       onClick={onAdd}
@@ -849,7 +863,7 @@ export function CommentBubble({
       }}
     >
       <MessageSquarePlus className="h-3.5 w-3.5 text-primary" />
-      Comment
+      {t("Comment")}
     </button>
   )
 }

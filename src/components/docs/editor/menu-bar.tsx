@@ -7,6 +7,7 @@ import {
   DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
 } from "@/components/ui/dropdown-menu"
 import { useTheme } from "next-themes"
+import { useI18n, localeOf } from "@/lib/i18n"
 import type { EditorApi } from "./editor-types"
 import { ScrollFade } from "@/components/docs/scroll-fade"
 import {
@@ -31,6 +32,7 @@ function Menu({ label, children }: { label: string; children: React.ReactNode })
 }
 
 export function MenuBar({ api }: { api: EditorApi }) {
+  const { t, lang } = useI18n()
   const { resolvedTheme, setTheme } = useTheme()
   const [mounted, setMounted] = React.useState(false)
   React.useEffect(() => setMounted(true), [])
@@ -40,165 +42,165 @@ export function MenuBar({ api }: { api: EditorApi }) {
     <div
       className="no-print no-scrollbar relative flex h-10 items-center gap-0.5 overflow-x-auto border-b bg-background px-2 max-sm:gap-0 max-sm:px-1"
       role="menubar"
-      aria-label="Document menus"
+      aria-label={t("Document menus")}
     >
       <ScrollFade className="max-sm:block sm:hidden" />
-      <Menu label="File">
-        <DropdownMenuItem onClick={api.duplicate}><FilePlus2 className="h-4 w-4" /> Make a copy</DropdownMenuItem>
-        <DropdownMenuItem onClick={api.focusTitle}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
+      <Menu label={t("File")}>
+        <DropdownMenuItem onClick={api.duplicate}><FilePlus2 className="h-4 w-4" /> {t("Make a copy")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={api.focusTitle}><Pencil className="h-4 w-4" /> {t("Rename")}</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => api.openDialog("versions")}><History className="h-4 w-4" /> Version history</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.openDialog("versions")}><History className="h-4 w-4" /> {t("Version history")}</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => api.downloadPdf()}><FileDown className="h-4 w-4" /> PDF document (.pdf)</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.downloadDoc("doc")}><Download className="h-4 w-4" /> Download Word (.doc)</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.downloadDoc("html")}><Download className="h-4 w-4" /> Download HTML</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.downloadDoc("txt")}><Download className="h-4 w-4" /> Download text (.txt)</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.downloadPdf()}><FileDown className="h-4 w-4" /> {t("PDF document (.pdf)")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.downloadDoc("doc")}><Download className="h-4 w-4" /> {t("Download Word (.doc)")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.downloadDoc("html")}><Download className="h-4 w-4" /> {t("Download HTML")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.downloadDoc("txt")}><Download className="h-4 w-4" /> {t("Download text (.txt)")}</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={api.printDoc}><Printer className="h-4 w-4" /> Print <DropdownMenuShortcut>⌘P</DropdownMenuShortcut></DropdownMenuItem>
+        <DropdownMenuItem onClick={api.printDoc}><Printer className="h-4 w-4" /> {t("Print")} <DropdownMenuShortcut>⌘P</DropdownMenuShortcut></DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={api.moveToTrash} className="text-destructive focus:text-destructive">
-          <Trash2 className="h-4 w-4" /> Move to trash
+          <Trash2 className="h-4 w-4" /> {t("Move to trash")}
         </DropdownMenuItem>
       </Menu>
 
-      <Menu label="Edit">
-        <DropdownMenuItem onClick={() => api.exec("undo")}><Undo2 className="h-4 w-4" /> Undo <DropdownMenuShortcut>⌘Z</DropdownMenuShortcut></DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("redo")}><Redo2 className="h-4 w-4" /> Redo <DropdownMenuShortcut>⌘Y</DropdownMenuShortcut></DropdownMenuItem>
+      <Menu label={t("Edit")}>
+        <DropdownMenuItem onClick={() => api.exec("undo")}><Undo2 className="h-4 w-4" /> {t("Undo")} <DropdownMenuShortcut>⌘Z</DropdownMenuShortcut></DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("redo")}><Redo2 className="h-4 w-4" /> {t("Redo")} <DropdownMenuShortcut>⌘Y</DropdownMenuShortcut></DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => api.exec("cut")}><Scissors className="h-4 w-4" /> Cut</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("copy")}><ClipboardCopy className="h-4 w-4" /> Copy</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("paste")}><ClipboardPaste className="h-4 w-4" /> Paste</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("selectAll")}><ClipboardCopy className="h-4 w-4" /> Select all <DropdownMenuShortcut>⌘A</DropdownMenuShortcut></DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("cut")}><Scissors className="h-4 w-4" /> {t("Cut")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("copy")}><ClipboardCopy className="h-4 w-4" /> {t("Copy")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("paste")}><ClipboardPaste className="h-4 w-4" /> {t("Paste")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("selectAll")}><ClipboardCopy className="h-4 w-4" /> {t("Select all")} <DropdownMenuShortcut>⌘A</DropdownMenuShortcut></DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("find")}>
-          <Replace className="h-4 w-4" /> Find and replace <DropdownMenuShortcut>⌘H</DropdownMenuShortcut>
+          <Replace className="h-4 w-4" /> {t("Find and replace")} <DropdownMenuShortcut>⌘H</DropdownMenuShortcut>
         </DropdownMenuItem>
       </Menu>
 
-      <Menu label="View">
+      <Menu label={t("View")}>
         <DropdownMenuCheckboxItem
           checked={api.outlineOpen}
           onCheckedChange={(v) => api.toggleOutline(!!v)}
         >
-          <ListTree className="h-4 w-4" /> Show document outline
+          <ListTree className="h-4 w-4" /> {t("Show document outline")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
           checked={dark}
           onCheckedChange={() => setTheme(dark ? "light" : "dark")}
         >
-          <Moon className="h-4 w-4" /> Dark mode
+          <Moon className="h-4 w-4" /> {t("Dark mode")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem checked={api.spellCheck} onCheckedChange={api.setSpellCheck}>
-          <Calculator className="h-4 w-4" /> Spell check
+          <Calculator className="h-4 w-4" /> {t("Spell check")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuItem onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}>
-          <Maximize className="h-4 w-4" /> Full screen
+          <Maximize className="h-4 w-4" /> {t("Full screen")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => api.setZoom(0.75)}><ZoomIn className="h-4 w-4" /> Zoom 75%</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.setZoom(1)}><ZoomIn className="h-4 w-4" /> Zoom 100%</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.setZoom(1.25)}><ZoomIn className="h-4 w-4" /> Zoom 125%</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.setZoom(0.75)}><ZoomIn className="h-4 w-4" /> {t("Zoom 75%")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.setZoom(1)}><ZoomIn className="h-4 w-4" /> {t("Zoom 100%")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.setZoom(1.25)}><ZoomIn className="h-4 w-4" /> {t("Zoom 125%")}</DropdownMenuItem>
       </Menu>
 
-      <Menu label="Insert">
-        <DropdownMenuItem onClick={() => api.openDialog("link")}><Link className="h-4 w-4" /> Link <DropdownMenuShortcut>⌘K</DropdownMenuShortcut></DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.openDialog("image")}><ImagePlus className="h-4 w-4" /> Image</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("insertHorizontalRule")}><Minus className="h-4 w-4" /> Horizontal line</DropdownMenuItem>
+      <Menu label={t("Insert")}>
+        <DropdownMenuItem onClick={() => api.openDialog("link")}><Link className="h-4 w-4" /> {t("Link")} <DropdownMenuShortcut>⌘K</DropdownMenuShortcut></DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.openDialog("image")}><ImagePlus className="h-4 w-4" /> {t("Image")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("insertHorizontalRule")}><Minus className="h-4 w-4" /> {t("Horizontal line")}</DropdownMenuItem>
         <DropdownMenuItem
           onClick={() =>
-            api.exec("insertText", new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }))
+            api.exec("insertText", new Date().toLocaleDateString(localeOf(lang), { year: "numeric", month: "long", day: "numeric" }))
           }
         >
-          <CalendarDays className="h-4 w-4" /> Today&apos;s date
+          <CalendarDays className="h-4 w-4" /> {t("Today's date")}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("table")}>
-          <Table className="h-4 w-4" /> Table <DropdownMenuShortcut>⌘⇧T</DropdownMenuShortcut>
+          <Table className="h-4 w-4" /> {t("Table")} <DropdownMenuShortcut>⌘⇧T</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.openDialog("emoji")}>
-          <Smile className="h-4 w-4" /> Emoji &amp; symbols
+          <Smile className="h-4 w-4" /> {t("Emoji & symbols")}
         </DropdownMenuItem>
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="gap-2">
-            <Table className="h-4 w-4" /> Table options
+            <Table className="h-4 w-4" /> {t("Table options")}
             <ChevronRight className="ml-auto h-3.5 w-3.5" />
           </DropdownMenuSubTrigger>
           <DropdownMenuSubContent className="w-56">
             <DropdownMenuItem onClick={() => api.tableOp("row-above")}>
-              <Rows3 className="h-4 w-4" /> Insert row above
+              <Rows3 className="h-4 w-4" /> {t("Insert row above")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => api.tableOp("row-below")}>
-              <Rows3 className="h-4 w-4" /> Insert row below
+              <Rows3 className="h-4 w-4" /> {t("Insert row below")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => api.tableOp("col-left")}>
-              <Columns3 className="h-4 w-4" /> Insert column left
+              <Columns3 className="h-4 w-4" /> {t("Insert column left")}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => api.tableOp("col-right")}>
-              <Columns3 className="h-4 w-4" /> Insert column right
+              <Columns3 className="h-4 w-4" /> {t("Insert column right")}
             </DropdownMenuItem>
             {api.tableInfo && (
               <>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => api.tableOp("merge-right")} disabled={!api.tableInfo.canMergeRight}>
-                  <TableCellsMerge className="h-4 w-4" /> Merge cell right
+                  <TableCellsMerge className="h-4 w-4" /> {t("Merge cell right")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => api.tableOp("merge-down")} disabled={!api.tableInfo.canMergeDown}>
-                  <TableCellsMerge className="h-4 w-4 -rotate-90" /> Merge cell down
+                  <TableCellsMerge className="h-4 w-4 -rotate-90" /> {t("Merge cell down")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => api.tableOp("split-cell")} disabled={!api.tableInfo.canSplit}>
-                  <TableCellsSplit className="h-4 w-4" /> Split cell
+                  <TableCellsSplit className="h-4 w-4" /> {t("Split cell")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => api.tableOp("toggle-header")}>
-                  <Heading className="h-4 w-4" /> {api.tableInfo.hasHeader ? "Remove header row" : "Header row"}
+                  <Heading className="h-4 w-4" /> {api.tableInfo.hasHeader ? t("Remove header row") : t("Header row")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => api.tableOp("delete-row")} className="text-destructive focus:text-destructive">
-                  <Rows3 className="h-4 w-4" /> Delete row
+                  <Rows3 className="h-4 w-4" /> {t("Delete row")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => api.tableOp("delete-col")} className="text-destructive focus:text-destructive">
-                  <Columns3 className="h-4 w-4" /> Delete column
+                  <Columns3 className="h-4 w-4" /> {t("Delete column")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => api.tableOp("delete-table")} className="text-destructive focus:text-destructive">
-                  <Table className="h-4 w-4" /> Delete table
+                  <Table className="h-4 w-4" /> {t("Delete table")}
                 </DropdownMenuItem>
               </>
             )}
             {!api.tableInfo && (
               <div className="px-2 py-1.5 text-[11px] text-muted-foreground">
-                Place the caret inside a table to enable row &amp; column tools.
+                {t("Place the caret inside a table to enable row & column tools.")}
               </div>
             )}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
         <DropdownMenuItem onClick={api.openCommentComposer}>
-          <MessageSquarePlus className="h-4 w-4" /> Comment <DropdownMenuShortcut>⌘⌥M</DropdownMenuShortcut>
+          <MessageSquarePlus className="h-4 w-4" /> {t("Comment")} <DropdownMenuShortcut>⌘⌥M</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("helpwrite")}>
-          <Sparkles className="h-4 w-4 text-primary" /> Help me write (AI)
+          <Sparkles className="h-4 w-4 text-primary" /> {t("Help me write (AI)")}
         </DropdownMenuItem>
       </Menu>
 
-      <Menu label="Format">
-        <DropdownMenuItem onClick={() => api.exec("bold")}><Bold className="h-4 w-4" /> Bold <DropdownMenuShortcut>⌘B</DropdownMenuShortcut></DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("italic")}><Italic className="h-4 w-4" /> Italic <DropdownMenuShortcut>⌘I</DropdownMenuShortcut></DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("underline")}><Underline className="h-4 w-4" /> Underline <DropdownMenuShortcut>⌘U</DropdownMenuShortcut></DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("strikeThrough")}><Strikethrough className="h-4 w-4" /> Strikethrough</DropdownMenuItem>
+      <Menu label={t("Format")}>
+        <DropdownMenuItem onClick={() => api.exec("bold")}><Bold className="h-4 w-4" /> {t("Bold")} <DropdownMenuShortcut>⌘B</DropdownMenuShortcut></DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("italic")}><Italic className="h-4 w-4" /> {t("Italic")} <DropdownMenuShortcut>⌘I</DropdownMenuShortcut></DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("underline")}><Underline className="h-4 w-4" /> {t("Underline")} <DropdownMenuShortcut>⌘U</DropdownMenuShortcut></DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("strikeThrough")}><Strikethrough className="h-4 w-4" /> {t("Strikethrough")}</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => api.exec("superscript")}><Superscript className="h-4 w-4" /> Superscript</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("subscript")}><Subscript className="h-4 w-4" /> Subscript</DropdownMenuItem>
-        <DropdownMenuItem onClick={api.clearFormatting}><RemoveFormatting className="h-4 w-4" /> Clear formatting <DropdownMenuShortcut>⌘\</DropdownMenuShortcut></DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("superscript")}><Superscript className="h-4 w-4" /> {t("Superscript")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("subscript")}><Subscript className="h-4 w-4" /> {t("Subscript")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={api.clearFormatting}><RemoveFormatting className="h-4 w-4" /> {t("Clear formatting")} <DropdownMenuShortcut>⌘\</DropdownMenuShortcut></DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => api.exec("insertUnorderedList")}><List className="h-4 w-4" /> Bulleted list</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("insertOrderedList")}><ListOrdered className="h-4 w-4" /> Numbered list</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.exec("formatBlock", "blockquote")}><TextQuote className="h-4 w-4" /> Quote block</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("insertUnorderedList")}><List className="h-4 w-4" /> {t("Bulleted list")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("insertOrderedList")}><ListOrdered className="h-4 w-4" /> {t("Numbered list")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.exec("formatBlock", "blockquote")}><TextQuote className="h-4 w-4" /> {t("Quote block")}</DropdownMenuItem>
       </Menu>
 
-      <Menu label="Tools">
+      <Menu label={t("Tools")}>
         <DropdownMenuItem onClick={() => api.openDialog("aitools")}>
-          <Sparkles className="h-4 w-4 text-primary" /> AI polish
+          <Sparkles className="h-4 w-4 text-primary" /> {t("AI polish")}
           <DropdownMenuShortcut>⌥⌘A</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={api.toggleVoiceTyping}>
@@ -212,18 +214,18 @@ export function MenuBar({ api }: { api: EditorApi }) {
             )}
           </span>
           <span className={api.voiceListening ? "text-primary" : undefined}>
-            {api.voiceListening ? "Stop voice typing" : "Voice typing"}
+            {api.voiceListening ? t("Stop voice typing") : t("Voice typing")}
           </span>
           <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => api.openDialog("wordcount")}><Calculator className="h-4 w-4" /> Word count</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.openDialog("versions")}><History className="h-4 w-4" /> Version history</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.openDialog("wordcount")}><Calculator className="h-4 w-4" /> {t("Word count")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.openDialog("versions")}><History className="h-4 w-4" /> {t("Version history")}</DropdownMenuItem>
       </Menu>
 
-      <Menu label="Help">
-        <DropdownMenuItem onClick={() => api.openDialog("shortcuts")}><Keyboard className="h-4 w-4" /> Keyboard shortcuts</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.openDialog("about")}><Info className="h-4 w-4" /> About Z-Docs</DropdownMenuItem>
+      <Menu label={t("Help")}>
+        <DropdownMenuItem onClick={() => api.openDialog("shortcuts")}><Keyboard className="h-4 w-4" /> {t("Keyboard shortcuts")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.openDialog("about")}><Info className="h-4 w-4" /> {t("About Z-Docs")}</DropdownMenuItem>
       </Menu>
 
       {/* alignment quick access inside menubar right */}
@@ -238,8 +240,8 @@ export function MenuBar({ api }: { api: EditorApi }) {
         ).map(({ icon: Icon, align, label }) => (
           <button
             key={align}
-            title={label}
-            aria-label={label}
+            title={t(label)}
+            aria-label={t(label)}
             onClick={() => api.applyAlignment(align)}
             className={cn(
               "rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",

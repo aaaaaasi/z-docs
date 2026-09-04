@@ -4,7 +4,8 @@ import { create } from "zustand"
 import type { DocumentDTO, DocumentMeta, DocFilter, FolderDTO, TagDTO } from "@/lib/docs-types"
 import type { WorkspaceView, WorkspaceApp } from "@/lib/workspace-types"
 import { getSnippet, countWords, htmlToText } from "@/lib/doc-utils"
-import { getTemplate } from "@/lib/templates"
+import { getTemplate, localizedTemplate } from "@/lib/templates"
+import { getCurrentLang, tForLang } from "@/lib/i18n"
 
 export interface CreateDocOptions {
   title?: string
@@ -219,9 +220,12 @@ export const useDocsStore = create<DocsState>((set, get) => ({
   createDoc: async (opts) => {
     try {
       const template = opts?.templateId ? getTemplate(opts.templateId) : undefined
-      let content = opts?.content ?? template?.content ?? ""
+      // template title/content are localized per the current UI language
+      const lang = getCurrentLang()
+      const tpl = template ? localizedTemplate(template, lang) : undefined
+      let content = opts?.content ?? tpl?.content ?? ""
       // workspace default font (Settings → Workspace defaults) applies to fresh blank docs
-      if (!opts?.content && !template?.content) {
+      if (!opts?.content && !tpl?.content) {
         try {
           if (typeof window !== "undefined" && window.localStorage.getItem("zdocs-default-font") === "serif") {
             content = '<p style="font-family: Georgia, serif"><br></p>'
@@ -231,7 +235,7 @@ export const useDocsStore = create<DocsState>((set, get) => ({
         }
       }
       const body = {
-        title: opts?.title ?? template?.title ?? "Untitled document",
+        title: opts?.title ?? tpl?.title ?? tForLang(lang, "Untitled document"),
         content,
       }
       const res = await fetch("/api/documents", {

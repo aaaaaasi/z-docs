@@ -11,11 +11,14 @@ import { useDocsStore } from "@/store/docs-store"
 import { useLocalUser } from "@/lib/identity"
 import type { LocalUser } from "@/lib/identity"
 import { colorForId, fullTime, initialsOf, relativeTime } from "@/lib/doc-utils"
+import { useI18n, localeOf, type Lang } from "@/lib/i18n"
 import type { ActivityDTO, WorkspaceApp } from "@/lib/workspace-types"
 import { cn } from "@/lib/utils"
 import { APP_META, KIND_META } from "./activity-meta"
 
 type ActivityFilter = "all" | WorkspaceApp
+
+type TranslateFn = (key: string, params?: Record<string, string | number>) => string
 
 interface DayGroup {
   key: string
@@ -33,18 +36,24 @@ const FILTERS: { value: ActivityFilter; label: string; app: WorkspaceApp | null 
 
 /* --------------------------------- helpers --------------------------------- */
 
-function dayKeyAndLabel(date: Date): { key: string; label: string } {
+function dayKeyAndLabel(date: Date, t: TranslateFn, lang: Lang): { key: string; label: string } {
   const key = format(date, "yyyy-MM-dd")
-  if (isToday(date)) return { key, label: "Today" }
-  if (isYesterday(date)) return { key, label: "Yesterday" }
-  if (differenceInCalendarDays(new Date(), date) < 7) return { key, label: format(date, "EEEE") }
-  return { key, label: format(date, "EEE d MMM") }
+  if (isToday(date)) return { key, label: t("Today") }
+  if (isYesterday(date)) return { key, label: t("Yesterday") }
+  const locale = localeOf(lang)
+  if (differenceInCalendarDays(new Date(), date) < 7) {
+    return { key, label: new Intl.DateTimeFormat(locale, { weekday: "long" }).format(date) }
+  }
+  return {
+    key,
+    label: new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short" }).format(date),
+  }
 }
 
-function groupByDay(activities: ActivityDTO[]): DayGroup[] {
+function groupByDay(activities: ActivityDTO[], t: TranslateFn, lang: Lang): DayGroup[] {
   const groups: DayGroup[] = []
   for (const activity of activities) {
-    const { key, label } = dayKeyAndLabel(new Date(activity.createdAt))
+    const { key, label } = dayKeyAndLabel(new Date(activity.createdAt), t, lang)
     const last = groups[groups.length - 1]
     if (last && last.key === key) last.items.push(activity)
     else groups.push({ key, label, items: [activity] })
@@ -55,6 +64,7 @@ function groupByDay(activities: ActivityDTO[]): DayGroup[] {
 /* ----------------------------------- row ----------------------------------- */
 
 function ActivityRow({ activity, me }: { activity: ActivityDTO; me: LocalUser | null }) {
+  const { t, lang } = useI18n()
   const openDoc = useDocsStore((s) => s.openDoc)
   const openApp = useDocsStore((s) => s.openApp)
 
@@ -64,11 +74,11 @@ function ActivityRow({ activity, me }: { activity: ActivityDTO; me: LocalUser | 
   const KindIcon = kindMeta.icon
 
   const isMe = !!me && activity.actor?.id === me.id
-  const displayName = isMe ? "You" : activity.actor?.name || "Someone"
+  const displayName = isMe ? t("You") : activity.actor?.name || t("Someone")
   const initialsName = isMe ? me.name : activity.actor?.name || "?"
   const actorColor = activity.actor?.color || colorForId(activity.actor?.id ?? activity.id)
-  const time = relativeTime(activity.createdAt)
-  const full = fullTime(activity.createdAt)
+  const time = relativeTime(activity.createdAt, lang)
+  const full = fullTime(activity.createdAt, lang)
   const canOpen = !!activity.entityId
 
   const inner = (
@@ -98,7 +108,7 @@ function ActivityRow({ activity, me }: { activity: ActivityDTO; me: LocalUser | 
       <span className="min-w-0 flex-1">
         <span className="block text-[13px] leading-snug">
           <span className="font-medium text-foreground">{displayName}</span>{" "}
-          <span className="text-muted-foreground">{kindMeta.verb}</span>{" "}
+          <span className="text-muted-foreground">{t(kindMeta.verb)}</span>{" "}
           {activity.entityTitle ? (
             <span className="font-medium text-foreground">“{activity.entityTitle}”</span>
           ) : null}
@@ -150,13 +160,14 @@ function ActivityRow({ activity, me }: { activity: ActivityDTO; me: LocalUser | 
 /* --------------------------------- states ---------------------------------- */
 
 function ActivitySkeletonList() {
+  const { t } = useI18n()
   return (
     <div
       className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6"
       aria-busy="true"
-      aria-label="Loading activity"
+      aria-label={t("Loading activity")}
     >
-      <p className="sr-only">Loading activity…</p>
+      <p className="sr-only">{t("Loading activity…")}</p>
       <Skeleton className="mt-2 h-3.5 w-24" />
       {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="flex items-start gap-3 px-2 py-3">
@@ -173,41 +184,43 @@ function ActivitySkeletonList() {
 }
 
 function ActivityEmptyState({ onBack }: { onBack: () => void }) {
+  const { t } = useI18n()
   return (
     <div className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
       <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
         <FileClock className="h-6 w-6 text-primary" />
       </span>
-      <h2 className="mt-4 text-[15px] font-medium">No activity yet</h2>
+      <h2 className="mt-4 text-[15px] font-medium">{t("No activity yet")}</h2>
       <p className="mt-1 max-w-sm text-[13px] text-muted-foreground">
-        Create a document, spreadsheet or form and it will show up here
+        {t("Create a document, spreadsheet or form and it will show up here")}
       </p>
       <Button
         variant="ghost"
         onClick={onBack}
         className="mt-6 h-10 rounded-full px-5 text-[13px] font-medium text-primary hover:text-primary"
       >
-        Back to home
+        {t("Back to home")}
       </Button>
     </div>
   )
 }
 
 function ActivityErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const { t } = useI18n()
   return (
     <div className="mx-auto max-w-xl px-4 py-10">
       <Alert variant="destructive">
         <AlertTriangle className="h-4 w-4" />
-        <AlertTitle>Couldn’t load activity</AlertTitle>
+        <AlertTitle>{t("Couldn’t load activity")}</AlertTitle>
         <AlertDescription>
-          <span className="block">{message}</span>
+          <span className="block">{t(message)}</span>
           <Button
             size="sm"
             variant="outline"
             onClick={onRetry}
             className="mt-2 h-9 border-destructive/40 text-destructive hover:text-destructive"
           >
-            Try again
+            {t("Try again")}
           </Button>
         </AlertDescription>
       </Alert>
@@ -218,6 +231,7 @@ function ActivityErrorState({ message, onRetry }: { message: string; onRetry: ()
 /* ---------------------------------- page ----------------------------------- */
 
 export function ActivityView() {
+  const { t, lang } = useI18n()
   const goHome = useDocsStore((s) => s.goHome)
   const me = useLocalUser()
 
@@ -246,7 +260,7 @@ export function ActivityView() {
             : [`/api/activity?app=${filter}&limit=100`, "/api/activity?limit=200"]
         const responses = await Promise.all(urls.map((u) => fetch(u)))
         const bad = responses.find((r) => !r.ok)
-        if (bad) throw new Error(`Failed to load activity (${bad.status})`)
+        if (bad) throw new Error("Something went wrong")
         const payloads = await Promise.all(
           responses.map((r) => r.json() as Promise<{ activities?: ActivityDTO[] }>)
         )
@@ -271,7 +285,7 @@ export function ActivityView() {
     }
   }, [filter, reloadTick])
 
-  const groups = React.useMemo(() => groupByDay(items), [items])
+  const groups = React.useMemo(() => groupByDay(items, t, lang), [items, t, lang])
   // keep the previous list visible while revalidating with the same filter
   const showStale = loading && !error && items.length > 0 && loadedFilter === filter
 
@@ -284,20 +298,20 @@ export function ActivityView() {
               variant="ghost"
               size="icon"
               onClick={goHome}
-              aria-label="Back"
+              aria-label={t("Back")}
               className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Back
+            {t("Back")}
           </TooltipContent>
         </Tooltip>
         <div className="min-w-0">
-          <h1 className="truncate text-lg font-medium leading-tight">Recent activity</h1>
+          <h1 className="truncate text-lg font-medium leading-tight">{t("Recent activity")}</h1>
           <p className="hidden text-xs text-muted-foreground sm:block">
-            Everything you and your collaborators touched
+            {t("Everything you and your collaborators touched")}
           </p>
         </div>
         <div className="ml-auto">
@@ -307,14 +321,14 @@ export function ActivityView() {
                 variant="ghost"
                 size="icon"
                 onClick={() => setReloadTick((t) => t + 1)}
-                aria-label="Refresh activity"
+                aria-label={t("Refresh activity")}
                 className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
               >
                 <RefreshCw className={cn("h-4.5 w-4.5", loading && "animate-spin")} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              Refresh
+              {t("Refresh")}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -325,7 +339,7 @@ export function ActivityView() {
         <div
           className="flex flex-wrap items-center gap-2 px-6 py-3"
           role="group"
-          aria-label="Filter activity by app"
+          aria-label={t("Filter activity by app")}
         >
           {FILTERS.map((f) => {
             const Icon = f.app ? APP_META[f.app].icon : null
@@ -345,7 +359,7 @@ export function ActivityView() {
                 )}
               >
                 {Icon ? <Icon className="h-4 w-4" /> : null}
-                {f.label}
+                {t(f.label)}
                 {counts ? (
                   <span
                     className={cn(

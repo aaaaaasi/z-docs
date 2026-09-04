@@ -3,6 +3,7 @@
 import * as React from "react"
 import { resizeTableColumn, tableColumnPixelWidth } from "@/lib/editor-dom"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 interface BoundaryView {
   index: number
@@ -40,6 +41,7 @@ export function TableResizeOverlay({ pageRef, activeTable, zoom, contentTick, on
   const [boundaries, setBoundaries] = React.useState<BoundaryView[]>([])
   const [drag, setDrag] = React.useState<DragState | null>(null)
   const [dragTick, setDragTick] = React.useState(0)
+  const { t } = useI18n()
   const lastXRef = React.useRef(0)
 
   /* Recompute overlay geometry from the live DOM. Re-runs after every drag
@@ -138,7 +140,7 @@ export function TableResizeOverlay({ pageRef, activeTable, zoom, contentTick, on
             key={`col-boundary-${b.index}`}
             role="separator"
             aria-orientation="vertical"
-            aria-label={`Column ${b.index + 1} width. Drag or use arrow keys to resize.`}
+            aria-label={t("Column {n} width. Drag or use arrow keys to resize.", { n: b.index + 1 })}
             tabIndex={0}
             className="table-col-resize pointer-events-auto absolute cursor-col-resize touch-none outline-none"
             style={{ left: b.left - 6, top: b.top - 10, width: 12, height: b.height + 10 }}
@@ -171,7 +173,7 @@ export function TableResizeOverlay({ pageRef, activeTable, zoom, contentTick, on
                 className="bg-foreground text-background absolute top-[-30px] left-[7px] rounded-md px-1.5 py-0.5 text-[10.5px] font-medium tabular-nums whitespace-nowrap"
                 style={{ transform: "translateX(-50%)" }}
               >
-                {Math.round(drag.colWidth)} px
+                {t("{n} px", { n: Math.round(drag.colWidth) })}
               </span>
             )}
           </div>

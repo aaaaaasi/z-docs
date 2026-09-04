@@ -3,6 +3,7 @@
 import { create } from "zustand"
 import { api } from "@/lib/api-client"
 import { toast } from "@/hooks/use-toast"
+import { getCurrentLang, tForLang } from "@/lib/i18n"
 import { EMPTY_SHEET, type CellData, type SheetData, type SheetMeta } from "@/lib/workspace-types"
 import { evaluateSheet } from "./formula"
 import { createListActions } from "./sheet-list-actions"
@@ -367,7 +368,7 @@ export const useSheetStore = create<SheetsState>((set, get) => ({
     try {
       await api(`/api/sheets/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ title: clean }) })
     } catch {
-      toast({ title: "Rename failed", variant: "destructive" })
+      toast({ title: tForLang(getCurrentLang(), "Rename failed"), variant: "destructive" })
     }
   },
 
@@ -382,7 +383,11 @@ export const useSheetStore = create<SheetsState>((set, get) => ({
     if (!id) return
     await api(`/api/sheets/${id}`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify({ trashed: true }) }).catch(() => {})
     get().backToList()
-    toast({ title: "Moved to trash", description: "Find it under the Trash filter to restore." })
+    const lang = getCurrentLang()
+    toast({
+      title: tForLang(lang, "Moved to trash"),
+      description: tForLang(lang, "Find it under the Trash filter to restore."),
+    })
   },
 }))
 

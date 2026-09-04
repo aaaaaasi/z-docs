@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useI18n } from "@/lib/i18n"
 import type { AnswerValue, Question } from "@/lib/workspace-types"
 
 /* ------------------------------- star rating input ----------------------------- */
@@ -23,6 +24,7 @@ interface StarRatingProps {
 
 /** 5 clickable stars — filled with the accent color, hover preview, keyboard accessible. */
 export function StarRating({ value, onChange, disabled, invalid, name }: StarRatingProps) {
+  const { t } = useI18n()
   const [hover, setHover] = React.useState(0)
   const current = hover > 0 ? hover : (value ?? 0)
 
@@ -41,7 +43,7 @@ export function StarRating({ value, onChange, disabled, invalid, name }: StarRat
   return (
     <div
       role="radiogroup"
-      aria-label="Rating"
+      aria-label={t("Rating")}
       aria-invalid={invalid}
       onKeyDown={disabled ? undefined : handleKey}
       onMouseLeave={() => setHover(0)}
@@ -53,7 +55,7 @@ export function StarRating({ value, onChange, disabled, invalid, name }: StarRat
           type="button"
           role="radio"
           aria-checked={value === n}
-          aria-label={`${n} star${n > 1 ? "s" : ""}`}
+          aria-label={n === 1 ? t("1 star") : t("{n} stars", { n })}
           disabled={disabled}
           onClick={() => onChange(n)}
           onMouseEnter={() => !disabled && setHover(n)}
@@ -74,7 +76,7 @@ export function StarRating({ value, onChange, disabled, invalid, name }: StarRat
         </button>
       ))}
       <span aria-live="polite" className="sr-only">
-        {name}: {value ? `${value} of 5 stars` : "not rated"}
+        {name}: {value ? t("{n} of 5 stars", { n: value }) : t("not rated")}
       </span>
     </div>
   )
@@ -95,6 +97,7 @@ interface QuestionInputProps {
  * the fill view and the preview so both stay pixel-identical.
  */
 export function QuestionInput({ question, value, onChange, invalid, disabled }: QuestionInputProps) {
+  const { t } = useI18n()
   const qid = question.id
 
   switch (question.type) {
@@ -105,7 +108,7 @@ export function QuestionInput({ question, value, onChange, invalid, disabled }: 
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           aria-invalid={invalid}
-          placeholder="Your answer"
+          placeholder={t("Your answer")}
           className="max-w-md"
         />
       )
@@ -117,7 +120,7 @@ export function QuestionInput({ question, value, onChange, invalid, disabled }: 
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
           aria-invalid={invalid}
-          placeholder="Your answer"
+          placeholder={t("Your answer")}
           rows={3}
           className="max-h-64 max-w-xl resize-y"
         />
@@ -133,7 +136,7 @@ export function QuestionInput({ question, value, onChange, invalid, disabled }: 
           className="gap-1"
         >
           {question.options.map((opt, i) => {
-            const label = opt.trim() || `Option ${i + 1}`
+            const label = opt.trim() || t("Option {n}", { n: i + 1 })
             return (
               <div
                 key={i}
@@ -157,7 +160,7 @@ export function QuestionInput({ question, value, onChange, invalid, disabled }: 
       return (
         <div className="space-y-1" aria-invalid={invalid}>
           {question.options.map((opt, i) => {
-            const label = opt.trim() || `Option ${i + 1}`
+            const label = opt.trim() || t("Option {n}", { n: i + 1 })
             return (
               <div
                 key={i}
@@ -199,11 +202,11 @@ export function QuestionInput({ question, value, onChange, invalid, disabled }: 
             aria-invalid={invalid}
             className="w-full max-w-xs text-sm font-normal"
           >
-            <SelectValue placeholder="Choose" />
+            <SelectValue placeholder={t("Choose")} />
           </SelectTrigger>
           <SelectContent>
             {question.options.map((opt, i) => {
-              const label = opt.trim() || `Option ${i + 1}`
+              const label = opt.trim() || t("Option {n}", { n: i + 1 })
               return (
                 <SelectItem key={i} value={label} className="text-sm">
                   {label}
@@ -217,7 +220,7 @@ export function QuestionInput({ question, value, onChange, invalid, disabled }: 
     case "rating":
       return (
         <StarRating
-          name={question.title || "Rating"}
+          name={question.title || t("Rating")}
           value={typeof value === "number" ? value : undefined}
           onChange={(n) => onChange(n)}
           disabled={disabled}
@@ -239,6 +242,7 @@ interface QuestionCardProps {
 
 /** Full question card as respondents see it (fill view + preview). */
 export function QuestionCard({ question, value, onChange, error, disabled }: QuestionCardProps) {
+  const { t } = useI18n()
   return (
     <section
       id={`qcard-${question.id}`}
@@ -247,10 +251,10 @@ export function QuestionCard({ question, value, onChange, error, disabled }: Que
     >
       <div className="mb-4 flex items-start gap-1.5">
         <h3 id={`q-${question.id}`} className="text-sm font-medium leading-snug">
-          {question.title.trim() || "Untitled question"}
+          {question.title.trim() || t("Untitled question")}
         </h3>
         {question.required && (
-          <span className="text-sm leading-snug text-destructive" aria-label="Required">
+          <span className="text-sm leading-snug text-destructive" aria-label={t("Required")}>
             *
           </span>
         )}
@@ -258,7 +262,7 @@ export function QuestionCard({ question, value, onChange, error, disabled }: Que
       <QuestionInput question={question} value={value} onChange={onChange} invalid={error} disabled={disabled} />
       {error && (
         <p className="mt-3 text-[13px] text-destructive" role="alert">
-          This is a required question
+          {t("This is a required question")}
         </p>
       )}
     </section>

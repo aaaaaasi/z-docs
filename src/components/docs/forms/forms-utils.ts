@@ -52,7 +52,7 @@ export async function apiListForms(tab: ListTab, q = ""): Promise<FormMeta[]> {
   const params = new URLSearchParams({ filter: tab })
   if (q.trim()) params.set("q", q.trim())
   const res = await api(`/api/forms?${params.toString()}`)
-  if (!res.ok) throw new Error(`Failed to load forms (${res.status})`)
+  if (!res.ok) throw new Error("Failed to load forms")
   const data = (await res.json()) as { forms?: FormMeta[] }
   return data.forms ?? []
 }
@@ -68,7 +68,7 @@ export async function apiCreateForm(init: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(init),
   })
-  if (!res.ok) throw new Error(`Failed to create form (${res.status})`)
+  if (!res.ok) throw new Error("Failed to create form")
   const data = (await res.json()) as { form: RawForm }
   return data.form
 }
@@ -76,7 +76,7 @@ export async function apiCreateForm(init: {
 export async function apiGetForm(id: string): Promise<FormState> {
   const res = await api(`/api/forms/${encodeURIComponent(id)}`)
   if (res.status === 404) throw new Error("Form not found")
-  if (!res.ok) throw new Error(`Failed to load form (${res.status})`)
+  if (!res.ok) throw new Error("Failed to load form")
   const data = (await res.json()) as { form: RawForm }
   return {
     id: data.form.id,
@@ -100,19 +100,19 @@ export async function apiPatchForm(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   })
-  if (!res.ok) throw new Error(`Failed to update form (${res.status})`)
+  if (!res.ok) throw new Error("Failed to update form")
   const data = (await res.json()) as { form: RawForm }
   return data.form
 }
 
 export async function apiDeleteForm(id: string): Promise<void> {
   const res = await api(`/api/forms/${encodeURIComponent(id)}`, { method: "DELETE" })
-  if (!res.ok) throw new Error(`Failed to delete form (${res.status})`)
+  if (!res.ok) throw new Error("Failed to delete form")
 }
 
 export async function apiGetResponses(id: string): Promise<ParsedResponse[]> {
   const res = await api(`/api/forms/${encodeURIComponent(id)}/responses`)
-  if (!res.ok) throw new Error(`Failed to load responses (${res.status})`)
+  if (!res.ok) throw new Error("Failed to load responses")
   const data = (await res.json()) as {
     responses?: { id: string; formId: string; submittedAt: string; answers: string }[]
   }
@@ -134,7 +134,7 @@ export async function apiSubmitResponse(
     body: JSON.stringify({ answers }),
   })
   if (res.status === 410) throw new Error("This form is closed and no longer accepts responses.")
-  if (!res.ok) throw new Error(`Failed to submit response (${res.status})`)
+  if (!res.ok) throw new Error("Failed to submit response")
   const data = (await res.json()) as { response: ParsedResponse }
   return data.response
 }

@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { useToast } from "@/hooks/use-toast"
+import { getCurrentLang, tForLang } from "@/lib/i18n"
 import type { FormMeta } from "@/lib/workspace-types"
 import {
   apiCreateForm,
@@ -19,6 +20,12 @@ import {
  */
 export function useFormsList() {
   const { toast } = useToast()
+
+  /* imperative translate helper (hook callbacks are non-component code — see i18n contract) */
+  const tr = React.useCallback(
+    (key: string, params?: Record<string, string | number>) => tForLang(getCurrentLang(), key, params),
+    []
+  )
 
   const [forms, setForms] = React.useState<FormMeta[]>([])
   const [loading, setLoading] = React.useState(true)
@@ -83,11 +90,11 @@ export function useFormsList() {
       try {
         await apiPatchForm(id, { title })
       } catch {
-        toast({ title: "Rename failed", variant: "destructive" })
+        toast({ title: tr("Rename failed"), variant: "destructive" })
         void load()
       }
     },
-    [load, toast]
+    [load, toast, tr]
   )
 
   const toggleStar = React.useCallback(
@@ -99,11 +106,11 @@ export function useFormsList() {
       try {
         await apiPatchForm(id, { starred: next })
       } catch {
-        toast({ title: "Couldn't update star", variant: "destructive" })
+        toast({ title: tr("Couldn't update star"), variant: "destructive" })
         void load()
       }
     },
-    [load, toast]
+    [load, toast, tr]
   )
 
   const duplicateForm = React.useCallback(
@@ -112,18 +119,19 @@ export function useFormsList() {
       if (!target) return
       try {
         const full = await apiGetForm(id)
+        const copyTitle = tr("Copy of {title}", { title: target.title })
         await apiCreateForm({
-          title: `Copy of ${target.title}`,
+          title: copyTitle,
           description: full.description,
           data: questionsToData(full.questions),
         })
-        toast({ title: "Form duplicated", description: `“Copy of ${target.title}” was added to your forms.` })
+        toast({ title: tr("Form duplicated"), description: tr("“{title}” was added to your forms.", { title: copyTitle }) })
         await load()
       } catch {
-        toast({ title: "Duplicate failed", variant: "destructive" })
+        toast({ title: tr("Duplicate failed"), variant: "destructive" })
       }
     },
-    [load, toast]
+    [load, toast, tr]
   )
 
   const setTrashed = React.useCallback(
@@ -132,16 +140,18 @@ export function useFormsList() {
       try {
         await apiPatchForm(id, { trashed })
         toast({
-          title: trashed ? "Moved to trash" : "Restored",
-          description: `“${target?.title ?? "Form"}” ${trashed ? "was moved to trash." : "was restored."}`,
+          title: trashed ? tr("Moved to trash") : tr("Restored"),
+          description: trashed
+            ? tr("“{title}” was moved to trash.", { title: target?.title ?? tr("Form") })
+            : tr("“{title}” was restored.", { title: target?.title ?? tr("Form") }),
         })
         await load()
       } catch {
-        toast({ title: trashed ? "Couldn't move to trash" : "Restore failed", variant: "destructive" })
+        toast({ title: trashed ? tr("Couldn't move to trash") : tr("Restore failed"), variant: "destructive" })
         void load()
       }
     },
-    [load, toast]
+    [load, toast, tr]
   )
 
   const deleteForever = React.useCallback(
@@ -149,14 +159,14 @@ export function useFormsList() {
       const target = formsRef.current.find((f) => f.id === id)
       try {
         await apiDeleteForm(id)
-        toast({ title: "Deleted forever", description: `“${target?.title ?? "Form"}” was permanently deleted.` })
+        toast({ title: tr("Deleted forever"), description: tr("“{title}” was permanently deleted.", { title: target?.title ?? tr("Form") }) })
         await load()
       } catch {
-        toast({ title: "Delete failed", variant: "destructive" })
+        toast({ title: tr("Delete failed"), variant: "destructive" })
         void load()
       }
     },
-    [load, toast]
+    [load, toast, tr]
   )
 
   return {

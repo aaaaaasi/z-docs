@@ -9,6 +9,7 @@
 
 import { create } from "zustand"
 import { api } from "@/lib/api-client"
+import { getCurrentLang, tForLang } from "@/lib/i18n"
 import type { DeckData, DeckTheme, Slide, SlideDeckMeta, SlideLayout } from "@/lib/workspace-types"
 import { DEFAULT_THEME, makeSlide, newSlideId, parseDeckData } from "./slide-render"
 
@@ -130,7 +131,19 @@ export const useSlidesStore = create<SlidesState>()((set, get) => {
         set({ decks: json.decks ?? [] })
         void get().ensurePreviews()
       } catch (e) {
-        set({ listError: e instanceof Error ? e.message : "Something went wrong" })
+        const lang = getCurrentLang()
+        const raw = e instanceof Error ? e.message : "Something went wrong"
+        // localize known list-error phrases, keep unknown/technical text as-is
+        set({
+          listError:
+            raw === "Something went wrong"
+              ? tForLang(lang, "Something went wrong")
+              : /^Failed to load decks \(\d+\)$/.test(raw)
+                ? tForLang(lang, "Failed to load decks ({status})", {
+                    status: raw.match(/\((\d+)\)/)?.[1] ?? "",
+                  })
+                : raw,
+        })
       } finally {
         if (!opts?.silent) set({ listLoading: false })
       }
@@ -186,7 +199,10 @@ export const useSlidesStore = create<SlidesState>()((set, get) => {
         const res = await api("/api/slides", {
           method: "POST",
           headers: JSON_HEADERS,
-          body: JSON.stringify({ title: "Untitled presentation", data: JSON.stringify(data) }),
+          body: JSON.stringify({
+            title: tForLang(getCurrentLang(), "Untitled presentation"),
+            data: JSON.stringify(data),
+          }),
         })
         if (!res.ok) throw new Error(String(res.status))
         const json = (await res.json()) as { deck: SlideDeckMeta }
@@ -216,7 +232,10 @@ export const useSlidesStore = create<SlidesState>()((set, get) => {
         const copy = await api("/api/slides", {
           method: "POST",
           headers: JSON_HEADERS,
-          body: JSON.stringify({ title: `Copy of ${meta.title}`, data: json.deck.data }),
+          body: JSON.stringify({
+            title: tForLang(getCurrentLang(), "Copy of {title}", { title: meta.title }),
+            data: json.deck.data,
+          }),
         })
         if (!copy.ok) throw new Error(String(copy.status))
         await get().fetchList({ silent: true })

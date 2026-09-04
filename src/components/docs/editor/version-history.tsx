@@ -12,6 +12,7 @@ import { fullTime, relativeTime, htmlToText } from "@/lib/doc-utils"
 import { diffText, diffStats, type DiffSegment } from "@/lib/text-diff"
 import { History, Eye, RotateCcw, FileText, GitCompareArrows, ArrowRight, TrendingUp, TrendingDown } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 export function VersionHistorySheet({
   open, onOpenChange, docId, onRestore, getCurrentContent,
@@ -27,6 +28,7 @@ export function VersionHistorySheet({
   const [preview, setPreview] = React.useState<VersionDTO | null>(null)
   const [diffFor, setDiffFor] = React.useState<VersionDTO | null>(null)
   const { toast } = useToast()
+  const { t, lang } = useI18n()
 
   React.useEffect(() => {
     if (!open || !docId) return
@@ -39,7 +41,7 @@ export function VersionHistorySheet({
 
   const restore = (v: VersionDTO) => {
     onRestore(v.content)
-    toast({ title: "Version restored", description: `Restored to ${fullTime(v.createdAt)}` })
+    toast({ title: t("Version restored"), description: t("Restored to {time}", { time: fullTime(v.createdAt, lang) }) })
     setPreview(null)
     onOpenChange(false)
   }
@@ -50,10 +52,10 @@ export function VersionHistorySheet({
         <SheetContent side="right" className="w-full p-0 sm:max-w-md">
         <SheetHeader className="border-b p-4">
           <SheetTitle className="flex items-center gap-2 text-base">
-            <History className="h-4.5 w-4.5 text-primary" /> Version history
+            <History className="h-4.5 w-4.5 text-primary" /> {t("Version history")}
           </SheetTitle>
           <SheetDescription className="text-xs">
-            Snapshots are captured automatically while you edit. Restoring a version creates a new save.
+            {t("Snapshots are captured automatically while you edit. Restoring a version creates a new save.")}
           </SheetDescription>
         </SheetHeader>
 
@@ -68,9 +70,9 @@ export function VersionHistorySheet({
             ) : versions.length === 0 ? (
               <div className="flex flex-col items-center rounded-lg border border-dashed p-8 text-center">
                 <FileText className="h-8 w-8 text-muted-foreground/40" />
-                <p className="mt-3 text-sm font-medium">No versions yet</p>
+                <p className="mt-3 text-sm font-medium">{t("No versions yet")}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Keep editing. Snapshots appear as your document evolves.
+                  {t("Keep editing. Snapshots appear as your document evolves.")}
                 </p>
               </div>
             ) : (
@@ -90,19 +92,19 @@ export function VersionHistorySheet({
                     />
                     <div className="rounded-lg border p-3 transition-[border-color,box-shadow] hover:border-primary/40 hover:shadow-sm">
                       <p className="tnum flex flex-wrap items-center gap-2 text-sm font-medium">
-                        {fullTime(v.createdAt)}
+                        {fullTime(v.createdAt, lang)}
                         {i === 0 && (
                           <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                            Latest
+                            {t("Latest")}
                           </span>
                         )}
                       </p>
                       <p className="tnum text-xs text-muted-foreground">
-                        {relativeTime(v.createdAt)} · {v.wordCount.toLocaleString()} words
+                        {relativeTime(v.createdAt, lang)} · {t("{n} words", { n: v.wordCount.toLocaleString() })}
                       </p>
                       <div className="mt-2 flex flex-wrap gap-2">
                         <Button size="sm" variant="outline" className="h-7 gap-1.5 text-xs" onClick={() => setPreview(v)}>
-                          <Eye className="h-3.5 w-3.5" /> Preview
+                          <Eye className="h-3.5 w-3.5" /> {t("Preview")}
                         </Button>
                         <Button
                           size="sm"
@@ -110,10 +112,10 @@ export function VersionHistorySheet({
                           className="h-7 gap-1.5 text-xs"
                           onClick={() => setDiffFor(v)}
                         >
-                          <GitCompareArrows className="h-3.5 w-3.5" /> Changes
+                          <GitCompareArrows className="h-3.5 w-3.5" /> {t("Changes")}
                         </Button>
                         <Button size="sm" className="h-7 gap-1.5 text-xs" onClick={() => restore(v)}>
-                          <RotateCcw className="h-3.5 w-3.5" /> Restore
+                          <RotateCcw className="h-3.5 w-3.5" /> {t("Restore")}
                         </Button>
                       </div>
                     </div>
@@ -164,6 +166,7 @@ export function VersionDiffDialog({
   }, [base, onClose])
 
   const [targetKey, setTargetKey] = React.useState<string>(CURRENT_KEY)
+  const { t, lang } = useI18n()
 
   // reset target whenever a new base version is opened
   React.useEffect(() => {
@@ -173,12 +176,12 @@ export function VersionDiffDialog({
   const target: { label: string; content: string; isCurrent: boolean } | null = React.useMemo(() => {
     if (!base) return null
     if (targetKey === CURRENT_KEY) {
-      return { label: "Current document", content: getCurrentContent(), isCurrent: true }
+      return { label: t("Current document"), content: getCurrentContent(), isCurrent: true }
     }
     const v = versions.find((x) => x.id === targetKey)
     if (!v) return null
-    return { label: fullTime(v.createdAt), content: v.content, isCurrent: false }
-  }, [base, targetKey, versions, getCurrentContent])
+    return { label: fullTime(v.createdAt, lang), content: v.content, isCurrent: false }
+  }, [base, targetKey, versions, getCurrentContent, t, lang])
 
   const segments: DiffSegment[] | null = React.useMemo(() => {
     if (!base || !target) return null
@@ -197,7 +200,7 @@ export function VersionDiffDialog({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Version changes"
+      aria-label={t("Version changes")}
     >
       <div
         className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white elev-2"
@@ -206,30 +209,30 @@ export function VersionDiffDialog({
         <div className="flex items-center justify-between border-b bg-background px-4 py-3">
           <div>
             <p className="flex items-center gap-1.5 text-sm font-semibold">
-              <GitCompareArrows className="h-4 w-4 text-primary" /> What changed
+              <GitCompareArrows className="h-4 w-4 text-primary" /> {t("What changed")}
             </p>
             <p className="tnum mt-0.5 text-xs text-muted-foreground">
-              {fullTime(base.createdAt)}
+              {fullTime(base.createdAt, lang)}
               <ArrowRight className="mx-1 inline h-3 w-3" />
               {target.label}
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close diff">
-            Close
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label={t("Close diff")}>
+            {t("Close")}
           </Button>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-b bg-muted/30 px-4 py-2.5">
-          <span className="text-xs font-medium text-muted-foreground">Compare with</span>
+          <span className="text-xs font-medium text-muted-foreground">{t("Compare with")}</span>
           <Select value={targetKey} onValueChange={setTargetKey}>
-            <SelectTrigger className="h-8 w-52 text-xs" aria-label="Compare with">
+            <SelectTrigger className="h-8 w-52 text-xs" aria-label={t("Compare with")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={CURRENT_KEY} className="text-xs">Current document</SelectItem>
+              <SelectItem value={CURRENT_KEY} className="text-xs">{t("Current document")}</SelectItem>
               {otherVersions.map((v) => (
                 <SelectItem key={v.id} value={v.id} className="text-xs">
-                  {fullTime(v.createdAt)}
+                  {fullTime(v.createdAt, lang)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -237,16 +240,16 @@ export function VersionDiffDialog({
           <div className="ml-auto flex items-center gap-1.5 text-xs font-medium">
             {stats && stats.addedWords > 0 && (
               <span className="diff-pill-ins tnum inline-flex items-center gap-1 rounded-md px-2.5 py-1">
-                <TrendingUp className="h-3 w-3" />+{stats.addedWords} {stats.addedWords === 1 ? "word" : "words"}
+                <TrendingUp className="h-3 w-3" />+{stats.addedWords} {stats.addedWords === 1 ? t("1 word") : t("{n} words", { n: stats.addedWords })}
               </span>
             )}
             {stats && stats.removedWords > 0 && (
               <span className="diff-pill-del tnum inline-flex items-center gap-1 rounded-md px-2.5 py-1">
-                <TrendingDown className="h-3 w-3" />−{stats.removedWords} {stats.removedWords === 1 ? "word" : "words"}
+                <TrendingDown className="h-3 w-3" />−{stats.removedWords} {stats.removedWords === 1 ? t("1 word") : t("{n} words", { n: stats.removedWords })}
               </span>
             )}
             {stats && stats.addedWords === 0 && stats.removedWords === 0 && (
-              <span className="tnum rounded-md bg-muted px-2.5 py-1 text-muted-foreground">No word changes</span>
+              <span className="tnum rounded-md bg-muted px-2.5 py-1 text-muted-foreground">{t("No word changes")}</span>
             )}
           </div>
         </div>
@@ -254,7 +257,7 @@ export function VersionDiffDialog({
         <ScrollArea className="flex-1 bg-neutral-50 p-6">
           <div className="mx-auto max-w-[616px] rounded-lg bg-white p-8 shadow-[0_1px_2px_rgba(35,32,28,0.08),0_12px_40px_rgba(35,32,28,0.1)]">
             {segments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Both versions are empty.</p>
+              <p className="text-sm text-muted-foreground">{t("Both versions are empty.")}</p>
             ) : (
               <div className="diff-body text-sm text-neutral-800">
                 {segments.map((s, i) =>
@@ -273,10 +276,10 @@ export function VersionDiffDialog({
 
         <div className="flex items-center gap-4 border-t bg-background px-4 py-2.5 text-xs text-foreground/70">
           <span className="inline-flex items-center gap-1.5">
-            <span className="diff-swatch-ins inline-block h-3 w-3 rounded-[3px]" /> added
+            <span className="diff-swatch-ins inline-block h-3 w-3 rounded-[3px]" /> {t("added")}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="diff-swatch-del inline-block h-3 w-3 rounded-[3px]" /> removed
+            <span className="diff-swatch-del inline-block h-3 w-3 rounded-[3px]" /> {t("removed")}
           </span>
         </div>
       </div>
@@ -303,6 +306,8 @@ export function VersionPreviewDialog({
     return () => document.removeEventListener("keydown", onKey, true)
   }, [version, onClose])
 
+  const { t, lang } = useI18n()
+
   if (!version) return null
   return (
     <div
@@ -310,7 +315,7 @@ export function VersionPreviewDialog({
       onClick={onClose}
       role="dialog"
       aria-modal="true"
-      aria-label="Version preview"
+      aria-label={t("Version preview")}
     >
       <div
         className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg bg-white elev-2"
@@ -318,11 +323,11 @@ export function VersionPreviewDialog({
       >
         <div className="flex items-center justify-between border-b bg-background px-4 py-3">
           <div>
-            <p className="text-sm font-semibold">Snapshot preview</p>
-            <p className="tnum text-xs text-muted-foreground">{fullTime(version.createdAt)}</p>
+            <p className="text-sm font-semibold">{t("Snapshot preview")}</p>
+            <p className="tnum text-xs text-muted-foreground">{fullTime(version.createdAt, lang)}</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close preview">
-            Close
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label={t("Close preview")}>
+            {t("Close")}
           </Button>
         </div>
         <ScrollArea className="flex-1 bg-neutral-100 p-6">

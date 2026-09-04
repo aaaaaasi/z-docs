@@ -11,6 +11,7 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import type { DeckData, DeckTheme, Slide, SlideLayout } from "@/lib/workspace-types"
 import { LAYOUTS } from "./layout-glyph"
 
@@ -269,6 +270,7 @@ function SlideView({
   theme: DeckTheme
   interact?: SlideInteract
 }) {
+  const { t } = useI18n()
   let content: React.ReactNode
 
   switch (slide.layout) {
@@ -279,14 +281,14 @@ function SlideView({
             region="title"
             text={slide.title}
             interact={interact}
-            placeholder="Click to add title"
+            placeholder={t("Click to add title")}
             className="max-w-[720px] text-[52px] font-medium leading-[1.14] tracking-[-0.015em] text-neutral-800"
           />
           <TextRegion
             region="body"
             text={slide.body}
             interact={interact}
-            placeholder="Click to add subtitle"
+            placeholder={t("Click to add subtitle")}
             className="mt-6 max-w-[560px] text-[22px] leading-[1.5] text-neutral-500"
           />
         </div>
@@ -300,7 +302,7 @@ function SlideView({
             region="title"
             text={slide.title}
             interact={interact}
-            placeholder="Click to add title"
+            placeholder={t("Click to add title")}
             className="text-[38px] font-medium leading-[1.18] text-neutral-800"
           />
           <div
@@ -312,7 +314,7 @@ function SlideView({
             region="body"
             text={slide.body}
             interact={interact}
-            placeholder="Click to add text"
+            placeholder={t("Click to add text")}
             className="mt-7 min-h-0 flex-1 overflow-hidden text-[20px] leading-[1.55] text-neutral-700"
           >
             <BulletLines lines={slide.body.split("\n")} accent={theme.accent} />
@@ -329,7 +331,7 @@ function SlideView({
             region="title"
             text={slide.title}
             interact={interact}
-            placeholder="Click to add title"
+            placeholder={t("Click to add title")}
             className="text-[36px] font-medium leading-[1.18] text-neutral-800"
           />
           <div
@@ -341,7 +343,7 @@ function SlideView({
             region="body"
             text={slide.body}
             interact={interact}
-            placeholder="Click to add text"
+            placeholder={t("Click to add text")}
             className="mt-7 min-h-0 flex-1 overflow-hidden text-[18px] leading-[1.55] text-neutral-700"
           >
             <div className="grid h-full grid-cols-2 gap-12">
@@ -371,7 +373,7 @@ function SlideView({
             region="body"
             text={slide.body}
             interact={interact}
-            placeholder="Click to add quote"
+            placeholder={t("Click to add quote")}
             className="max-w-[640px]"
           >
             {slide.body && (
@@ -400,14 +402,14 @@ function SlideView({
             region="title"
             text={slide.title}
             interact={interact}
-            placeholder="Click to add section title"
+            placeholder={t("Click to add section title")}
             className="mt-8 max-w-[760px] text-[54px] font-medium leading-[1.12] tracking-[-0.01em] text-neutral-800"
           />
           <TextRegion
             region="body"
             text={slide.body}
             interact={interact}
-            placeholder="Click to add caption"
+            placeholder={t("Click to add caption")}
             className="mt-5 max-w-[540px] text-[19px] leading-[1.5] text-neutral-400"
           />
         </div>
@@ -422,7 +424,7 @@ function SlideView({
             region="body"
             text={slide.body}
             interact={interact}
-            placeholder="Click to add text"
+            placeholder={t("Click to add text")}
             className="w-full text-[22px] leading-[1.55] text-neutral-700"
           />
         </div>
@@ -463,13 +465,20 @@ export function SlideCard({
   className?: string
 }) {
   const [measureRef, measured] = useElementWidth<HTMLDivElement>()
+  const { t } = useI18n()
   const w = width ?? measured
   const scale = w > 0 ? w / SLIDE_W : 0
   return (
     <div
       ref={width === undefined ? measureRef : undefined}
       role={interact ? undefined : "img"}
-      aria-label={interact ? undefined : `Slide preview: ${slide.title || slide.body || slide.layout}`}
+      aria-label={
+        interact
+          ? undefined
+          : t("Slide preview: {title}", {
+              title: slide.title || slide.body || slide.layout,
+            })
+      }
       className={cn(
         "relative overflow-hidden bg-white",
         width === undefined && "aspect-video w-full",

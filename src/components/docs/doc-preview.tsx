@@ -1,6 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 
 /**
  * Renders document HTML as a static, scaled-down thumbnail (like Google Docs cards).
@@ -9,13 +10,15 @@ export function DocPreview({
   html,
   width,
   className,
-  emptyLabel = "Blank document",
+  emptyLabel,
 }: {
   html: string
   width: number
   className?: string
   emptyLabel?: string
 }) {
+  const { t } = useI18n()
+  const label = emptyLabel ?? t("Blank document")
   const scale = width / 540
   return (
     <div
@@ -27,7 +30,7 @@ export function DocPreview({
         {html ? (
           <div className="doc-content" dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
-          <div className="doc-content text-[#a3a09a]">{emptyLabel}</div>
+          <div className="doc-content text-[#a3a09a]">{label}</div>
         )}
       </div>
       {/* subtle edge fade so previews end softly */}

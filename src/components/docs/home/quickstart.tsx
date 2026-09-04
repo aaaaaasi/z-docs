@@ -6,6 +6,7 @@ import { api } from "@/lib/api-client"
 import { useToast } from "@/hooks/use-toast"
 import { FileSpreadsheet, Presentation, FormInput, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n, tForLang, getCurrentLang } from "@/lib/i18n"
 
 type NewApp = "sheets" | "slides" | "forms"
 
@@ -53,6 +54,7 @@ const OPTIONS: {
 export function WorkspaceQuickstart() {
   const openApp = useDocsStore((s) => s.openApp)
   const { toast } = useToast()
+  const { t } = useI18n()
   const [busy, setBusy] = React.useState<NewApp | null>(null)
 
   const start = async (opt: (typeof OPTIONS)[number]) => {
@@ -62,7 +64,7 @@ export function WorkspaceQuickstart() {
       const res = await api(`/api/${opt.app}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: opt.title }),
+        body: JSON.stringify({ title: tForLang(getCurrentLang(), opt.title) }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = (await res.json()) as Record<string, { id: string }>
@@ -74,8 +76,8 @@ export function WorkspaceQuickstart() {
       }
     } catch {
       toast({
-        title: "Couldn’t create the " + opt.label.toLowerCase(),
-        description: "Open the app and try again.",
+        title: t(`Couldn’t create the ${opt.label.toLowerCase()}`),
+        description: t("Open the app and try again."),
         variant: "destructive",
       })
       openApp(opt.app)
@@ -85,9 +87,9 @@ export function WorkspaceQuickstart() {
   }
 
   return (
-    <section aria-label="Start a new workspace file" className="border-b bg-background px-4 pb-6 sm:px-8">
+    <section aria-label={t("Start a new workspace file")} className="border-b bg-background px-4 pb-6 sm:px-8">
       <div className="mx-auto max-w-6xl">
-        <h2 className="mb-3 text-[13px] font-medium text-foreground/70">More ways to start</h2>
+        <h2 className="mb-3 text-[13px] font-medium text-foreground/70">{t("More ways to start")}</h2>
         <div className="grid gap-3 sm:grid-cols-3">
           {OPTIONS.map((opt) => {
             const Icon = opt.icon
@@ -113,9 +115,9 @@ export function WorkspaceQuickstart() {
                 </span>
                 <span className="min-w-0">
                   <span className="block truncate text-[13px] font-medium text-foreground">
-                    New {opt.label.toLowerCase()}
+                    {t(`New ${opt.label.toLowerCase()}`)}
                   </span>
-                  <span className="block truncate text-xs text-muted-foreground">{opt.hint}</span>
+                  <span className="block truncate text-xs text-muted-foreground">{t(opt.hint)}</span>
                 </span>
               </button>
             )

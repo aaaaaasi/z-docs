@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { ListTab } from "./forms-utils"
+import { useI18n } from "@/lib/i18n"
 import { useFormsList } from "./use-forms-list"
 import { FormCard } from "./form-card"
 
@@ -31,6 +32,7 @@ interface FormsListProps {
 
 /** List mode — a Drive-like grid of the user's forms (self-fetching). */
 export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
+  const { t } = useI18n()
   const list = useFormsList()
   const [local, setLocal] = React.useState(list.search)
   const [creating, setCreating] = React.useState(false)
@@ -38,10 +40,10 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
 
   /* debounced search -> refetch */
   React.useEffect(() => {
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (local !== list.search) list.applySearch(local)
     }, 350)
-    return () => clearTimeout(t)
+    return () => clearTimeout(timer)
   }, [local, list.search, list.applySearch])
 
   const handleNew = async () => {
@@ -56,9 +58,9 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
   const tabs = (
     <Tabs value={list.tab} onValueChange={(v) => list.setTab(v as ListTab)}>
       <TabsList className="h-9">
-        <TabsTrigger value="all" className="text-[13px]">All</TabsTrigger>
-        <TabsTrigger value="starred" className="text-[13px]">Starred</TabsTrigger>
-        <TabsTrigger value="trashed" className="text-[13px]">Trash</TabsTrigger>
+        <TabsTrigger value="all" className="text-[13px]">{t("All")}</TabsTrigger>
+        <TabsTrigger value="starred" className="text-[13px]">{t("Starred")}</TabsTrigger>
+        <TabsTrigger value="trashed" className="text-[13px]">{t("Trash")}</TabsTrigger>
       </TabsList>
     </Tabs>
   )
@@ -73,13 +75,13 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
               variant="ghost"
               size="icon"
               onClick={onGoHome}
-              aria-label="Back to Z-Docs home"
+              aria-label={t("Back to Z-Docs home")}
               className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Back to Z-Docs home</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">{t("Back to Z-Docs home")}</TooltipContent>
         </Tooltip>
 
         <div className="flex select-none items-center gap-2.5" aria-label="Z-Forms">
@@ -95,8 +97,8 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
           <Input
             value={local}
             onChange={(e) => setLocal(e.target.value)}
-            placeholder="Search forms"
-            aria-label="Search forms"
+            placeholder={t("Search forms")}
+            aria-label={t("Search forms")}
             className="h-10 rounded-full border-transparent bg-muted pl-10 pr-4 text-sm placeholder:text-muted-foreground/80 focus-visible:border-border focus-visible:bg-background focus-visible:shadow-[0_1px_2px_rgba(35,32,28,0.05),0_6px_20px_rgba(35,32,28,0.08)]"
           />
         </div>
@@ -107,10 +109,10 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
             onClick={() => void handleNew()}
             disabled={creating}
             className="h-9 gap-1.5"
-            aria-label="Create a new form"
+            aria-label={t("Create a new form")}
           >
             {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-            <span className="hidden sm:inline">New form</span>
+            <span className="hidden sm:inline">{t("New form")}</span>
           </Button>
         </div>
       </header>
@@ -123,8 +125,8 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
           <Input
             value={local}
             onChange={(e) => setLocal(e.target.value)}
-            placeholder="Search"
-            aria-label="Search forms"
+            placeholder={t("Search")}
+            aria-label={t("Search forms")}
             className="h-9 w-28 rounded-full border-transparent bg-muted pl-9 pr-3 text-sm focus-visible:w-36 focus-visible:border-border focus-visible:bg-background"
           />
         </div>
@@ -134,8 +136,8 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
       <main className="mx-auto w-full max-w-7xl flex-1 p-3 sm:p-5 md:p-6">
         {list.error ? (
           <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-background/60 p-10 text-center">
-            <p className="text-sm font-medium text-destructive">{list.error}</p>
-            <Button variant="outline" onClick={list.reload} className="h-9">Try again</Button>
+            <p className="text-sm font-medium text-destructive">{t(list.error)}</p>
+            <Button variant="outline" onClick={list.reload} className="h-9">{t("Try again")}</Button>
           </div>
         ) : list.loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
@@ -178,14 +180,15 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{deleteTarget?.title}” forever?</AlertDialogTitle>
+            <AlertDialogTitle>{t("Delete “{title}” forever?", { title: deleteTarget?.title ?? "" })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the form and its {deleteTarget?.responseCount ?? 0} response
-              {(deleteTarget?.responseCount ?? 0) === 1 ? "" : "s"}. This action can’t be undone.
+              {t("This permanently removes the form and its {n} responses. This action can’t be undone.", {
+                n: deleteTarget?.responseCount ?? 0,
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-white hover:bg-destructive/90"
               onClick={() => {
@@ -193,7 +196,7 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
                 setDeleteTarget(null)
               }}
             >
-              Delete forever
+              {t("Delete forever")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -205,14 +208,15 @@ export function FormsList({ onOpen, onNewForm, onGoHome }: FormsListProps) {
 /* --------------------------------- empty states ---------------------------------- */
 
 function EmptyState({ tab, search, onNewForm }: { tab: ListTab; search: string; onNewForm: () => void }) {
+  const { t } = useI18n()
   if (search.trim()) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed bg-background/60 p-12 text-center">
         <span className="flex size-14 items-center justify-center rounded-full bg-muted">
           <SearchX className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
         </span>
-        <p className="text-sm font-medium">No forms found</p>
-        <p className="text-[13px] text-muted-foreground">Nothing matches “{search.trim()}”.</p>
+        <p className="text-sm font-medium">{t("No forms found")}</p>
+        <p className="text-[13px] text-muted-foreground">{t("Nothing matches “{search}”.", { search: search.trim() })}</p>
       </div>
     )
   }
@@ -222,8 +226,8 @@ function EmptyState({ tab, search, onNewForm }: { tab: ListTab; search: string; 
         <span className="flex size-14 items-center justify-center rounded-full bg-muted">
           <Star className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
         </span>
-        <p className="text-sm font-medium">No starred forms</p>
-        <p className="text-[13px] text-muted-foreground">Star the forms you reach for most and they’ll show up here.</p>
+        <p className="text-sm font-medium">{t("No starred forms")}</p>
+        <p className="text-[13px] text-muted-foreground">{t("Star the forms you reach for most and they’ll show up here.")}</p>
       </div>
     )
   }
@@ -233,8 +237,8 @@ function EmptyState({ tab, search, onNewForm }: { tab: ListTab; search: string; 
         <span className="flex size-14 items-center justify-center rounded-full bg-muted">
           <Trash2 className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
         </span>
-        <p className="text-sm font-medium">Trash is empty</p>
-        <p className="text-[13px] text-muted-foreground">Forms you delete will appear here before they’re gone forever.</p>
+        <p className="text-sm font-medium">{t("Trash is empty")}</p>
+        <p className="text-[13px] text-muted-foreground">{t("Forms you delete will appear here before they’re gone forever.")}</p>
       </div>
     )
   }
@@ -243,12 +247,12 @@ function EmptyState({ tab, search, onNewForm }: { tab: ListTab; search: string; 
       <span className="flex size-14 items-center justify-center rounded-full bg-primary/10">
         <FormInput className="h-6 w-6 text-primary" aria-hidden="true" />
       </span>
-      <p className="text-sm font-medium">Create your first form</p>
+      <p className="text-sm font-medium">{t("Create your first form")}</p>
       <p className="max-w-sm text-[13px] text-muted-foreground">
-        Build surveys and quizzes with multiple choice, checkboxes, dropdowns and star ratings — then watch the responses roll in.
+        {t("Build surveys and quizzes with multiple choice, checkboxes, dropdowns and star ratings — then watch the responses roll in.")}
       </p>
-      <Button onClick={onNewForm} className="mt-1 gap-2" aria-label="Create a new form">
-        <Plus className="h-4 w-4" /> New form
+      <Button onClick={onNewForm} className="mt-1 gap-2" aria-label={t("Create a new form")}>
+        <Plus className="h-4 w-4" /> {t("New form")}
       </Button>
     </div>
   )

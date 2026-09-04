@@ -1,4 +1,11 @@
 import { formatDistanceToNow, format } from "date-fns"
+import { zhCN } from "date-fns/locale"
+import type { Lang } from "@/lib/i18n"
+
+/** date-fns locale for a UI language */
+export function dateLocale(lang: Lang) {
+  return lang === "zh" ? zhCN : undefined
+}
 
 /** Strip HTML tags and decode entities — safe on server & client */
 export function htmlToText(html: string): string {
@@ -40,17 +47,19 @@ export function getSnippet(html: string, len = 130): string {
   return text.slice(0, len).trimEnd() + "…"
 }
 
-export function relativeTime(iso: string): string {
+export function relativeTime(iso: string, lang: Lang = "zh"): string {
   try {
-    return formatDistanceToNow(new Date(iso), { addSuffix: true })
+    return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: dateLocale(lang) })
   } catch {
     return ""
   }
 }
 
-export function fullTime(iso: string): string {
+export function fullTime(iso: string, lang: Lang = "zh"): string {
   try {
-    return format(new Date(iso), "MMM d, yyyy 'at' h:mm a")
+    return lang === "zh"
+      ? format(new Date(iso), "yyyy年M月d日 HH:mm")
+      : format(new Date(iso), "MMM d, yyyy 'at' h:mm a")
   } catch {
     return ""
   }

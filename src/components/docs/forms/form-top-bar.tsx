@@ -3,6 +3,7 @@
 import * as React from "react"
 import { AlertCircle, ArrowLeft, Check, Copy, Eye, Loader2, MoreVertical, Star, Trash2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useI18n } from "@/lib/i18n"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
@@ -41,6 +42,7 @@ export function FormTopBar({
   onDuplicate,
   onTrash,
 }: FormTopBarProps) {
+  const { t } = useI18n()
   const [editing, setEditing] = React.useState(false)
   const [draft, setDraft] = React.useState("")
 
@@ -65,14 +67,14 @@ export function FormTopBar({
             variant="ghost"
             size="icon"
             onClick={onBack}
-            aria-label="Back to forms list"
+            aria-label={t("Back to forms list")}
             className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-5 w-5" />
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">
-          Back to forms list
+          {t("Back to forms list")}
         </TooltipContent>
       </Tooltip>
 
@@ -92,17 +94,17 @@ export function FormTopBar({
               }
             }}
             onFocus={(e) => e.currentTarget.select()}
-            aria-label="Form title"
+            aria-label={t("Form title")}
             className="h-9 w-full text-sm font-medium sm:w-64"
           />
         ) : (
           <button
             type="button"
             onClick={startEditing}
-            aria-label="Rename form"
+            aria-label={t("Rename form")}
             className="hidden h-10 max-w-[190px] items-center truncate rounded-md px-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60 sm:flex"
           >
-            {form.title.trim() || "Untitled form"}
+            {form.title.trim() || t("Untitled form")}
           </button>
         )}
       </div>
@@ -113,7 +115,7 @@ export function FormTopBar({
             variant="ghost"
             size="icon"
             onClick={onToggleStar}
-            aria-label={form.starred ? "Unstar form" : "Star form"}
+            aria-label={form.starred ? t("Unstar form") : t("Star form")}
             className={cn(
               "hidden h-10 w-10 rounded-full sm:flex",
               form.starred ? "text-primary" : "text-muted-foreground hover:text-foreground"
@@ -123,7 +125,7 @@ export function FormTopBar({
           </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="text-xs">
-          {form.starred ? "Remove star" : "Add star"}
+          {form.starred ? t("Remove star") : t("Add star")}
         </TooltipContent>
       </Tooltip>
 
@@ -136,31 +138,35 @@ export function FormTopBar({
           >
             {(shown === "pending" || shown === "saving") && (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("Saving…")}
               </>
             )}
             {shown === "saved" && (
               <>
-                <Check className="h-3.5 w-3.5 text-primary" /> All changes saved
+                <Check className="h-3.5 w-3.5 text-primary" /> {t("All changes saved")}
               </>
             )}
             {shown === "error" && (
               <>
-                <AlertCircle className="h-3.5 w-3.5 text-destructive" /> Save failed
+                <AlertCircle className="h-3.5 w-3.5 text-destructive" /> {t("Save failed")}
               </>
             )}
           </span>
         )}
 
         {/* Segmented Questions / Responses tabs */}
-        <div role="tablist" aria-label="Form sections" className="flex items-center rounded-full border bg-background p-0.5 shadow-xs">
+        <div role="tablist" aria-label={t("Form sections")} className="flex items-center rounded-full border bg-background p-0.5 shadow-xs">
           <SegmentedTab active={activeTab === "questions"} onClick={() => onTabChange("questions")}>
-            Questions
+            {t("Questions")}
           </SegmentedTab>
           <SegmentedTab active={activeTab === "responses"} onClick={() => onTabChange("responses")}>
-            Responses
+            {t("Responses")}
             <span
-              aria-label={`${form.responseCount} responses`}
+              aria-label={
+                form.responseCount === 1
+                  ? t("1 response")
+                  : t("{n} responses", { n: form.responseCount })
+              }
               className={cn(
                 "ml-1 rounded-full px-1.5 text-[11px] leading-4 tnum",
                 activeTab === "responses"
@@ -175,13 +181,13 @@ export function FormTopBar({
 
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" onClick={onPreview} className="h-9 gap-1.5" aria-label="Preview form">
+            <Button variant="outline" size="sm" onClick={onPreview} className="h-9 gap-1.5" aria-label={t("Preview form")}>
               <Eye className="h-4 w-4" />
-              <span className="hidden sm:inline">Preview</span>
+              <span className="hidden sm:inline">{t("Preview")}</span>
             </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Open respondent preview
+            {t("Open respondent preview")}
           </TooltipContent>
         </Tooltip>
 
@@ -190,7 +196,7 @@ export function FormTopBar({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="More form actions"
+              aria-label={t("More form actions")}
               className="h-9 w-9 rounded-full text-muted-foreground hover:text-foreground"
             >
               <MoreVertical className="h-4.5 w-4.5" />
@@ -198,11 +204,11 @@ export function FormTopBar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem onClick={onDuplicate}>
-              <Copy className="h-4 w-4" /> Duplicate form
+              <Copy className="h-4 w-4" /> {t("Duplicate form")}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={onTrash} className="text-destructive focus:text-destructive">
-              <Trash2 className="h-4 w-4" /> Move to trash
+              <Trash2 className="h-4 w-4" /> {t("Move to trash")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
