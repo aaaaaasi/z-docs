@@ -119,7 +119,7 @@ export function QuestionInput({ question, value, onChange, invalid, disabled }: 
           aria-invalid={invalid}
           placeholder="Your answer"
           rows={3}
-          className="max-w-xl resize-y"
+          className="max-h-64 max-w-xl resize-y"
         />
       )
 

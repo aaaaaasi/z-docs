@@ -86,12 +86,12 @@ export function AiToolsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="flex flex-col gap-4 overflow-hidden p-4 sm:max-w-xl sm:p-6">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4.5 w-4.5 text-primary" /> AI polish
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-left">
             One-click transformations on{" "}
             {source?.isSelection ? (
               <span className="font-medium text-foreground">your selection ({srcWords} words)</span>
@@ -102,7 +102,7 @@ export function AiToolsDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="slim-scroll -mr-2 min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
           {/* action grid */}
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="AI action">
             {ACTIONS.map((a) => {
@@ -186,52 +186,55 @@ export function AiToolsDialog({
               <Textarea
                 value={result}
                 onChange={(e) => setResult(e.target.value)}
-                className="min-h-36 text-sm"
+                className="max-h-[min(20rem,45dvh)] min-h-36 text-sm"
                 aria-label="AI result"
               />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  className="gap-1.5"
-                  onClick={() => {
-                    onOpenChange(false)
-                    setTimeout(() => onReplace(result), 240)
-                  }}
-                >
-                  <Replace className="h-3.5 w-3.5" />
-                  {source?.isSelection ? "Replace selection" : "Replace document"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-1.5"
-                  onClick={() => {
-                    onOpenChange(false)
-                    setTimeout(() => onInsert(result), 240)
-                  }}
-                >
-                  <CornerDownLeft className="h-3.5 w-3.5" /> Insert below cursor
-                </Button>
-                <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void run()} disabled={loading}>
-                  <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Retry
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="gap-1.5"
-                  onClick={async () => {
-                    await navigator.clipboard.writeText(result).catch(() => {})
-                    setCopied(true)
-                    toast({ title: "Copied to clipboard" })
-                    setTimeout(() => setCopied(false), 1800)
-                  }}
-                >
-                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} Copy
-                </Button>
-              </div>
             </div>
           )}
         </div>
+
+        {result && (
+          <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+            <Button
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                onOpenChange(false)
+                setTimeout(() => onReplace(result), 240)
+              }}
+            >
+              <Replace className="h-3.5 w-3.5" />
+              {source?.isSelection ? "Replace selection" : "Replace document"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => {
+                onOpenChange(false)
+                setTimeout(() => onInsert(result), 240)
+              }}
+            >
+              <CornerDownLeft className="h-3.5 w-3.5" /> Insert below cursor
+            </Button>
+            <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void run()} disabled={loading}>
+              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} /> Retry
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="gap-1.5"
+              onClick={async () => {
+                await navigator.clipboard.writeText(result).catch(() => {})
+                setCopied(true)
+                toast({ title: "Copied to clipboard" })
+                setTimeout(() => setCopied(false), 1800)
+              }}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} Copy
+            </Button>
+          </div>
+        )}
 
         <DialogFooter className="text-xs text-muted-foreground">
           Generated by Z-AI · always review AI edits

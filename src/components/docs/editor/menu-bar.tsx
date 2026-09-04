@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useTheme } from "next-themes"
 import type { EditorApi } from "./editor-types"
+import { ScrollFade } from "@/components/docs/scroll-fade"
 import {
   FilePlus2, Copy, Pencil, History, Download, Printer, Trash2, Undo2, Redo2, Scissors,
   ClipboardCopy, ClipboardPaste, Replace, Moon, Maximize, ZoomIn, Link, ImagePlus,
@@ -36,7 +37,12 @@ export function MenuBar({ api }: { api: EditorApi }) {
   const dark = mounted && resolvedTheme === "dark"
 
   return (
-    <div className="no-print flex h-10 items-center gap-0.5 border-b bg-background px-2" role="menubar" aria-label="Document menus">
+    <div
+      className="no-print no-scrollbar relative flex h-10 items-center gap-0.5 overflow-x-auto border-b bg-background px-2 max-sm:gap-0 max-sm:px-1"
+      role="menubar"
+      aria-label="Document menus"
+    >
+      <ScrollFade className="max-sm:block sm:hidden" />
       <Menu label="File">
         <DropdownMenuItem onClick={api.duplicate}><FilePlus2 className="h-4 w-4" /> Make a copy</DropdownMenuItem>
         <DropdownMenuItem onClick={api.focusTitle}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>

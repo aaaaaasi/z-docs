@@ -11,6 +11,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { EditorApi } from "./editor-types"
+import { ScrollFade } from "@/components/docs/scroll-fade"
 import { FONT_FAMILIES, FONT_SIZES, TEXT_COLOR_PALETTE } from "@/lib/doc-utils"
 import {
   Undo2, Redo2, Printer, Bold, Italic, Underline, Strikethrough, Link, ImagePlus,
@@ -115,15 +116,11 @@ export function Toolbar({ api }: { api: EditorApi }) {
 
   return (
     <div
-      className="no-print no-scrollbar flex h-12 items-center gap-0.5 overflow-x-auto border-b bg-background px-2 max-sm:px-1"
+      className="no-print no-scrollbar relative flex h-12 items-center gap-0.5 overflow-x-auto border-b bg-background px-2 max-sm:px-1"
       role="toolbar"
       aria-label="Text formatting toolbar"
     >
-      {/* mobile scroll affordance (right edge fade) */}
-      <div
-        aria-hidden
-        className="pointer-events-none sticky right-0 top-0 -mr-2 h-12 w-6 shrink-0 bg-gradient-to-l from-background to-transparent max-sm:block sm:hidden"
-      />
+      <ScrollFade className="max-sm:block sm:hidden" />
       <TB icon={Undo2} label="Undo (Ctrl+Z)" onClick={() => api.exec("undo")} />
       <TB icon={Redo2} label="Redo (Ctrl+Y)" onClick={() => api.exec("redo")} />
       <TB icon={Printer} label="Print (Ctrl+P)" onClick={api.printDoc} className="max-sm:hidden" />

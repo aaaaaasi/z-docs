@@ -573,3 +573,25 @@ Stage Summary:
 - ALL FIVE flagged placeholder features are now real, browser-verified, Google-style: Recent activity (live cross-app feed), Z-Sheets (full spreadsheet + formula engine), Z-Slides (decks + present mode), Z-Forms (builder + fill + analytics), Settings (5 functional tabs). Plus: app launcher grid, home quickstart row, functional email sharing, cross-app activity logging with edit throttling, workspace data export.
 - Quality gates: bunx tsc --noEmit 0 src errors, bun run lint clean, dev :3000 healthy, collab :3003 healthy, all API routes 200.
 - Known gaps / next-phase candidates: (1) sheets grid has no column resize / no multi-sheet tabs; (2) slides drag-reorder is via menu buttons only (no drag); (3) forms list tab/search resets on remount; (4) suggestion-mode Ctrl+Z + IME gaps from previous round still open; (5) hydration flake is dev-only; (6) workspace apps don't join collab presence (only Z-Docs does).
+
+---
+Task ID: 15
+Agent: main (Z.ai Code, round 15)
+Task: User bug report — "AI writing assistance feature display overflows its container" + directive to ensure responsive layout & mobile adaptation generally.
+
+Work Log:
+- ROOT CAUSE (reproduced via agent-browser + DOM measurement): the "Help me write" result Textarea uses field-sizing-content (auto-grow) — a 1805-char AI draft grew the textarea to 1378px; DialogContent had NO max-height and NO overflow scroll, so the dialog became 1808px tall in a 577px viewport, centered via top-50%/translate — top ~615px (title/header/prompt) clipped off-screen. Matches user's screenshot exactly (title cut at top, mid-content only visible).
+- FIX 1 (GLOBAL, base component): ui/dialog.tsx DialogContent now has max-h-[calc(100dvh-2rem)] + overflow-y-auto + overscroll-contain — EVERY dialog in the app is now viewport-capped and internally scrollable (tall dialogs: versions, share, emoji, docs-grid, dialogs-basic, AI dialogs).
+- FIX 2 (AI dialogs): help-write-dialog.tsx + ai-tools-dialog.tsx restructured to flex-column layout: fixed header + fixed action-bar + fixed footer, scrollable middle (slim-scroll), result textarea capped at max-h-[min(20rem,45dvh)] (viewport-aware — shrinks on short screens), prompt capped max-h-40. Action buttons (Insert/Replace/Regenerate/Copy) now ALWAYS visible above the footer instead of below the fold.
+- FIX 3 (textareas app-wide that auto-grow): comment composer/reply/edit textareas capped max-h-56/48 (scroll internally); forms paragraph answer capped max-h-64.
+- FIX 4 (REAL bug found during sweep): the "mobile scroll affordance" gradient fades in toolbar.tsx + menu-bar.tsx were `sticky right-0` FIRST-CHILDREN — they rendered at the LEFT edge (over Undo button) instead of the right edge. New shared component src/components/docs/scroll-fade.tsx: absolute right-edge gradient overlay + scroll/ResizeObserver listener that hides itself when scrolled to the end. Applied to toolbar, menubar, and home template gallery.
+- FIX 5 (menubar mobile fit): menubar gained overflow-x-auto + max-sm:gap-0/px-1 — all 7 menus (File..Help) now fit at 375px without clipping (was 8px cut before).
+- MOBILE QA sweep (375×667, programmatic overflow checks + VLM screenshot review): home ✅, editor ✅, sheets list+editor ✅, slides editor ✅, forms builder ✅, activity ✅, settings ✅, version-history Sheet (full-width mobile) ✅, share dialog ✅, comments sidebar (full-width) ✅, find-replace panel (x=8..367) ✅, AI dialog with long result: fully contained, buttons visible ✅. Desktop regression: find/replace (1 of 5), AI polish + help-write dialogs fully visible with action buttons ✅. Template gallery fade verified at desktop (opacity 1, right edge).
+- Non-issues verified against VLM false-positives: editor-header save status ("All changes saved · time") not clipped at desktop; status pill fully within viewport on mobile (floating with backdrop-blur is intended); template cards partially visible at gallery edge = carousel affordance (now with fade).
+- Quality: bun run lint clean, bunx tsc --noEmit 0 src errors, dev :3000 200, collab :3003 200, dev.log clean.
+
+Stage Summary:
+- The AI writing assistant (Help me write + AI polish) now NEVER overflows: dialogs are viewport-capped, scrollable, with pinned header/actions/footer and viewport-aware result caps.
+- Responsive/mobile hardening applied generally: all dialogs capped at the base level; all auto-growing textareas capped; menubar fits 375px; broken scroll fades replaced with a proper shared ScrollFade component (toolbar + menubar + template gallery).
+- App-wide mobile sweep passed for every view (docs/sheets/slides/forms/activity/settings) and every overlay type (dialog/sheet/panel).
+- Known remaining (from prior rounds, unchanged): suggestion-mode Ctrl+Z/IME gaps, raster PDF text layer, dev-only Radix useId hydration flake, taste-skill repo research parked.

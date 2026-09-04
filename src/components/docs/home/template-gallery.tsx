@@ -5,6 +5,7 @@ import { useDocsStore } from "@/store/docs-store"
 import { useToast } from "@/hooks/use-toast"
 import { TEMPLATES } from "@/lib/templates"
 import { DocPreview } from "@/components/docs/doc-preview"
+import { ScrollFade } from "@/components/docs/scroll-fade"
 import {
   NotebookPen, Lightbulb, Mail, FileUser, BookOpen, Newspaper, FileText, Sparkles, Loader2, ChevronRight
 } from "lucide-react"
@@ -51,10 +52,11 @@ export function TemplateGallery() {
         </div>
 
         <div
-          className="no-scrollbar -mx-1 flex gap-5 overflow-x-auto px-1 pb-2 max-sm:gap-3 max-sm:snap-x max-sm:snap-mandatory max-sm:overscroll-contain"
+          className="no-scrollbar -mx-1 relative flex gap-5 overflow-x-auto px-1 pb-2 max-sm:gap-3 max-sm:snap-x max-sm:snap-mandatory max-sm:overscroll-contain"
           role="list"
           aria-label="Document templates"
         >
+          <ScrollFade />
           {/* AI card: quiet white card, thin-line icon, no gradient theatrics */}
           <button
             onClick={() => start("ai")}

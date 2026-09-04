@@ -84,7 +84,7 @@ function Composer({
           if (e.key === "Escape") onCancel()
         }}
         placeholder="Write a comment… (Ctrl+Enter to post)"
-        className="min-h-[72px] resize-none border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+        className="min-h-[72px] max-h-56 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
         maxLength={2000}
         aria-label="Comment text"
       />
@@ -136,7 +136,7 @@ function ReplyForm({
           if (e.key === "Escape") onCancel()
         }}
         placeholder="Reply…"
-        className="min-h-[52px] resize-none border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+        className="min-h-[52px] max-h-48 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
         maxLength={2000}
         aria-label="Reply text"
       />
@@ -186,7 +186,7 @@ function EditForm({
           if (e.key === "Escape") onCancel()
         }}
         placeholder="Edit comment…"
-        className="min-h-[52px] resize-none border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+        className="min-h-[52px] max-h-48 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
         maxLength={2000}
         aria-label="Edit comment text"
       />
