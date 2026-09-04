@@ -14,7 +14,7 @@ import {
   Minus, CalendarDays, Sparkles, Bold, Italic, Underline, Strikethrough, Superscript,
   Subscript, RemoveFormatting, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, TextQuote, Calculator, Keyboard, Info, MessageSquarePlus, Table,
-  Rows3, Columns3, Heading, ChevronRight, ListTree, Smile, Mic
+  Rows3, Columns3, Heading, ChevronRight, ListTree, Smile, Mic, FileDown, TableCellsMerge, TableCellsSplit
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -43,6 +43,7 @@ export function MenuBar({ api }: { api: EditorApi }) {
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.openDialog("versions")}><History className="h-4 w-4" /> Version history</DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => api.downloadPdf()}><FileDown className="h-4 w-4" /> PDF document (.pdf)</DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.downloadDoc("doc")}><Download className="h-4 w-4" /> Download Word (.doc)</DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.downloadDoc("html")}><Download className="h-4 w-4" /> Download HTML</DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.downloadDoc("txt")}><Download className="h-4 w-4" /> Download text (.txt)</DropdownMenuItem>
@@ -132,6 +133,16 @@ export function MenuBar({ api }: { api: EditorApi }) {
             </DropdownMenuItem>
             {api.tableInfo && (
               <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => api.tableOp("merge-right")} disabled={!api.tableInfo.canMergeRight}>
+                  <TableCellsMerge className="h-4 w-4" /> Merge cell right
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => api.tableOp("merge-down")} disabled={!api.tableInfo.canMergeDown}>
+                  <TableCellsMerge className="h-4 w-4 -rotate-90" /> Merge cell down
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => api.tableOp("split-cell")} disabled={!api.tableInfo.canSplit}>
+                  <TableCellsSplit className="h-4 w-4" /> Split cell
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => api.tableOp("toggle-header")}>
                   <Heading className="h-4 w-4" /> {api.tableInfo.hasHeader ? "Remove header row" : "Header row"}

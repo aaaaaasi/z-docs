@@ -12,7 +12,8 @@ import {
   selectionOffsets, selectedBlocks, findQuoteRange,
   getTableContext, describeTableAt, insertTableRow, insertTableColumn, deleteTableRow,
   deleteTableColumn, deleteTableEl, toggleTableHeader, ensureParagraph, placeCaretInCell,
-  caretRangeFromPoint, pointInSelection, findTextMatches, scrollRangeIntoCanvasView,
+  mergeTableCells, splitTableCell,
+  caretRangeFromPoint, pointInSelection, findTextMatches, scrollRangeIntoCanvasView, mapRangeToClone,
   type TableInfo, type TextMatch,
 } from "@/lib/editor-dom"
 import type { DocumentDTO, CommentDTO } from "@/lib/docs-types"
@@ -33,7 +34,7 @@ import { EmojiDialog } from "./emoji-dialog"
 import { FindReplacePanel } from "./find-replace"
 import { useVoiceTyping, VoicePill } from "./voice-typing"
 import { AiToolsDialog, type AiSource } from "./ai-tools-dialog"
-import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2 } from "lucide-react"
+import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2, TableCellsMerge, TableCellsSplit } from "lucide-react"
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from "@/components/ui/context-menu"
@@ -648,6 +649,17 @@ export function EditorView() {
           toast({ title: nowHeader ? "Header row on" : "Header row off" })
           break
         }
+        case "merge-right":
+        case "merge-down": {
+          const ok = mergeTableCells(ctx, op === "merge-right" ? "right" : "down")
+          toast({ title: ok ? "Cells merged" : "Cells can’t be merged that way" })
+          break
+        }
+        case "split-cell": {
+          const ok = splitTableCell(ctx)
+          toast({ title: ok ? "Cell split" : "This cell isn’t merged" })
+          break
+        }
       }
       ensureParagraph(el)
       handleInput()
@@ -1115,42 +1127,63 @@ export function EditorView() {
     [findMatches, findActiveIndex, findQuery, findCase, runFind, selectMatchKeepFocus, toast]
   )
 
-  /** Replace every match. Walks the matches right-to-left (earlier offsets
-   *  stay valid), re-selecting each range and going through execCommand so
-   *  each replacement is undoable and formatting-preserving. */
+  /** Replace every match in ONE undoable transaction (Google Docs parity).
+   *  The replacements are computed on a detached clone of the page (so the
+   *  live match ranges stay valid while we walk them), then applied to the
+   *  live document with a single select-all + insertHTML execCommand —
+   *  Chromium records that as exactly one undo step, preserving all rich
+   *  formatting, comment marks and table colgroups. */
   const replaceAllMatches = React.useCallback(
     (replacement: string) => {
       const el = pageRef.current
       if (!el || !findQuery || findMatches.length === 0) return 0
-      el.focus()
+      // 1) compute the post-replacement content on a detached clone
+      const clone = el.cloneNode(true) as HTMLElement
       let count = 0
-      const needle = findCase ? findQuery : findQuery.toLowerCase()
       for (let i = findMatches.length - 1; i >= 0; i--) {
         const m = findMatches[i]
-        const c = m.range.startContainer
-        if (c.nodeType !== Node.TEXT_NODE || m.range.startContainer !== m.range.endContainer) continue
-        // validate the range still covers the query (guards against drift)
-        const data = c.textContent ?? ""
-        const s = m.range.startOffset
-        const e = m.range.endOffset
-        const slice = findCase ? data.slice(s, e) : data.slice(s, e).toLowerCase()
-        if (slice !== needle) continue
+        const r = mapRangeToClone(el, clone, m.range)
+        if (!r) continue
+        // guard against drift: the cloned range must still cover the query
+        const covered = r.toString()
+        if (findCase ? covered !== findQuery : covered.toLowerCase() !== findQuery.toLowerCase()) continue
         try {
-          const sel = window.getSelection()
-          sel?.removeAllRanges()
-          sel?.addRange(m.range.cloneRange())
-          if (document.execCommand("insertText", false, replacement)) count++
+          r.deleteContents()
+          r.insertNode(document.createTextNode(replacement))
+          count++
         } catch {
           // skip this one — the final re-scan reports the true state
         }
       }
-      if (count > 0) {
-        toast({ title: `Replaced ${count} ${count === 1 ? "match" : "matches"}` })
+      if (count === 0) {
+        runFind(findQuery, findCase)
+        return 0
       }
+      const newHtml = clone.innerHTML
+      // 2) apply as a single undoable edit
+      el.focus()
+      const sel = window.getSelection()
+      let applied = false
+      try {
+        sel?.removeAllRanges()
+        const all = document.createRange()
+        all.selectNodeContents(el)
+        sel?.addRange(all)
+        applied = document.execCommand("insertHTML", false, newHtml)
+      } catch {
+        applied = false
+      }
+      if (!applied) {
+        // fallback: direct DOM write + synthetic input event (not undoable,
+        // but the autosave + version history still capture the change)
+        el.innerHTML = newHtml
+      }
+      handleInput()
+      toast({ title: `Replaced ${count} ${count === 1 ? "match" : "matches"}` })
       runFind(findQuery, findCase)
       return count
     },
-    [findQuery, findMatches, runFind, toast]
+    [findQuery, findCase, findMatches, runFind, handleInput, toast]
   )
 
   /* ---------------- voice typing ---------------- */
@@ -1245,6 +1278,82 @@ img { max-width: 100%; }
       setTimeout(() => iframe.remove(), 800)
     }, 300)
   }, [buildExportHtml])
+
+  /** Export the current document as a real .pdf file (Google Docs parity).
+   *  Renders the page element with html2canvas-pro (oklch-safe fork) at 2×
+   *  and lays the slices into a jsPDF Letter document, breaking pages only
+   *  between top-level blocks so text is never sliced mid-line. Falls back
+   *  to the print dialog when canvas rendering is unavailable. */
+  const downloadPdf = React.useCallback(async () => {
+    const el = pageRef.current
+    if (!el) return
+    toast({ title: "Preparing PDF…", description: "Rendering the document pages" })
+    let wrap: HTMLElement | null = null
+    let prevTransform = ""
+    try {
+      // capture at scale 1 — reset the zoom transform during the snapshot
+      wrap = el.closest("[data-doc-zoom-wrap]") as HTMLElement | null
+      if (wrap) {
+        prevTransform = wrap.style.transform
+        wrap.style.transform = "none"
+      }
+      const [{ jsPDF }, h2c] = await Promise.all([import("jspdf"), import("html2canvas-pro")])
+      const canvas = await h2c.default(el, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        useCORS: true,
+        logging: false,
+      })
+      // page geometry: Letter at 96dpi = 816×1056 CSS px inside the page el
+      const PAGE_H = 1056
+      const total = el.getBoundingClientRect().height
+      // paginate on block boundaries (never slice a text line in half)
+      const blocks = Array.from(el.children) as HTMLElement[]
+      const elTop = el.getBoundingClientRect().top
+      const pages: { start: number; end: number }[] = []
+      let pageStart = 0
+      let pageEnd = 0
+      for (const b of blocks) {
+        const r = b.getBoundingClientRect()
+        const top = r.top - elTop
+        const bottom = top + r.height
+        if (pageEnd > pageStart && bottom - pageStart > PAGE_H) {
+          pages.push({ start: pageStart, end: pageStart + PAGE_H })
+          pageStart = top
+        }
+        pageEnd = bottom
+      }
+      pages.push({ start: pageStart, end: Math.max(pageEnd, pageStart) })
+      // trim the last page to actual content height
+      pages[pages.length - 1].end = Math.min(pages[pages.length - 1].end, Math.max(total, 1))
+
+      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter", compress: true })
+      const PW = pdf.internal.pageSize.getWidth()
+      const PH = pdf.internal.pageSize.getHeight()
+      for (let i = 0; i < pages.length; i++) {
+        const y0 = Math.max(0, pages[i].start) * 2
+        const y1 = Math.max(y0 + 1, Math.min(pages[i].end * 2, canvas.height))
+        const slice = document.createElement("canvas")
+        slice.width = canvas.width
+        slice.height = y1 - y0
+        const ctx2d = slice.getContext("2d")
+        if (!ctx2d) continue
+        ctx2d.fillStyle = "#ffffff"
+        ctx2d.fillRect(0, 0, slice.width, slice.height)
+        ctx2d.drawImage(canvas, 0, y0, canvas.width, y1 - y0, 0, 0, canvas.width, y1 - y0)
+        if (i > 0) pdf.addPage()
+        pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, PW, PH, undefined, "FAST")
+      }
+      const name = (latestTitleRef.current || "Untitled document").replace(/[^\w\d\-. ]+/g, "_").trim() || "document"
+      pdf.save(`${name}.pdf`)
+      toast({ title: "Download started", description: `${name}.pdf` })
+    } catch {
+      toast({ title: "PDF export fell back to print", description: "Choose “Save as PDF” as the destination" })
+      printDoc()
+    } finally {
+      if (wrap) wrap.style.transform = prevTransform
+    }
+  }, [printDoc, toast])
 
   const downloadDoc = React.useCallback(
     (format: "doc" | "html" | "txt") => {
@@ -1520,6 +1629,7 @@ img { max-width: 100%; }
       void performSave(true)
     },
     printDoc,
+    downloadPdf,
     downloadDoc,
     goHome,
     moveToTrash,
@@ -1691,6 +1801,26 @@ img { max-width: 100%; }
                 <ContextMenuItem onClick={() => tableOp("toggle-header")}>
                   <Heading className="h-4 w-4" /> {menuTableInfo.hasHeader ? "Remove header row" : "Make first row a header"}
                 </ContextMenuItem>
+              )}
+              {menuTableInfo && (menuTableInfo.canMergeRight || menuTableInfo.canMergeDown || menuTableInfo.canSplit) && (
+                <>
+                  <ContextMenuSeparator />
+                  {menuTableInfo.canMergeRight && (
+                    <ContextMenuItem onClick={() => tableOp("merge-right")}>
+                      <TableCellsMerge className="h-4 w-4" /> Merge cell right
+                    </ContextMenuItem>
+                  )}
+                  {menuTableInfo.canMergeDown && (
+                    <ContextMenuItem onClick={() => tableOp("merge-down")}>
+                      <TableCellsMerge className="h-4 w-4 -rotate-90" /> Merge cell down
+                    </ContextMenuItem>
+                  )}
+                  {menuTableInfo.canSplit && (
+                    <ContextMenuItem onClick={() => tableOp("split-cell")}>
+                      <TableCellsSplit className="h-4 w-4" /> Split cell
+                    </ContextMenuItem>
+                  )}
+                </>
               )}
               {menuTableInfo && <ContextMenuSeparator />}
               {menuTableInfo && (

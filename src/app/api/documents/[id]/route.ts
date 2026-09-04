@@ -15,9 +15,14 @@ function serialize(doc: {
   folderId: string | null
   createdAt: Date
   updatedAt: Date
+  /** present when fetched with the tags include */
+  tags?: { tag: { id: string; name: string; color: string } }[]
 }) {
   return {
     ...doc,
+    tags: [...(doc.tags ?? [])]
+      .map((dt) => ({ id: dt.tag.id, name: dt.tag.name, color: dt.tag.color }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   }
@@ -58,7 +63,12 @@ async function maybeSnapshot(docId: string, oldTitle: string, oldContent: string
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const doc = await db.document.findUnique({ where: { id } })
+    const doc = await db.document.findUnique({
+      where: { id },
+      include: {
+        tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
+      },
+    })
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 })
     return NextResponse.json({ document: serialize(doc) })
   } catch (e) {

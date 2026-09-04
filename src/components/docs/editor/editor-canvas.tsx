@@ -6,6 +6,7 @@ import type { RemoteCursor, CommentDTO } from "@/lib/docs-types"
 import { rangeFromOffsets, selectionOffsets, setSelectionFromOffsets, findQuoteRange } from "@/lib/editor-dom"
 import type { TextMatch } from "@/lib/editor-dom"
 import { TableResizeOverlay } from "@/components/docs/editor/table-resize"
+import { DocRuler } from "@/components/docs/editor/ruler"
 import { cn } from "@/lib/utils"
 
 interface CaretView {
@@ -264,9 +265,11 @@ export function EditorCanvas({
       >
         <div
           className="relative"
+          data-doc-zoom-wrap=""
           style={{ width: dims.w + padX * 2, transform: `scale(${zoom})`, transformOrigin: "top left" }}
         >
           <div className="px-10 pt-10">
+            <DocRuler />
             <div
               ref={pageRef}
               className="doc-page doc-content"

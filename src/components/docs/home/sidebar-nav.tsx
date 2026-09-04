@@ -11,10 +11,11 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import {
   Home, Star, Trash2, Plus, FileSpreadsheet, Presentation, FileClock, FormInput, Cloud,
-  Folder, FolderPlus, Pencil, MoreVertical
+  Folder, FolderPlus, Pencil, MoreVertical, Tags
 } from "lucide-react"
 import { useDocsStore } from "@/store/docs-store"
 import { DropTarget } from "./doc-dnd"
+import { DEFAULT_TAG_COLOR, TagColorPalette, hitArea } from "./tag-ui"
 import { cn } from "@/lib/utils"
 import type { ReactNode } from "react"
 import type { FolderDTO } from "@/lib/docs-types"
@@ -60,6 +61,11 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
   const createFolder = useDocsStore((s) => s.createFolder)
   const renameFolder = useDocsStore((s) => s.renameFolder)
   const deleteFolder = useDocsStore((s) => s.deleteFolder)
+  const tags = useDocsStore((s) => s.tags)
+  const tagFilter = useDocsStore((s) => s.tagFilter)
+  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+  const createTag = useDocsStore((s) => s.createTag)
+  const deleteTag = useDocsStore((s) => s.deleteTag)
   const { toast } = useToast()
 
   const [creating, setCreating] = React.useState(false)
@@ -67,7 +73,24 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
   const [renaming, setRenaming] = React.useState<FolderDTO | null>(null)
   const [renameValue, setRenameValue] = React.useState("")
 
+  const [tagCreating, setTagCreating] = React.useState(false)
+  const [tagName, setTagName] = React.useState("")
+  const [tagColor, setTagColor] = React.useState<string>(DEFAULT_TAG_COLOR)
+
   const starredCount = documents.filter((d) => d.starred && !d.trashed).length
+
+  const confirmCreateTag = async () => {
+    const name = tagName.trim()
+    if (!name) return
+    const tag = await createTag(name, tagColor)
+    if (tag) {
+      toast({ title: "Tag created", description: tag.name })
+      setTagCreating(false)
+      setTagName("")
+    } else {
+      toast({ title: "Couldn’t create tag", description: "Names must be unique.", variant: "destructive" })
+    }
+  }
 
   const navItem = (
     active: boolean,
@@ -103,6 +126,8 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
         <NewDocButton className="w-full" />
       </div>
 
+      {/* scrollable nav area (folders + tags can grow past the viewport) */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
       <nav className="flex flex-col gap-0.5" aria-label="Document filters">
         <DropTarget kind="root">
           {navItem(filter === "all", <Home className="h-4.5 w-4.5" />, "All documents", () => {
@@ -254,6 +279,143 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
         )}
       </nav>
 
+      {/* Tags */}
+      <div className="mt-4 flex items-center justify-between px-3">
+        <span className="text-[11px] font-medium tracking-wide text-muted-foreground">Tags</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              aria-label="New tag"
+              onClick={() => {
+                setTagCreating(true)
+                setTagName("")
+                setTagColor(DEFAULT_TAG_COLOR)
+              }}
+              className={cn(
+                "rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground",
+                hitArea
+              )}
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" className="text-xs">New tag</TooltipContent>
+        </Tooltip>
+      </div>
+
+      <nav className="mt-1 flex flex-col gap-0.5" aria-label="Document tags">
+        {tagFilter && (
+          <Button
+            variant="ghost"
+            onClick={() => setTagFilter(null)}
+            className="w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[13px] font-normal text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+          >
+            <Tags className="h-4.5 w-4.5" />
+            <span className="flex-1 text-left">All tags</span>
+          </Button>
+        )}
+
+        {tags.map((t) => {
+          const active = tagFilter === t.id
+          const row = (
+            <div className="group relative">
+              <Button
+                variant="ghost"
+                onClick={() => setTagFilter(active ? null : t.id)}
+                aria-pressed={active}
+                className={cn(
+                  "w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[13px] font-normal",
+                  active
+                    ? "bg-accent font-medium text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: t.color }}
+                />
+                <span className="flex-1 truncate text-left">{t.name}</span>
+                {(t.count ?? 0) > 0 && (
+                  <span className="tnum text-[11px] text-muted-foreground">{t.count}</span>
+                )}
+              </Button>
+              {/* hover actions */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    aria-label={`Actions for tag ${t.name}`}
+                    className={cn(
+                      "absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent/60 hover:text-foreground group-hover:opacity-100 focus-visible:opacity-100",
+                      hitArea
+                    )}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <MoreVertical className="h-3.5 w-3.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={async () => {
+                      await deleteTag(t.id)
+                      toast({ title: "Tag deleted", description: "Removed from all documents." })
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" /> Delete tag
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )
+          return (
+            <Wrap key={t.id} inSheet={inSheet}>
+              {row}
+            </Wrap>
+          )
+        })}
+
+        {tagCreating && (
+          <div
+            className="flex flex-col gap-1.5 px-3 py-1.5"
+            onBlur={(e) => {
+              // cancel only when focus leaves the whole creation form (palette clicks stay inside)
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setTagCreating(false)
+            }}
+          >
+            <div className="flex items-center gap-2.5">
+              <span
+                aria-hidden="true"
+                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: tagColor }}
+              />
+              <Input
+                autoFocus
+                value={tagName}
+                onChange={(e) => setTagName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") void confirmCreateTag()
+                  if (e.key === "Escape") setTagCreating(false)
+                }}
+                placeholder="Tag name"
+                aria-label="New tag name"
+                className="h-8 rounded-md text-[13px]"
+                maxLength={24}
+              />
+            </div>
+            <div className="pl-7">
+              <TagColorPalette value={tagColor} onChange={setTagColor} />
+            </div>
+          </div>
+        )}
+
+        {tags.length === 0 && !tagCreating && (
+          <p className="px-3 py-2 text-[11.5px] leading-relaxed text-muted-foreground/80">
+            No tags yet. Use tags to label documents.
+          </p>
+        )}
+      </nav>
+
       <div className="mt-4 px-3 text-[11px] font-medium tracking-wide text-muted-foreground/70">
         Workspace
       </div>
@@ -280,8 +442,9 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
           </Tooltip>
         ))}
       </nav>
+      </div>
 
-      <div className="mt-auto px-3 pb-4">
+      <div className="mt-3 px-3 pb-4">
         <div className="rounded-lg border border-border/70 bg-muted/40 p-3">
           <div className="flex items-center gap-2 text-[11px] font-medium tracking-wide text-muted-foreground">
             <Cloud className="h-3.5 w-3.5" strokeWidth={1.75} />

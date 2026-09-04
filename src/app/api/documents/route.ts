@@ -13,6 +13,8 @@ function toMeta(doc: {
   folderId: string | null
   createdAt: Date
   updatedAt: Date
+  /** present when fetched with the tags include */
+  tags?: { tag: { id: string; name: string; color: string } }[]
 }) {
   return {
     id: doc.id,
@@ -21,6 +23,9 @@ function toMeta(doc: {
     starred: doc.starred,
     trashed: doc.trashed,
     folderId: doc.folderId,
+    tags: [...(doc.tags ?? [])]
+      .map((dt) => ({ id: dt.tag.id, name: dt.tag.name, color: dt.tag.color }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
     snippet: getSnippet(doc.content),
     wordCount: countWords(htmlToText(doc.content)),
     createdAt: doc.createdAt.toISOString(),
@@ -57,6 +62,9 @@ export async function GET(req: NextRequest) {
       where: conditions as never,
       orderBy: { updatedAt: "desc" },
       take: 200,
+      include: {
+        tags: { select: { tag: { select: { id: true, name: true, color: true } } } },
+      },
     })
 
     return NextResponse.json({ documents: documents.map(toMeta) })

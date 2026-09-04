@@ -161,14 +161,15 @@
   background: #1e1d1b;
 }
 
-/* The white "paper" page inside the editor */
+/* The white "paper" page inside the editor (top margin shrinks — the ruler
+   now occupies the space above the page) */
 .doc-page {
   width: 816px;
   max-width: 816px;
   min-height: 1056px;
   background: #ffffff;
   color: #202124;
-  margin: 40px auto 80px;
+  margin: 12px auto 80px;
   padding: 96px;
   border-radius: 2px;
   box-shadow:
@@ -189,6 +190,75 @@
     padding: 48px 32px;
     margin: 20px auto 60px;
   }
+  .doc-ruler {
+    width: 92vw;
+    max-width: 816px;
+  }
+}
+
+/* ------------------------------------------------ page ruler */
+.doc-ruler {
+  width: 816px;
+  max-width: 816px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(128, 126, 122, 0.35);
+  background: transparent;
+  user-select: none;
+}
+.doc-ruler-margin {
+  align-self: stretch;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(128, 126, 122, 0.16) 0 3px,
+    rgba(128, 126, 122, 0.08) 3px 6px
+  );
+  border-left: 1px solid rgba(128, 126, 122, 0.35);
+  border-right: 1px solid rgba(128, 126, 122, 0.35);
+}
+.doc-ruler-track {
+  height: 100%;
+  align-self: stretch;
+}
+.doc-ruler-tick {
+  position: absolute;
+  bottom: 0;
+  width: 1px;
+  background: rgba(128, 126, 122, 0.55);
+}
+.doc-ruler-label {
+  position: absolute;
+  top: 0;
+  font-size: 8px;
+  line-height: 10px;
+  font-family: Arial, sans-serif;
+  color: rgba(128, 126, 122, 0.9);
+  font-variant-numeric: tabular-nums;
+}
+.doc-ruler-edge {
+  position: absolute;
+  bottom: 0;
+  width: 2px;
+  height: 16px;
+  background: rgba(128, 126, 122, 0.8);
+  border-radius: 1px;
+}
+.dark .doc-ruler {
+  border-bottom-color: rgba(158, 155, 150, 0.3);
+}
+.dark .doc-ruler-tick {
+  background: rgba(158, 155, 150, 0.5);
+}
+.dark .doc-ruler-label {
+  color: rgba(158, 155, 150, 0.85);
+}
+.dark .doc-ruler-margin {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(158, 155, 150, 0.14) 0 3px,
+    rgba(158, 155, 150, 0.07) 3px 6px
+  );
+  border-left-color: rgba(158, 155, 150, 0.3);
+  border-right-color: rgba(158, 155, 150, 0.3);
 }
 
 /* Rich-text content defaults (Google Docs look) */

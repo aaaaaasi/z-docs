@@ -114,19 +114,24 @@ export function Toolbar({ api }: { api: EditorApi }) {
 
   return (
     <div
-      className="no-print no-scrollbar flex h-12 items-center gap-0.5 overflow-x-auto border-b bg-background px-2"
+      className="no-print no-scrollbar flex h-12 items-center gap-0.5 overflow-x-auto border-b bg-background px-2 max-sm:px-1"
       role="toolbar"
       aria-label="Text formatting toolbar"
     >
+      {/* mobile scroll affordance (right edge fade) */}
+      <div
+        aria-hidden
+        className="pointer-events-none sticky right-0 top-0 -mr-2 h-12 w-6 shrink-0 bg-gradient-to-l from-background to-transparent max-sm:block sm:hidden"
+      />
       <TB icon={Undo2} label="Undo (Ctrl+Z)" onClick={() => api.exec("undo")} />
       <TB icon={Redo2} label="Redo (Ctrl+Y)" onClick={() => api.exec("redo")} />
-      <TB icon={Printer} label="Print (Ctrl+P)" onClick={api.printDoc} />
+      <TB icon={Printer} label="Print (Ctrl+P)" onClick={api.printDoc} className="max-sm:hidden" />
 
       {/* Paragraph style */}
       <Select value={blockValue} onValueChange={(v) => api.exec("formatBlock", v)}>
         <SelectTrigger
           aria-label="Paragraph style"
-          className="mx-1 h-9 w-[132px] shrink-0 rounded-md border-transparent bg-muted/60 text-sm focus-visible:ring-1"
+          className="mx-1 h-9 w-[132px] shrink-0 rounded-md border-transparent bg-muted/60 text-sm focus-visible:ring-1 max-sm:mx-0.5 max-sm:w-[92px] max-sm:px-2"
         >
           <SelectValue />
         </SelectTrigger>
@@ -141,7 +146,7 @@ export function Toolbar({ api }: { api: EditorApi }) {
       <Select value={api.fmt.fontName} onValueChange={(v) => api.exec("fontName", v)}>
         <SelectTrigger
           aria-label="Font family"
-          className="mx-1 h-9 w-[118px] shrink-0 rounded-md border-transparent bg-muted/60 text-sm focus-visible:ring-1"
+          className="mx-1 h-9 w-[118px] shrink-0 rounded-md border-transparent bg-muted/60 text-sm focus-visible:ring-1 max-sm:mx-0.5 max-sm:w-[76px] max-sm:px-2"
         >
           <div className="flex items-center gap-1.5 truncate">
             <Baseline className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

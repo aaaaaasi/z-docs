@@ -23,6 +23,7 @@ model Document {
 
   versions DocumentVersion[]
   comments Comment[]
+  tags     DocumentTag[]
   folder   Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
 }
 
@@ -37,6 +38,30 @@ model Folder {
   documents Document[]
 
   @@unique([name])
+}
+
+/// Colored labels (Google Drive style) attached to documents.
+model Tag {
+  id        String        @id @default(cuid())
+  name      String        @unique
+  color     String        @default("#0b6b62")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  documents DocumentTag[]
+}
+
+/// Join table: which documents carry which tags.
+model DocumentTag {
+  docId String
+  tagId String
+
+  doc Document @relation(fields: [docId], references: [id], onDelete: Cascade)
+  tag Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([docId, tagId])
+  @@index([docId])
+  @@index([tagId])
 }
 
 model DocumentVersion {

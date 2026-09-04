@@ -5,8 +5,20 @@ export interface DocumentDTO {
   starred: boolean
   trashed: boolean
   folderId?: string | null
+  /** labels attached to this document (present in list/detail GETs) */
+  tags?: TagDTO[]
   createdAt: string
   updatedAt: string
+}
+
+export interface TagDTO {
+  id: string
+  name: string
+  color: string
+  /** number of documents carrying this tag (only in /api/tags responses) */
+  count?: number
+  createdAt?: string
+  updatedAt?: string
 }
 
 export interface DocumentMeta extends DocumentDTO {

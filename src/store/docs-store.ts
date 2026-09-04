@@ -1,7 +1,7 @@
 "use client"
 
 import { create } from "zustand"
-import type { DocumentDTO, DocumentMeta, DocFilter, FolderDTO } from "@/lib/docs-types"
+import type { DocumentDTO, DocumentMeta, DocFilter, FolderDTO, TagDTO } from "@/lib/docs-types"
 import { getSnippet, countWords, htmlToText } from "@/lib/doc-utils"
 import { getTemplate } from "@/lib/templates"
 
@@ -17,12 +17,15 @@ interface DocsState {
   currentDocId: string | null
   documents: DocumentMeta[]
   folders: FolderDTO[]
+  tags: TagDTO[]
   loading: boolean
   error: string | null
   searchQuery: string
   filter: DocFilter
   /** active folder id when filter === "folder" */
   activeFolderId: string | null
+  /** active tag filter (independent of the folder/starred/trash dimension) */
+  tagFilter: string | null
   layout: "grid" | "list"
   openAiOnEditor: boolean
 
@@ -38,6 +41,13 @@ interface DocsState {
   createDoc: (opts?: CreateDocOptions) => Promise<string | null>
   openDoc: (id: string, opts?: { ai?: boolean }) => void
   goHome: () => void
+
+  /* tags */
+  loadTags: () => Promise<void>
+  setTagFilter: (id: string | null) => void
+  createTag: (name: string, color?: string) => Promise<TagDTO | null>
+  deleteTag: (id: string) => Promise<void>
+  setDocTags: (docId: string, tagIds: string[]) => Promise<void>
 
   renameDoc: (id: string, title: string) => Promise<void>
   toggleStar: (id: string) => Promise<void>
@@ -64,11 +74,13 @@ export const useDocsStore = create<DocsState>((set, get) => ({
   currentDocId: null,
   documents: [],
   folders: [],
+  tags: [],
   loading: false,
   error: null,
   searchQuery: "",
   filter: "all",
   activeFolderId: null,
+  tagFilter: null,
   layout: "grid",
   openAiOnEditor: false,
 
@@ -79,6 +91,7 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     }
     await get().refresh({ silent: true })
     await get().refreshFolders()
+    await get().loadTags()
   },
 
   bindPopState: () => {
@@ -181,6 +194,7 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     set({ view: "home", currentDocId: null, openAiOnEditor: false })
     void get().refresh({ silent: true })
     void get().refreshFolders()
+    void get().loadTags()
   },
 
   renameDoc: async (id, title) => {
@@ -248,6 +262,81 @@ export const useDocsStore = create<DocsState>((set, get) => ({
 
   patchDocMeta: (id, patch) => {
     set({ documents: get().documents.map((d) => (d.id === id ? { ...d, ...patch } : d)) })
+  },
+
+  /* ---------------- tags ---------------- */
+  loadTags: async () => {
+    try {
+      const res = await fetch("/api/tags")
+      if (!res.ok) return
+      const data = (await res.json()) as { tags: TagDTO[] }
+      set({ tags: data.tags ?? [] })
+    } catch {
+      // non-fatal
+    }
+  },
+
+  setTagFilter: (id) => set({ tagFilter: id }),
+
+  createTag: async (name, color) => {
+    try {
+      const res = await fetch("/api/tags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, color }),
+      })
+      if (!res.ok) return null
+      const data = (await res.json()) as { tag: TagDTO }
+      await get().loadTags()
+      return data.tag
+    } catch {
+      return null
+    }
+  },
+
+  deleteTag: async (id) => {
+    const prevDocs = get().documents
+    set({
+      tags: get().tags.filter((t) => t.id !== id),
+      tagFilter: get().tagFilter === id ? null : get().tagFilter,
+      documents: prevDocs.map((d) => ({ ...d, tags: (d.tags ?? []).filter((t) => t.id !== id) })),
+    })
+    try {
+      await fetch(`/api/tags/${encodeURIComponent(id)}`, { method: "DELETE" })
+    } catch {
+      // ignore
+    }
+    await get().loadTags()
+    void get().refresh({ silent: true })
+  },
+
+  setDocTags: async (docId, tagIds) => {
+    const prev = get().documents
+    const prevDoc = prev.find((d) => d.id === docId)
+    if (!prevDoc) return
+    const prevIds = (prevDoc.tags ?? []).map((t) => t.id)
+    if (prevIds.length === tagIds.length && prevIds.every((id, i) => id === tagIds[i])) return
+    const allTags = get().tags
+    const optimisticTags = tagIds
+      .map((id) => allTags.find((t) => t.id === id))
+      .filter((t): t is TagDTO => !!t)
+    set({ documents: prev.map((d) => (d.id === docId ? { ...d, tags: optimisticTags } : d)) })
+    try {
+      const res = await fetch(`/api/documents/${docId}/tags`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tagIds }),
+      })
+      if (!res.ok) throw new Error("set tags failed")
+      const data = (await res.json()) as { tags: TagDTO[] }
+      set({
+        documents: get().documents.map((d) => (d.id === docId ? { ...d, tags: data.tags ?? [] } : d)),
+      })
+      await get().loadTags()
+    } catch {
+      // rollback the optimistic chip change
+      set({ documents: prev.map((d) => (d.id === docId ? { ...d, tags: prevDoc.tags ?? [] } : d)) })
+    }
   },
 
   /* ---------------- folders ---------------- */
@@ -326,6 +415,7 @@ export function toMeta(doc: DocumentDTO): DocumentMeta {
     starred: doc.starred,
     trashed: doc.trashed,
     folderId: doc.folderId ?? null,
+    tags: doc.tags ?? [],
     snippet: getSnippet(doc.content),
     wordCount: countWords(htmlToText(doc.content)),
     createdAt: doc.createdAt,

@@ -4,7 +4,7 @@ import * as React from "react"
 import { useDraggable } from "@dnd-kit/core"
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent,
+  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu"
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
@@ -21,12 +21,13 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useToast } from "@/hooks/use-toast"
 import { useDocsStore } from "@/store/docs-store"
-import type { DocumentMeta, FolderDTO } from "@/lib/docs-types"
+import type { DocumentMeta, FolderDTO, TagDTO } from "@/lib/docs-types"
 import { relativeTime } from "@/lib/doc-utils"
 import { DocPreview } from "@/components/docs/doc-preview"
 import { docDragId } from "./doc-dnd"
+import { DEFAULT_TAG_COLOR, TagChip, TagColorPalette, TagFilterChip, TagOverflowChip } from "./tag-ui"
 import {
-  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder
+  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder, Tag, Plus
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -59,6 +60,9 @@ export function DocsGrid() {
   const folders = useDocsStore((s) => s.folders)
   const activeFolderId = useDocsStore((s) => s.activeFolderId)
   const moveToFolder = useDocsStore((s) => s.moveToFolder)
+  const tags = useDocsStore((s) => s.tags)
+  const tagFilter = useDocsStore((s) => s.tagFilter)
+  const setTagFilter = useDocsStore((s) => s.setTagFilter)
   const { toast } = useToast()
 
   const [sort, setSort] = React.useState<SortKey>("updated")
@@ -73,6 +77,13 @@ export function DocsGrid() {
     else list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     return list
   }, [documents, sort])
+
+  // tag filter narrows the current view (folder / starred / search all compose with it)
+  const visible = React.useMemo(
+    () => (tagFilter ? sorted.filter((d) => (d.tags ?? []).some((t) => t.id === tagFilter)) : sorted),
+    [sorted, tagFilter]
+  )
+  const activeTag = tagFilter ? tags.find((t) => t.id === tagFilter) ?? null : null
 
   const confirmRename = async () => {
     if (!renaming) return
@@ -97,7 +108,7 @@ export function DocsGrid() {
           <h2 className="text-base font-semibold">{titleFor(filter, folders, activeFolderId)}</h2>
           {!loading && (
             <span className="tnum text-[13px] text-muted-foreground">
-              {sorted.length} {sorted.length === 1 ? "document" : "documents"}
+              {visible.length} {visible.length === 1 ? "document" : "documents"}
               {searchQuery ? ` matching “${searchQuery}”` : ""}
             </span>
           )}
@@ -133,6 +144,13 @@ export function DocsGrid() {
           </div>
         </div>
 
+        {/* Google Drive style filter chip while a tag filter is active */}
+        {activeTag && !loading && (
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <TagFilterChip tag={activeTag} onClear={() => setTagFilter(null)} />
+          </div>
+        )}
+
         {error && (
           <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
             {error}. <button className="font-medium underline underline-offset-2" onClick={() => useDocsStore.getState().refresh()}>Retry</button>
@@ -149,11 +167,11 @@ export function DocsGrid() {
               </div>
             ))}
           </div>
-        ) : sorted.length === 0 ? (
-          <EmptyState filter={filter} search={!!searchQuery} />
+        ) : sorted.length === 0 || visible.length === 0 ? (
+          <EmptyState filter={filter} search={!!searchQuery} tag={activeTag} />
         ) : layout === "grid" ? (
           <div className="flex flex-wrap gap-5">
-            {sorted.map((doc, i) => (
+            {visible.map((doc, i) => (
               <DocCard
                 key={doc.id}
                 doc={doc}
@@ -177,7 +195,7 @@ export function DocsGrid() {
           </div>
         ) : (
           <div className="overflow-hidden rounded-lg border">
-            {sorted.map((doc, i) => (
+            {visible.map((doc, i) => (
               <DocRow
                 key={doc.id}
                 doc={doc}
@@ -289,6 +307,114 @@ function MoveToSubmenu({
   )
 }
 
+/** "Add tags" submenu: checkbox per tag + inline "New tag…" creation (applied to this doc) */
+function AddTagsSubmenu({ doc }: { doc: DocumentMeta }) {
+  const tags = useDocsStore((s) => s.tags)
+  const setDocTags = useDocsStore((s) => s.setDocTags)
+  const createTag = useDocsStore((s) => s.createTag)
+  const { toast } = useToast()
+  const [creating, setCreating] = React.useState(false)
+  const [name, setName] = React.useState("")
+  const [color, setColor] = React.useState<string>(DEFAULT_TAG_COLOR)
+  const docTagIds = new Set((doc.tags ?? []).map((t) => t.id))
+
+  const toggleTag = (tagId: string) => {
+    const ids = (doc.tags ?? []).map((t) => t.id)
+    void setDocTags(doc.id, ids.includes(tagId) ? ids.filter((i) => i !== tagId) : [...ids, tagId])
+  }
+
+  const confirmCreate = async () => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    const tag = await createTag(trimmed, color)
+    if (tag) {
+      const ids = (doc.tags ?? []).map((t) => t.id)
+      if (!ids.includes(tag.id)) void setDocTags(doc.id, [...ids, tag.id])
+      toast({ title: "Tag created", description: `“${tag.name}” added to this document.` })
+      setCreating(false)
+      setName("")
+    } else {
+      toast({ title: "Couldn’t create tag", description: "Names must be unique.", variant: "destructive" })
+    }
+  }
+
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="gap-2">
+        <Tag className="h-4 w-4" /> Add tags
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="w-52">
+        {tags.map((t) => (
+          <DropdownMenuCheckboxItem
+            key={t.id}
+            checked={docTagIds.has(t.id)}
+            onCheckedChange={() => toggleTag(t.id)}
+            onSelect={(e) => e.preventDefault()}
+          >
+            <span
+              aria-hidden="true"
+              className="h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: t.color }}
+            />
+            <span className="truncate">{t.name}</span>
+          </DropdownMenuCheckboxItem>
+        ))}
+        {tags.length > 0 && <DropdownMenuSeparator />}
+        {creating ? (
+          <div
+            className="flex flex-col gap-1.5 px-2 py-1.5"
+            onBlur={(e) => {
+              // cancel only when focus leaves the whole creation form (palette clicks stay inside)
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCreating(false)
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 shrink-0 rounded-full"
+                style={{ backgroundColor: color }}
+              />
+              <Input
+                autoFocus
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  // stop the Radix menu typeahead from stealing printable keys / arrows
+                  e.stopPropagation()
+                  if (e.key === "Enter") void confirmCreate()
+                  if (e.key === "Escape") setCreating(false)
+                }}
+                placeholder="Tag name"
+                aria-label="New tag name"
+                className="h-8 rounded-md text-[13px]"
+                maxLength={24}
+              />
+            </div>
+            <div className="pl-6">
+              <TagColorPalette value={color} onChange={setColor} />
+            </div>
+          </div>
+        ) : (
+          <DropdownMenuItem
+            onSelect={(e) => {
+              e.preventDefault()
+              setCreating(true)
+              setName("")
+            }}
+          >
+            <Plus className="h-4 w-4" /> New tag…
+          </DropdownMenuItem>
+        )}
+        {tags.length === 0 && !creating && (
+          <p className="px-2 py-1.5 text-[11.5px] leading-relaxed text-muted-foreground/80">
+            No tags yet. Create one to label documents.
+          </p>
+        )}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  )
+}
+
 function CardMenu({
   doc,
   inTrash,
@@ -317,6 +443,7 @@ function CardMenu({
             </DropdownMenuItem>
             <DropdownMenuItem onClick={a.onRename}><Pencil className="h-4 w-4" /> Rename</DropdownMenuItem>
             <DropdownMenuItem onClick={a.onDuplicate}><Copy className="h-4 w-4" /> Make a copy</DropdownMenuItem>
+            <AddTagsSubmenu doc={doc} />
             <MoveToSubmenu folders={folders} docFolderId={doc.folderId} onPick={a.onMoveToFolder} />
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={a.onTrash} className="text-destructive focus:text-destructive">
@@ -346,6 +473,9 @@ function DocCard({
   ...actions
 }: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean; folders: FolderDTO[] }) {
   const folder = folders.find((f) => f.id === doc.folderId)
+  const tagFilter = useDocsStore((s) => s.tagFilter)
+  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+  const docTags = doc.tags ?? []
   const { attributes: dragAttrs, listeners: dragListeners, setNodeRef: dragRef, isDragging } = useDraggable({
     id: docDragId(doc.id),
     disabled: inTrash,
@@ -388,6 +518,21 @@ function DocCard({
             )}
             {relativeTime(doc.updatedAt)}
           </p>
+          {docTags.length > 0 && !inTrash && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {docTags.slice(0, 3).map((t) => (
+                <TagChip
+                  key={t.id}
+                  tag={t}
+                  active={tagFilter === t.id}
+                  onFilter={() => setTagFilter(tagFilter === t.id ? null : t.id)}
+                />
+              ))}
+              {docTags.length > 3 && (
+                <TagOverflowChip count={docTags.length - 3} names={docTags.slice(3).map((t) => t.name).join(", ")} />
+              )}
+            </div>
+          )}
         </div>
         <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
       </div>
@@ -403,6 +548,9 @@ function DocRow({
   ...actions
 }: DocActions & { doc: DocumentMeta; index: number; inTrash: boolean; folders: FolderDTO[] }) {
   const folder = folders.find((f) => f.id === doc.folderId)
+  const tagFilter = useDocsStore((s) => s.tagFilter)
+  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+  const docTags = doc.tags ?? []
   const { attributes: dragAttrs, listeners: dragListeners, setNodeRef: dragRef, isDragging } = useDraggable({
     id: docDragId(doc.id),
     disabled: inTrash,
@@ -437,6 +585,21 @@ function DocRow({
           )}
           {doc.snippet || "Empty document"}
         </p>
+        {docTags.length > 0 && !inTrash && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {docTags.slice(0, 3).map((t) => (
+              <TagChip
+                key={t.id}
+                tag={t}
+                active={tagFilter === t.id}
+                onFilter={() => setTagFilter(tagFilter === t.id ? null : t.id)}
+              />
+            ))}
+            {docTags.length > 3 && (
+              <TagOverflowChip count={docTags.length - 3} names={docTags.slice(3).map((t) => t.name).join(", ")} />
+            )}
+          </div>
+        )}
       </div>
       <span className="tnum hidden w-20 shrink-0 text-right text-xs text-muted-foreground sm:block">{doc.wordCount} words</span>
       <span className="tnum hidden w-32 shrink-0 text-right text-xs text-muted-foreground md:block">{relativeTime(doc.updatedAt)}</span>
@@ -445,13 +608,15 @@ function DocRow({
   )
 }
 
-function EmptyState({ filter, search }: { filter: string; search: boolean }) {
+function EmptyState({ filter, search, tag }: { filter: string; search: boolean; tag?: TagDTO | null }) {
   const createDoc = useDocsStore((s) => s.createDoc)
   const openDoc = useDocsStore((s) => s.openDoc)
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
       {search ? (
         <SearchX className="h-10 w-10 text-muted-foreground/40" />
+      ) : tag ? (
+        <Tag className="h-10 w-10 text-muted-foreground/40" strokeWidth={1.5} />
       ) : filter === "trash" ? (
         <Trash className="h-10 w-10 text-muted-foreground/40" />
       ) : (
@@ -460,20 +625,24 @@ function EmptyState({ filter, search }: { filter: string; search: boolean }) {
       <p className="font-editorial mt-4 text-[15.5px] font-medium italic tracking-tight text-foreground/80">
         {search
           ? "No documents match your search"
-          : filter === "trash"
-            ? "Trash is empty"
-            : filter === "starred"
-              ? "No starred documents yet"
-              : "No documents yet"}
+          : tag
+            ? "No documents with this tag"
+            : filter === "trash"
+              ? "Trash is empty"
+              : filter === "starred"
+                ? "No starred documents yet"
+                : "No documents yet"}
       </p>
       <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground">
         {search
           ? "Try a different keyword or clear the search field."
-          : filter === "trash"
-            ? "Deleted documents will appear here before being removed forever."
-            : "Pick a template above or start from a blank page to create your first document."}
+          : tag
+            ? `No documents in this view carry the “${tag.name}” label.`
+            : filter === "trash"
+              ? "Deleted documents will appear here before being removed forever."
+              : "Pick a template above or start from a blank page to create your first document."}
       </p>
-      {!search && filter === "all" && (
+      {!search && !tag && filter === "all" && (
         <Button
           className="mt-4"
           onClick={async () => {

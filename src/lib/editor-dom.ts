@@ -151,35 +151,74 @@ export interface TextMatch {
 
 /**
  * Find every occurrence of `query` inside root's text content.
- * A match must live within a single text node (v1 simplification —
- * matches spanning element boundaries are skipped, which covers the
- * overwhelming majority of real documents).
+ * v2: matches may span text-node boundaries (e.g. a word half-bold), exactly
+ * like Google Docs. Text nodes that live in the same block element are
+ * concatenated seamlessly; a "\n" separator is inserted between different
+ * blocks, so paragraph breaks are searchable as newlines and can never
+ * produce a false match gluing two lines together.
  */
 export function findTextMatches(root: HTMLElement, query: string, caseSensitive: boolean): TextMatch[] {
   if (!query) return []
-  const matches: TextMatch[] = []
+  const nodes = textNodesOf(root)
+  if (nodes.length === 0) return []
+
+  // Concatenated text + per-node base offsets (with block separators).
+  const bases: number[] = []
+  let full = ""
+  let prevBlock: Element | null = null
+  for (const t of nodes) {
+    const block = t.parentElement?.closest("p,h1,h2,h3,h4,li,td,th,blockquote,pre,div") ?? null
+    if (full.length > 0 && block !== prevBlock) full += "\n"
+    bases.push(full.length)
+    full += t.textContent ?? ""
+    prevBlock = block
+  }
+  if (full.length < query.length) return []
+
+  const scan = caseSensitive ? full : full.toLowerCase()
   const needle = caseSensitive ? query : query.toLowerCase()
-  let base = 0
-  for (const t of textNodesOf(root)) {
-    const text = t.textContent ?? ""
-    if (text.length >= query.length) {
-      const scan = caseSensitive ? text : text.toLowerCase()
-      let i = scan.indexOf(needle)
-      while (i !== -1) {
-        const range = document.createRange()
-        try {
-          range.setStart(t, i)
-          range.setEnd(t, i + query.length)
-          matches.push({ start: base + i, end: base + i + query.length, range })
-        } catch {
-          // detached node — skip
-        }
-        i = scan.indexOf(needle, i + query.length)
-      }
+  const matches: TextMatch[] = []
+  let i = scan.indexOf(needle)
+  while (i !== -1) {
+    const end = i + query.length
+    try {
+      // locate the text node containing the start / end boundary
+      let sIdx = 0
+      while (sIdx + 1 < nodes.length && bases[sIdx + 1] <= i) sIdx++
+      let eIdx = 0
+      while (eIdx + 1 < nodes.length && bases[eIdx + 1] < end) eIdx++
+      const range = document.createRange()
+      range.setStart(nodes[sIdx], i - bases[sIdx])
+      range.setEnd(nodes[eIdx], end - bases[eIdx])
+      matches.push({ start: i, end, range })
+    } catch {
+      // detached node — skip
     }
-    base += text.length
+    i = scan.indexOf(needle, i + query.length) // non-overlapping, Google-style
   }
   return matches
+}
+
+/**
+ * Map a live Range onto a structurally identical clone of the root
+ * (same text-node order, same offsets). Used to compute "what would the
+ * document look like after replacing these matches" without touching the
+ * live DOM — the live match ranges stay valid while we walk them.
+ */
+export function mapRangeToClone(root: HTMLElement, clone: HTMLElement, range: Range): Range | null {
+  try {
+    const liveNodes = textNodesOf(root)
+    const cloneNodes = textNodesOf(clone)
+    const sIdx = liveNodes.indexOf(range.startContainer as Text)
+    const eIdx = liveNodes.indexOf(range.endContainer as Text)
+    if (sIdx === -1 || eIdx === -1 || sIdx >= cloneNodes.length || eIdx >= cloneNodes.length) return null
+    const out = document.createRange()
+    out.setStart(cloneNodes[sIdx], range.startOffset)
+    out.setEnd(cloneNodes[eIdx], range.endOffset)
+    return out
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -219,6 +258,10 @@ export interface TableInfo {
   rowIndex: number
   colIndex: number
   hasHeader: boolean
+  /** cell merge/split availability at the caret (Google Docs table menu) */
+  canMergeRight: boolean
+  canMergeDown: boolean
+  canSplit: boolean
 }
 
 /** Resolve the table/row/cell containing the current selection, if any. */
@@ -247,13 +290,144 @@ export function getTableContext(root: HTMLElement): TableContext | null {
 export function describeTableAt(root: HTMLElement): TableInfo | null {
   const ctx = getTableContext(root)
   if (!ctx) return null
+  const cap = cellMergeCapability(root)
   return {
     rows: ctx.table.rows.length,
     cols: ctx.row.cells.length,
     rowIndex: ctx.rowIndex,
     colIndex: ctx.colIndex,
     hasHeader: !!ctx.table.rows[0]?.cells[0] && ctx.table.rows[0].cells[0].tagName === "TH",
+    canMergeRight: cap.right,
+    canMergeDown: cap.down,
+    canSplit: cap.split,
   }
+}
+
+/* ---------------- cell merge / split (grid model) ---------------- */
+
+/**
+ * Build the occupied-grid model of a table: grid[r][c] = the DOM cell whose
+ * rowspan/colspan footprint covers visual position (r, c). This is the only
+ * correct way to reason about merges when spans are already present.
+ */
+function buildTableGrid(table: HTMLTableElement): (HTMLTableCellElement | null)[][] {
+  const grid: (HTMLTableCellElement | null)[][] = []
+  Array.from(table.rows).forEach((row, ri) => {
+    let ci = 0
+    for (const cell of Array.from(row.cells)) {
+      while (grid[ri]?.[ci]) ci++ // skip columns held by rowspans from above
+      for (let dr = 0; dr < cell.rowSpan; dr++) {
+        const r = ri + dr
+        grid[r] = grid[r] ?? []
+        for (let dc = 0; dc < cell.colSpan; dc++) grid[r][ci + dc] = cell
+      }
+      ci += cell.colSpan
+    }
+  })
+  return grid
+}
+
+/** Visual { r, c } of a cell's top-left corner in the grid model. */
+function cellGridPos(
+  grid: (HTMLTableCellElement | null)[][],
+  cell: HTMLTableCellElement
+): { r: number; c: number } | null {
+  for (let r = 0; r < grid.length; r++) {
+    for (let c = 0; c < (grid[r]?.length ?? 0); c++) {
+      if (grid[r][c] === cell) return { r, c }
+    }
+  }
+  return null
+}
+
+/** Merge capability at the caret cell (for enabling menu items). */
+export function cellMergeCapability(root: HTMLElement): { right: boolean; down: boolean; split: boolean } {
+  const ctx = getTableContext(root)
+  const none = { right: false, down: false, split: false }
+  if (!ctx) return none
+  const grid = buildTableGrid(ctx.table)
+  const pos = cellGridPos(grid, ctx.cell)
+  if (!pos) return none
+  const rs = ctx.cell.rowSpan
+  const cs = ctx.cell.colSpan
+  const right = grid[pos.r]?.[pos.c + cs] != null && grid[pos.r][pos.c + cs] !== ctx.cell
+  const belowRow = grid[pos.r + rs]
+  const down = !!belowRow && belowRow[pos.c] != null && belowRow[pos.c] !== ctx.cell
+  const split = rs > 1 || cs > 1
+  return { right, down, split }
+}
+
+/** Merge the caret cell with its right neighbor (Google Docs "Merge cells"). */
+export function mergeTableCells(ctx: TableContext, dir: "right" | "down"): boolean {
+  const grid = buildTableGrid(ctx.table)
+  const pos = cellGridPos(grid, ctx.cell)
+  if (!pos) return false
+  const rs = ctx.cell.rowSpan
+  const cs = ctx.cell.colSpan
+  let target: HTMLTableCellElement | null = null
+  if (dir === "right") {
+    target = grid[pos.r]?.[pos.c + cs] ?? null
+    // the neighbor must align vertically for a clean rectangle merge
+    if (!target || target.rowSpan !== rs) return false
+  } else {
+    const belowRow = grid[pos.r + rs]
+    target = belowRow?.[pos.c] ?? null
+    if (!target || target.colSpan !== cs) return false
+  }
+  if (!target || target === ctx.cell) return false
+  // absorb content: join non-empty cell bodies with a space
+  const a = (ctx.cell.textContent ?? "").trim()
+  const b = (target.textContent ?? "").replace(/\u00a0/g, "").trim()
+  if (b) {
+    if (a) ctx.cell.appendChild(document.createTextNode(" "))
+    while (target.firstChild) ctx.cell.appendChild(target.firstChild)
+  }
+  if (dir === "right") ctx.cell.colSpan += target.colSpan
+  else ctx.cell.rowSpan += target.rowSpan
+  target.remove()
+  placeCaretInCell(ctx.cell)
+  return true
+}
+
+/** Split a merged cell back into 1×1 cells (content stays in the top-left). */
+export function splitTableCell(ctx: TableContext): boolean {
+  const { table, cell } = ctx
+  const rs = cell.rowSpan
+  const cs = cell.colSpan
+  if (rs === 1 && cs === 1) return false
+  const grid = buildTableGrid(table)
+  const pos = cellGridPos(grid, cell)
+  if (!pos) return false
+  // 1) carve full-width empty cells into each extra spanned row
+  for (let dr = 1; dr < rs; dr++) {
+    const row = table.rows[pos.r + dr]
+    if (!row) break
+    const fresh = document.createElement(cell.tagName === "TH" ? "th" : "td")
+    fresh.innerHTML = "&nbsp;"
+    fresh.colSpan = cs
+    // DOM insertion point: before the first cell whose visual start column
+    // (top-left c works for both same-row and rowspan-from-above cells) is
+    // further right than the split position
+    let ref: Node | null = null
+    for (const domCell of Array.from(row.cells)) {
+      const p = cellGridPos(grid, domCell)
+      if (p && p.c > pos.c) {
+        ref = domCell
+        break
+      }
+    }
+    row.insertBefore(fresh, ref)
+  }
+  cell.rowSpan = 1
+  // 2) split the columns in the anchor row
+  for (let i = 1; i < cs; i++) {
+    const fresh = document.createElement(cell.tagName === "TH" ? "th" : "td")
+    fresh.innerHTML = "&nbsp;"
+    cell.after(fresh)
+  }
+  cell.colSpan = 1
+  placeCaretInCell(cell)
+  return true
 }
 
 function makeCell(tag: string): HTMLTableCellElement {

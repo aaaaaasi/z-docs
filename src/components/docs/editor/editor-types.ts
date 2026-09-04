@@ -13,6 +13,9 @@ export type TableOp =
   | "delete-col"
   | "delete-table"
   | "toggle-header"
+  | "merge-right"
+  | "merge-down"
+  | "split-cell"
 
 export interface FormatState {
   bold: boolean
@@ -82,6 +85,8 @@ export interface EditorApi {
   toggleStar: () => void
   saveNow: () => void
   printDoc: () => void
+  /** export the document as a real .pdf file (async, falls back to print) */
+  downloadPdf: () => void
   downloadDoc: (format: "doc" | "html" | "txt") => void
   goHome: () => void
   moveToTrash: () => void
