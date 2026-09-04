@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getSnippet, countWords, htmlToText } from "@/lib/doc-utils"
+import { actorFromRequest, logActivity } from "@/lib/server-activity"
 
 export const dynamic = "force-dynamic"
 
@@ -82,6 +83,13 @@ export async function POST(req: NextRequest) {
     const content = typeof body.content === "string" ? body.content.slice(0, 5 * 1024 * 1024) : ""
 
     const doc = await db.document.create({ data: { title, content } })
+    await logActivity({
+      app: "docs",
+      kind: "created",
+      entityId: doc.id,
+      entityTitle: doc.title,
+      actor: actorFromRequest(req),
+    })
     return NextResponse.json(
       {
         document: {

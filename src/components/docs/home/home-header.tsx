@@ -5,9 +5,10 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
-import { Search, Menu, LayoutGrid, Settings } from "lucide-react"
+import { Search, Menu, Settings } from "lucide-react"
 import { UserMenu } from "@/components/docs/user-menu"
 import { ThemeToggle } from "@/components/docs/theme-toggle"
+import { AppGridMenu } from "@/components/docs/app-grid"
 import { useDocsStore } from "@/store/docs-store"
 import { SidebarNavContent } from "./sidebar-nav"
 
@@ -29,6 +30,7 @@ export function HomeHeader() {
   const searchQuery = useDocsStore((s) => s.searchQuery)
   const setSearchQuery = useDocsStore((s) => s.setSearchQuery)
   const refresh = useDocsStore((s) => s.refresh)
+  const openSettings = useDocsStore((s) => s.openSettings)
   const [local, setLocal] = React.useState("")
 
   // debounce search -> store -> refetch
@@ -85,18 +87,17 @@ export function HomeHeader() {
             className="h-9 w-28 rounded-full border-transparent bg-muted pl-9 pr-3 text-sm focus-visible:w-40 focus-visible:border-border focus-visible:bg-background"
           />
         </div>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-full text-muted-foreground hover:text-foreground sm:flex" aria-label="More apps (demo)">
-              <LayoutGrid className="h-4.5 w-4.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">More apps coming soon</TooltipContent>
-        </Tooltip>
+        <AppGridMenu />
         <ThemeToggle />
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="hidden h-9 w-9 rounded-full text-muted-foreground hover:text-foreground sm:flex" aria-label="Settings (demo)">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="hidden h-9 w-9 rounded-full text-muted-foreground hover:text-foreground sm:flex"
+              aria-label="Open settings"
+              onClick={openSettings}
+            >
               <Settings className="h-4.5 w-4.5" />
             </Button>
           </TooltipTrigger>

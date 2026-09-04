@@ -9,10 +9,23 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import type { CollabUser } from "@/lib/docs-types"
-import { initialsOf } from "@/lib/doc-utils"
+import { initialsOf, colorForId } from "@/lib/doc-utils"
+import { api } from "@/lib/api-client"
 import { useToast } from "@/hooks/use-toast"
-import { Copy, Check, Globe, Lock, UserPlus } from "lucide-react"
+import { Copy, Check, Globe, Lock, UserPlus, X } from "lucide-react"
+
+interface CollaboratorRow {
+  id: string
+  email: string
+  name: string
+  color: string
+  role: string
+  createdAt: string
+}
 
 export function ShareDialog({
   open, onOpenChange, docId, title, presence, me,
@@ -26,8 +39,91 @@ export function ShareDialog({
 }) {
   const [copied, setCopied] = React.useState(false)
   const [access, setAccess] = React.useState("link")
+  const [inviteEmail, setInviteEmail] = React.useState("")
+  const [inviteRole, setInviteRole] = React.useState("viewer")
+  const [inviteBusy, setInviteBusy] = React.useState(false)
+  const [collaborators, setCollaborators] = React.useState<CollaboratorRow[]>([])
   const { toast } = useToast()
   const link = typeof window !== "undefined" ? `${window.location.origin}/?doc=${docId}` : `/?doc=${docId}`
+
+  // load saved collaborators whenever the dialog opens
+  React.useEffect(() => {
+    if (!open || !docId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/documents/${encodeURIComponent(docId)}/collaborators`)
+        if (!res.ok) return
+        const data = (await res.json()) as { collaborators: CollaboratorRow[] }
+        if (!cancelled) setCollaborators(data.collaborators ?? [])
+      } catch {
+        // non-fatal
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, docId])
+
+  const invite = async () => {
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email) return
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      toast({ title: "Enter a valid email address", variant: "destructive" })
+      return
+    }
+    setInviteBusy(true)
+    try {
+      const res = await api(`/api/documents/${encodeURIComponent(docId)}/collaborators`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role: inviteRole }),
+      })
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error ?? "Invite failed")
+      }
+      const data = (await res.json()) as { collaborator: CollaboratorRow }
+      setCollaborators((prev) => {
+        const rest = prev.filter((c) => c.email !== data.collaborator.email)
+        return [...rest, data.collaborator].sort((a, b) => a.email.localeCompare(b.email))
+      })
+      setInviteEmail("")
+      toast({
+        title: `Shared with ${data.collaborator.email}`,
+        description: `They can ${data.collaborator.role === "editor" ? "edit this document" : "view this document"}.`,
+      })
+    } catch (e) {
+      toast({ title: e instanceof Error ? e.message : "Invite failed", variant: "destructive" })
+    } finally {
+      setInviteBusy(false)
+    }
+  }
+
+  const removeCollaborator = async (email: string) => {
+    setCollaborators((prev) => prev.filter((c) => c.email !== email))
+    try {
+      await api(`/api/documents/${encodeURIComponent(docId)}/collaborators?email=${encodeURIComponent(email)}`, {
+        method: "DELETE",
+      })
+      toast({ title: `Removed ${email}` })
+    } catch {
+      toast({ title: "Couldn't remove access", variant: "destructive" })
+    }
+  }
+
+  const changeRole = async (email: string, role: string) => {
+    setCollaborators((prev) => prev.map((c) => (c.email === email ? { ...c, role } : c)))
+    try {
+      await api(`/api/documents/${encodeURIComponent(docId)}/collaborators`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, role }),
+      })
+    } catch {
+      // rollback silently
+    }
+  }
 
   const copy = async () => {
     try {
@@ -79,6 +175,45 @@ export function ShareDialog({
               </div>
               <span className="text-xs font-medium text-muted-foreground">Owner</span>
             </div>
+            {collaborators.map((c) => (
+              <div key={c.email} className="group flex items-center gap-3 rounded-lg border p-2.5">
+                <div
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold text-white"
+                  style={{ backgroundColor: c.color || colorForId(c.email) }}
+                >
+                  {initialsOf(c.name || c.email)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{c.name || c.email.split("@")[0]}</p>
+                  <p className="truncate text-xs text-muted-foreground">{c.email}</p>
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      aria-label={`Change role for ${c.email}`}
+                      className="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      {c.role === "editor" ? "Editor" : "Viewer"}
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-36">
+                    <DropdownMenuItem onClick={() => void changeRole(c.email, "viewer")}>
+                      <Lock className="h-4 w-4" /> Viewer
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => void changeRole(c.email, "editor")}>
+                      <UserPlus className="h-4 w-4" /> Editor
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => void removeCollaborator(c.email)}
+                    >
+                      <X className="h-4 w-4" /> Remove access
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            ))}
             {presence
               .filter((u) => u.name !== me.name)
               .slice(0, 5)
@@ -97,9 +232,9 @@ export function ShareDialog({
                   <span className="text-xs font-medium text-muted-foreground">Editor</span>
                 </div>
               ))}
-            {presence.length <= 1 && (
+            {presence.length <= 1 && collaborators.length === 0 && (
               <p className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
-                Open the link in another browser tab or window to collaborate in real time.
+                Invite someone by email, or open the link in another tab to collaborate in real time.
               </p>
             )}
           </div>
@@ -126,9 +261,29 @@ export function ShareDialog({
           </Select>
         </div>
 
-        <div className="flex items-center gap-2 rounded-lg border border-dashed p-2.5 text-muted-foreground">
-          <UserPlus className="h-4 w-4" />
-          <Input disabled placeholder="Invite by email, coming soon" className="h-8 border-transparent bg-transparent text-sm" />
+        <div className="flex items-center gap-2 rounded-lg border border-dashed p-2.5">
+          <UserPlus className="h-4 w-4 text-muted-foreground" />
+          <Input
+            type="email"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && void invite()}
+            placeholder="Add people by email"
+            aria-label="Invite by email"
+            className="h-8 border-transparent bg-transparent text-sm"
+          />
+          <Select value={inviteRole} onValueChange={setInviteRole}>
+            <SelectTrigger className="h-8 w-[110px] shrink-0 border-transparent bg-transparent text-xs" aria-label="Invite role">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="viewer">Viewer</SelectItem>
+              <SelectItem value="editor">Editor</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button size="sm" className="h-8 shrink-0 px-4" disabled={inviteBusy || !inviteEmail.trim()} onClick={() => void invite()}>
+            {inviteBusy ? "Sharing…" : "Share"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -11,7 +11,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import {
   Home, Star, Trash2, Plus, FileSpreadsheet, Presentation, FileClock, FormInput, Cloud,
-  Folder, FolderPlus, Pencil, MoreVertical, Tags
+  Folder, FolderPlus, Pencil, MoreVertical, Tags, Settings
 } from "lucide-react"
 import { useDocsStore } from "@/store/docs-store"
 import { DropTarget } from "./doc-dnd"
@@ -54,6 +54,10 @@ export function NewDocButton({ className, label = "New document" }: { className?
 export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
   const filter = useDocsStore((s) => s.filter)
   const setFilter = useDocsStore((s) => s.setFilter)
+  const view = useDocsStore((s) => s.view)
+  const openApp = useDocsStore((s) => s.openApp)
+  const openActivity = useDocsStore((s) => s.openActivity)
+  const openSettings = useDocsStore((s) => s.openSettings)
   const documents = useDocsStore((s) => s.documents)
   const folders = useDocsStore((s) => s.folders)
   const activeFolderId = useDocsStore((s) => s.activeFolderId)
@@ -420,26 +424,43 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
         Workspace
       </div>
       <nav className="mt-1 flex flex-col gap-0.5" aria-label="Workspace apps">
-        {[
-          { icon: <FileClock className="h-4.5 w-4.5" />, label: "Recent activity", active: false },
-          { icon: <FileSpreadsheet className="h-4.5 w-4.5" />, label: "Z-Sheets", active: false },
-          { icon: <Presentation className="h-4.5 w-4.5" />, label: "Z-Slides", active: false },
-          { icon: <FormInput className="h-4.5 w-4.5" />, label: "Z-Forms", active: false },
-        ].map((item) => (
-          <Tooltip key={item.label}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                disabled
-                className="w-full justify-start gap-2.5 rounded-md px-3 py-2 text-[13px] font-normal text-muted-foreground/50"
-              >
-                {item.icon}
-                <span className="flex-1 text-left">{item.label}</span>
-                <span className="text-[10px] text-muted-foreground/60">soon</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">Coming soon</TooltipContent>
-          </Tooltip>
+        {(
+          [
+            {
+              icon: <FileClock className="h-4.5 w-4.5" />,
+              label: "Recent activity",
+              active: view === "activity",
+              onSelect: () => openActivity(),
+            },
+            {
+              icon: <FileSpreadsheet className="h-4.5 w-4.5" />,
+              label: "Z-Sheets",
+              active: view === "sheets",
+              onSelect: () => openApp("sheets"),
+            },
+            {
+              icon: <Presentation className="h-4.5 w-4.5" />,
+              label: "Z-Slides",
+              active: view === "slides",
+              onSelect: () => openApp("slides"),
+            },
+            {
+              icon: <FormInput className="h-4.5 w-4.5" />,
+              label: "Z-Forms",
+              active: view === "forms",
+              onSelect: () => openApp("forms"),
+            },
+            {
+              icon: <Settings className="h-4.5 w-4.5" />,
+              label: "Settings",
+              active: view === "settings",
+              onSelect: () => openSettings(),
+            },
+          ] as const
+        ).map((item) => (
+          <Wrap key={item.label} inSheet={inSheet}>
+            {navItem(item.active, item.icon, item.label, item.onSelect)}
+          </Wrap>
         ))}
       </nav>
       </div>

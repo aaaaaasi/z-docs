@@ -5,6 +5,12 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { useDocsStore } from "@/store/docs-store"
 import { HomeView } from "./home/home-view"
 import { EditorView } from "./editor/editor-view"
+import { SheetsApp } from "./sheets/sheets-app"
+import { SlidesApp } from "./slides/slides-app"
+import { FormsApp } from "./forms/forms-app"
+import { ActivityView } from "./activity/activity-view"
+import { SettingsView } from "./settings/settings-view"
+import { SettingsEffects } from "./settings/settings-effects"
 
 export function DocsApp() {
   const view = useDocsStore((s) => s.view)
@@ -22,8 +28,16 @@ export function DocsApp() {
 
   return (
     <TooltipProvider delayDuration={250}>
+      {/* applies persisted settings (accent color) at app level */}
+      <SettingsEffects />
       <div key={view} className="animate-view-in">
-        {view === "home" ? <HomeView /> : <EditorView />}
+        {view === "home" && <HomeView />}
+        {view === "editor" && <EditorView />}
+        {view === "sheets" && <SheetsApp />}
+        {view === "slides" && <SlidesApp />}
+        {view === "forms" && <FormsApp />}
+        {view === "activity" && <ActivityView />}
+        {view === "settings" && <SettingsView />}
       </div>
     </TooltipProvider>
   )

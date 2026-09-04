@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { actorFromRequest, logActivity, logActivityThrottled } from "@/lib/server-activity"
 
 export const dynamic = "force-dynamic"
 
@@ -112,6 +113,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const updated = await db.document.update({ where: { id }, data })
+
+    // activity feed attribution
+    const actor = actorFromRequest(req)
+    if (data.trashed !== undefined && data.trashed !== doc.trashed) {
+      await logActivity({
+        app: "docs",
+        kind: data.trashed ? "trashed" : "restored",
+        entityId: id,
+        entityTitle: updated.title,
+        actor,
+      })
+    } else if (data.starred !== undefined && data.starred !== doc.starred) {
+      await logActivity({
+        app: "docs",
+        kind: data.starred ? "starred" : "unstarred",
+        entityId: id,
+        entityTitle: updated.title,
+        actor,
+      })
+    } else if (data.title !== undefined && data.title !== doc.title) {
+      await logActivity({
+        app: "docs",
+        kind: "renamed",
+        entityId: id,
+        entityTitle: data.title,
+        detail: `renamed from “${doc.title}”`,
+        actor,
+      })
+    } else if (data.content !== undefined && data.content !== doc.content) {
+      await logActivityThrottled(10, {
+        app: "docs",
+        kind: "edited",
+        entityId: id,
+        entityTitle: updated.title,
+        actor,
+      })
+    }
+
     return NextResponse.json({ document: serialize(updated) })
   } catch (e) {
     console.error("PATCH /api/documents/[id] failed:", e)

@@ -467,3 +467,109 @@ Stage Summary:
 - src/ is now fully type-clean (bunx tsc --noEmit: 0 errors) — a quality bar that had never held before.
 - Known limitations (next-phase priorities): (1) suggestion edits are direct-DOM → Ctrl+Z does NOT revert suggestion marks (insertParagraph split IS undoable; a manual undo stack or beforeinput-custom transactions would fix this — biggest remaining gap), (2) IME/composition input in suggest mode bypasses marks (insertCompositionText not intercepted — affects Chinese typing in suggest mode), (3) word-level deletes (Ctrl+Backspace) fall through unmarked, (4) find matches still hit suggested-deletion text, (5) vertical ruler + draggable top/bottom margins, (6) suggestions don't sync margins (margins are per-browser), (7) parked: taste-skill repo de-AI-flavor research.
 - State: dev :3000 healthy (restarted fresh), collab :3003 healthy, lint+tsc clean, 9 user docs + Projects folder intact, tags empty, all API routes 200.
+
+---
+
+Task ID: WA-0 (Workspace suite foundation)
+Agent: main (Z.ai Code)
+Task: User flagged that Recent activity / Z-Sheets / Z-Slides / Z-Forms / Settings were all "soon" placeholders — must ALL become real, functional features (Google-like). Foundation phase for the workspace-suite expansion.
+
+Work Log:
+- prisma/schema.prisma: added models Sheet, SlideDeck, Form, FormResponse, ActivityLog, Collaborator (+ Document.collaborators relation); `bun run db:push` OK, client regenerated.
+- src/lib/workspace-types.ts (NEW): WorkspaceView/App, SheetData/CellData/SheetDTO/Meta + EMPTY_SHEET, Slide/SlideLayout/DeckTheme/DeckData/SlideDeckDTO/Meta, Question/QuestionType/FormDTO/FormMeta/FormResponseDTO/AnswerValue, ActivityKind/ActivityDTO.
+- src/lib/server-activity.ts (NEW): actorFromRequest (x-z-actor header), logActivity (caps feed at 200), logActivityThrottled (dedupe "edited" events per entity within N minutes, touches timestamp).
+- src/lib/api-client.ts (NEW): client `api(url, init)` fetch wrapper stamping x-z-actor identity header for activity attribution.
+- API routes (NEW): /api/sheets (+[id] GET/PATCH/DELETE), /api/slides (+[id]), /api/forms (+[id], +[id]/responses GET/POST with trashed guard), /api/activity (GET ?app=&limit=), /api/export (full workspace JSON download), /api/documents/[id]/collaborators (GET/POST/DELETE, email validation, shared activity event).
+- Activity logging injected into existing routes: documents POST (created), documents/[id] PATCH (trashed/restored/starred/unstarred/renamed/edited-throttled-10min), duplicate (duplicated), comments POST (commented with author identity).
+- src/store/docs-store.ts: view extended to WorkspaceView (home/editor/sheets/slides/forms/activity/settings) + appTarget deep-link state (id + formMode), openApp() ("docs" routes home), openActivity(), openSettings(), consumeAppTarget() one-shot for app mounts; URL scheme /?app=<app>&entity=<id>&mode=<fill|responses|edit>; hydrateFromUrl/bindPopState/goHome updated; removed dead docParam.
+- tsc --noEmit: 0 src errors after fixes (pushState arg type; "docs" not a view).
+
+Stage Summary:
+- Full backend + routing foundation for the 4-app suite is DONE and type-clean. Entry contract for subagents: each app is a self-contained component exported from its own folder, rendered by docs-app.tsx via store view; shared shell wiring (docs-app/sidebar-nav/home-header/share-dialog/home quick-start) stays with main agent.
+- Next: parallel build of Z-Sheets / Z-Slides / Z-Forms / (Activity + Settings + AppGrid) by subagents 2-a..2-d, then integration + QA.
+
+---
+
+Task ID: 2-a
+Agent: sheets subagent (interrupted) + main (Z.ai Code) completion
+Task: Build Z-Sheets — Google-Sheets-like spreadsheet app (list + editor + formula engine + autosave).
+
+Work Log:
+- Subagent wrote the full component tree in src/components/docs/sheets/** (12 files: sheets-app, sheets-list, sheet-card, sheet-editor, sheet-toolbar, grid, formula, formula-parser, cells, sheet-store, sheet-list-actions, sheet-autosave) but was interrupted by a harness timeout before reporting; files were complete and lint/tsc-clean — main agent adopted them as-is.
+- Main agent verified the contract end-to-end (see QA in WA-1).
+
+Stage Summary:
+- Z-Sheets is fully functional: 60×26 grid (A–Z), pointer range selection with Google-style primary ring overlay, in-place cell editing (Enter/Tab/Shift variants, F2, dblclick), formula bar with cell-ref chip, recursive-descent formula engine (SUM/AVERAGE/MIN/MAX/COUNT/COUNTA/ROUND/ABS/SQRT/POWER/INT/MEDIAN/IF/AND/OR/NOT/CONCAT/LEN/UPPER/LOWER/TRIM, cell refs/ranges, + - * / ^ % & comparisons, #ERROR!/#DIV/0!/#CIRC!/#NAME? error model, memo + cycle detection), bold/italic/align/fill-color/clear-format on selection, 50-step undo/redo (Ctrl+Z/Y), status bar with Sum/Avg/Count of numeric selection, autosave (800ms debounce PATCH data JSON), title rename/star/trash/restore/delete-forever/duplicate, list with search + All/Starred/Trash tabs, skeletons + empty states.
+
+---
+
+Task ID: 2-b
+Agent: slides subagent (interrupted) + main (Z.ai Code) completion
+Task: Build Z-Slides — Google-Slides-like presentation app (deck list + editor + present mode).
+
+Work Log:
+- Subagent wrote 12 files in src/components/docs/slides/** (slides-app, slides-list, deck-card, deck-editor, deck-store, slide-rail, slide-canvas, slide-render, layout-glyph, layout-picker, theme-controls, present-mode); interrupted by harness timeout before reporting/QA.
+- MAIN AGENT BUG FIXES during integration QA (real bugs found by agent-browser):
+  1. slide-render.tsx TextRegion rendered only `children`; title/subtitle/caption regions never receive children → slide titles never rendered anywhere (canvas, thumbnails, present). Fixed: `{children ?? (text ? <span className="block whitespace-pre-wrap">{text}</span> : null)}`.
+  2. makeSlide stored the placeholder "Click to add title" as literal title data. Fixed: new slides start with empty title (placeholder span renders only in interactive contexts).
+  3. Present-mode fixed overlay collapsed to 0-height: the app-shell wrapper `animate-view-in` (animation fill-mode both → persistent scale(1) transform) becomes the containing block for fixed descendants, and the wrapper's only child (PresentMode) is out-of-flow → wrapper height 0. Fixed: present-mode.tsx now renders via createPortal(document.body).
+  4. (benign) Escape exits present via window-capture keydown listener — verified working.
+
+Stage Summary:
+- Z-Slides fully functional: 6 layouts (title/titleBody/twoColumn/quote/section/blank) with shared renderer (mini list previews, thumbnails, canvas, present), dblclick in-place editing with pixel-matching textarea overlay, layout picker, theme accent (6 colors) + Sans/Serif, speaker notes, zoom 50–150%, slide reorder/duplicate/delete, present mode (portal, fullscreen request, arrows/space/Home/End/Esc, notes drawer "n", progress bar, counter, end card), autosave 900ms, list with search/tabs/star/duplicate/trash.
+
+---
+
+Task ID: 2-c
+Agent: forms subagent (Z.ai Code)
+Task: Build Z-Forms — Google-Forms-like list / builder / fill / responses analytics.
+
+Work Log: (full detail in agent-ctx/2-c.md)
+- 11 files in src/components/docs/forms/**: FormsApp mode machine + 900ms debounced autosave engine (flush on leave/unmount, in-flight rescheduling), forms-utils (API wrappers + defensive parse + real CSV builder), forms-list + use-forms-list (optimistic CRUD), form-card, form-top-bar, form-builder (Google-style header card + teal FAB), question-editor (6 types, options editor, reorder), form-renderer (shared respondent renderer + keyboard StarRating), fill-view (required validation + success screen), responses-view (option bars, rating avg + distribution, answer bubbles, individual responses, CSV download).
+- Verified: eslint 0, tsc 0, renderToString smoke, Prisma data-layer probe, CSV escaping.
+
+Stage Summary:
+- Z-Forms complete: builder ⇄ fill ⇄ responses all live; deep-link modes edit/fill/responses.
+
+---
+
+Task ID: 2-d
+Agent: activity+settings subagent (Z.ai Code)
+Task: Build Recent activity feed, Settings experience, app-launcher grid.
+
+Work Log: (full detail in agent-ctx/2-d.md)
+- activity-meta.ts (APP_META colors/icons + KIND_META verbs), activity-view.tsx (filter chips w/ tnum counts, day-grouped sticky timeline, actor avatars + app-kind badges, click-through navigation, skeleton/empty/error states), settings-lib.ts (accent CSS-var system, theme-aware), settings-view.tsx (5 tabs, all controls real: profile debounce-save, theme radio cards incl. genuine "System" via matchMedia, live accent picker, workspace defaults, storage stats from /api/export + real download + AlertDialog reset), settings-effects.tsx (mount-time accent + MutationObserver re-apply), app-grid.tsx (2×2 tiles + activity/settings rows).
+- Verified: eslint 0, tsc 0, SSR smoke render.
+
+Stage Summary:
+- Activity + Settings + AppGrid complete and self-contained; no fake controls anywhere.
+
+---
+
+Task ID: WA-1 (integration + full QA + polish)
+Agent: main (Z.ai Code)
+Task: Wire the workspace suite into the shared shell, fix integration bugs, QA everything with agent-browser, finalize.
+
+Work Log:
+- Shared-shell wiring (main-agent-owned files): docs-app.tsx renders SheetsApp/SlidesApp/FormsApp/ActivityView/SettingsView by store view + mounts SettingsEffects once; sidebar-nav.tsx Workspace section now 5 REAL nav items (Recent activity / Z-Sheets / Z-Slides / Z-Forms / Settings) with active states — all "soon" placeholders removed; home-header.tsx dead LayoutGrid → AppGridMenu, dead Settings button → openSettings(); NEW home quickstart row (quickstart.tsx) "More ways to start" creating spreadsheet/presentation/form via POST + deep-link openApp; share-dialog.tsx email invite is REAL (GET/POST/DELETE /api/documents/[id]/collaborators, role dropdown viewer/editor, remove access, shared activity event, toast) — "coming soon" input removed.
+- Settings consumption wiring: editor-view initializes page zoom from zdocs-default-zoom on mount; docs-store.createDoc applies zdocs-default-font=serif to fresh blank docs (Georgia paragraph).
+- sheets formula bar RadioGroup value fix in form-renderer.tsx (undefined → "" to avoid uncontrolled→controlled warning).
+- dev server + collab service both restarted (setsid detached) after stale-Prisma-client discovery (new models 500 until restart); collab-service :3003 health 200.
+- ACTIVITY BACKFILL: scripts/backfill-activity.ts one-shot seeded created/edited events from the 10 existing documents so the feed is alive on first visit (skips if any activity exists).
+- QA (agent-browser, full E2E golden paths):
+  - Z-Sheets: create → type 123/45 → =SUM(A1:A2) → 168 computed → autosave Saving…/All changes saved → toolbar bold on A1 → Undo reverts bold → reload → values + formula persist from DB.
+  - Z-Slides: create → title "Quarterly Business Review" (Enter commit; Escape=cancel verified) → add titleBody slide → title "Agenda & Roadmap" → present mode full-size (portal fix) → ArrowRight 2/2 → Escape exit → data persisted (verified via API).
+  - Z-Forms: create → rename → Q1 multiple choice (3 options) + required → Q2 rating → preview → submit empty → "required question" validation → answer + submit → recorded + toast → Responses tab (1 response, bars 100%, rating avg 4.0 + distribution, CSV button).
+  - Activity: live cross-app feed (All 20 / Docs 12 / Sheets 2 / Slides 2 / Forms 4), filter chips, day groups, relative times, click row → deep-links form builder at ?app=forms&entity=<id>.
+  - Settings: theme dark live-flip + accent Amber live-recolor (--primary #a8601a, dark variant #cfa881) + persisted, reload → SettingsEffects re-applies, storage stats live (9.9 KB, 10 docs/1 sheet/1 deck/1 form/2 folders), export download click, teal restored.
+  - Share dialog: invite maya@zworkspace.dev → persisted via API (viewer role) + "shared" activity event logged.
+  - AppGridMenu: popover with all 7 items, tile navigation verified (Z-Slides → ?app=slides).
+  - Quickstart: "New spreadsheet" → creates + deep-links into sheet editor (?app=sheets&entity=...).
+  - Regression: doc editor loads, mobile 375px home + activity no horizontal overflow, sticky footer intact, old docs intact.
+  - VLM screenshot review: sheets editor OK; slides/activity "issues" were the Next dev-tools overlay badge + normal scroll cutoff (not app defects).
+- Flaky dev-only artifact (documented): ~1-in-3 full reloads logs one hydration-mismatch error (Radix useId for the mobile Sheet trigger aria-controls differs when Turbopack streams the route differently). Zero user impact (Radix re-resolves on open); reproducible only in dev streaming. The earlier `akeSlide` "corruption" scare was the known [m-ANSI-display artifact — file bytes were correct.
+
+Stage Summary:
+- ALL FIVE flagged placeholder features are now real, browser-verified, Google-style: Recent activity (live cross-app feed), Z-Sheets (full spreadsheet + formula engine), Z-Slides (decks + present mode), Z-Forms (builder + fill + analytics), Settings (5 functional tabs). Plus: app launcher grid, home quickstart row, functional email sharing, cross-app activity logging with edit throttling, workspace data export.
+- Quality gates: bunx tsc --noEmit 0 src errors, bun run lint clean, dev :3000 healthy, collab :3003 healthy, all API routes 200.
+- Known gaps / next-phase candidates: (1) sheets grid has no column resize / no multi-sheet tabs; (2) slides drag-reorder is via menu buttons only (no drag); (3) forms list tab/search resets on remount; (4) suggestion-mode Ctrl+Z + IME gaps from previous round still open; (5) hydration flake is dev-only; (6) workspace apps don't join collab presence (only Z-Docs does).

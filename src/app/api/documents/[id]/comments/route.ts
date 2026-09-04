@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { logActivity } from "@/lib/server-activity"
 
 export const dynamic = "force-dynamic"
 
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: "Author identity is required" }, { status: 400 })
     }
 
-    const doc = await db.document.findUnique({ where: { id }, select: { id: true } })
+    const doc = await db.document.findUnique({ where: { id }, select: { id: true, title: true } })
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     if (body.parentId) {
@@ -112,6 +113,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         content: text,
       },
       include: { replies: { include: { reactions: true } }, reactions: true },
+    })
+    await logActivity({
+      app: "docs",
+      kind: "commented",
+      entityId: id,
+      entityTitle: doc.title,
+      detail: body.parentId ? "replied to a comment" : text.slice(0, 80),
+      actor: { id: body.authorId, name: body.authorName.slice(0, 60), color: body.authorColor ?? "#0e7c74" },
     })
 
     return NextResponse.json({ comment: serialize(created) }, { status: 201 })

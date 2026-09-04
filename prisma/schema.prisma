@@ -25,6 +25,7 @@ model Document {
   comments Comment[]
   tags     DocumentTag[]
   folder   Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  collaborators Collaborator[]
 }
 
 /// Named folders for organizing documents in the home view.
@@ -62,6 +63,96 @@ model DocumentTag {
   @@unique([docId, tagId])
   @@index([docId])
   @@index([tagId])
+}
+
+/// Z-Sheets: a spreadsheet with cells stored as a JSON blob.
+model Sheet {
+  id        String   @id @default(cuid())
+  title     String   @default("Untitled spreadsheet")
+  /// JSON of SheetData { rows, cols, cells: Record<"A1", CellData> }
+  data      String   @default("{}")
+  starred   Boolean  @default(false)
+  trashed   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Z-Slides: a presentation deck stored as a JSON blob.
+model SlideDeck {
+  id        String   @id @default(cuid())
+  title     String   @default("Untitled presentation")
+  /// JSON of DeckData { slides: Slide[], theme: { accent, font } }
+  data      String   @default("[]")
+  starred   Boolean  @default(false)
+  trashed   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Z-Forms: a form with questions stored as a JSON blob.
+model Form {
+  id          String   @id @default(cuid())
+  title       String   @default("Untitled form")
+  description String   @default("")
+  /// JSON of Question[]
+  data        String   @default("[]")
+  starred     Boolean  @default(false)
+  trashed     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  responses   FormResponse[]
+}
+
+/// A single submitted response to a Form.
+model FormResponse {
+  id          String   @id @default(cuid())
+  formId      String
+  /// JSON of answers Record<questionId, string | string[] | number>
+  answers     String   @default("{}")
+  submittedAt DateTime @default(now())
+
+  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@index([formId, submittedAt])
+}
+
+/// Cross-app recent activity feed (Google Drive activity style).
+model ActivityLog {
+  id          String   @id @default(cuid())
+  /// "docs" | "sheets" | "slides" | "forms"
+  app         String
+  /// created | edited | renamed | starred | unstarred | trashed | restored | duplicated | commented | submitted
+  kind        String
+  /// id of the touched entity ("" when not applicable)
+  entityId    String
+  /// display title of the entity
+  entityTitle String
+  /// extra human line, e.g. "renamed to “X”" or "2 replies"
+  detail      String   @default("")
+  actorId     String
+  actorName   String
+  actorColor  String
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// People a document is shared with (email invite, local demo).
+model Collaborator {
+  id        String   @id @default(cuid())
+  docId     String
+  email     String
+  name      String   @default("")
+  color     String   @default("#0b6b62")
+  /// "viewer" | "editor"
+  role      String   @default("viewer")
+  createdAt DateTime @default(now())
+
+  doc       Document @relation(fields: [docId], references: [id], onDelete: Cascade)
+
+  @@unique([docId, email])
+  @@index([docId])
 }
 
 model DocumentVersion {

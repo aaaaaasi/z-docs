@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { getSnippet, countWords, htmlToText } from "@/lib/doc-utils"
+import { actorFromRequest, logActivity } from "@/lib/server-activity"
 
 export const dynamic = "force-dynamic"
 
 // POST /api/documents/:id/duplicate
-export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
     const doc = await db.document.findUnique({ where: { id } })
@@ -16,6 +17,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         title: `Copy of ${doc.title}`.slice(0, 150),
         content: doc.content,
       },
+    })
+    await logActivity({
+      app: "docs",
+      kind: "duplicated",
+      entityId: copy.id,
+      entityTitle: copy.title,
+      detail: `copy of “${doc.title}”`,
+      actor: actorFromRequest(req),
     })
 
     return NextResponse.json(

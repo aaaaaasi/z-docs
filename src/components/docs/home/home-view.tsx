@@ -3,6 +3,7 @@
 import { HomeHeader } from "./home-header"
 import { SidebarNav } from "./sidebar-nav"
 import { TemplateGallery } from "./template-gallery"
+import { WorkspaceQuickstart } from "./quickstart"
 import { DocsGrid } from "./docs-grid"
 import { HomeDndContext } from "./doc-dnd"
 
@@ -15,6 +16,7 @@ export function HomeView() {
           <SidebarNav />
           <main className="min-w-0 flex-1">
             <TemplateGallery />
+            <WorkspaceQuickstart />
             <DocsGrid />
           </main>
         </div>

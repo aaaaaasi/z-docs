@@ -77,6 +77,17 @@ export function EditorView() {
   const [linkHasSelection, setLinkHasSelection] = React.useState(false)
   const [aiSource, setAiSource] = React.useState<AiSource | null>(null)
 
+  // workspace default zoom (Settings → Workspace defaults) — applied once on mount
+  React.useEffect(() => {
+    try {
+      const z = window.localStorage.getItem("zdocs-default-zoom")
+      if (z === "125") setZoomState(1.25)
+      else if (z === "150") setZoomState(1.5)
+    } catch {
+      // storage unavailable — keep 100%
+    }
+  }, [])
+
   /* ---------------- find & replace state ---------------- */
   const [findOpen, setFindOpen] = React.useState(false)
   const [findReplaceMode, setFindReplaceMode] = React.useState(false)
