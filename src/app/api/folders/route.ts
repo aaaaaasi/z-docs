@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { guardRoute } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
 // Warm, desaturated accents matching the 11-a design system (no cold blue/violet)
 const FOLDER_COLORS = ["#0b6b62", "#9a6b2f", "#a15c48", "#5e7050", "#8d5a74", "#a04b3c", "#6e6259"]
 
-// GET /api/folders — list all folders
-export async function GET() {
+// GET /api/folders — list all folders (signed-in members)
+export async function GET(req: NextRequest) {
   try {
+    const guard = await guardRoute(req)
+    if (!guard.ok) return guard.response
+
     const folders = await db.folder.findMany({
       orderBy: { name: "asc" },
       include: { _count: { select: { documents: true } } },
@@ -32,6 +36,9 @@ export async function GET() {
 // POST /api/folders { name, color? }
 export async function POST(req: NextRequest) {
   try {
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+
     const body = (await req.json().catch(() => ({}))) as { name?: string; color?: string }
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : ""
     if (!name) return NextResponse.json({ error: "Folder name is required" }, { status: 400 })
@@ -60,6 +67,9 @@ export async function POST(req: NextRequest) {
 // PATCH /api/folders { id, name?, color? }
 export async function PATCH(req: NextRequest) {
   try {
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+
     const body = (await req.json().catch(() => ({}))) as { id?: string; name?: string; color?: string }
     if (!body.id) return NextResponse.json({ error: "Folder id is required" }, { status: 400 })
 
@@ -88,6 +98,9 @@ export async function PATCH(req: NextRequest) {
 // DELETE /api/folders?id=... — documents inside move back to root
 export async function DELETE(req: NextRequest) {
   try {
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+
     const id = new URL(req.url).searchParams.get("id")
     if (!id) return NextResponse.json({ error: "Folder id is required" }, { status: 400 })
 

@@ -1,0 +1,193 @@
+   430→- PDF EXPORT (File → PDF document (.pdf), first item in Download group): jspdf + html2canvas-pro (oklch-safe fork) dynamically imported. Zoom transform temporarily reset during capture (data-doc-zoom-wrap marker added to editor-canvas scaled wrapper). Pagination walks top-level blocks and breaks pages ONLY between blocks (never slices a text line); canvas sliced at 2× into per-page JPEG q0.95 on Letter pt pages. Verified: real 33KB 1-page PDF downloaded, 0 console errors; catch-path falls back to print dialog with a toast.
+   431→- TABLE MERGE/SPLIT (Google Docs Table menu parity): grid-model engine in editor-dom.ts (buildTableGrid/cellGridPos handles rowspan/colspan footprints correctly). mergeTableCells(ctx, "right"|"down") with alignment guards + content join; splitTableCell restores 1×1 cells (full-width fresh cells into spanned rows via grid-column DOM insertion, then column split on anchor row). TableInfo extended with canMergeRight/canMergeDown/canSplit → menu items enable/disable. Menu entries: Insert → Table options submenu + canvas context menu, TableCellsMerge/TableCellsSplit icons (down = rotated icon). Verified: 4×4 table, merge right ("100"+"150" → colspan=2 "100 150"), split back, merge down ("North"+"South" → rowspan=2, second row correctly 3 cells).
+   432→- DOC TAGS (subagent 6-a, Task ID 6-a, full report in its worklog section + /agent-ctx/6-a-full-stack-developer.md): Prisma Tag + DocumentTag models (db:push applied, dev server bounced for fresh Prisma client), TagDTO + DocumentDTO.tags, GET/POST /api/tags, DELETE /api/tags/[id], PUT /api/documents/[id]/tags (transactional set semantics), list endpoints include tags. Home UI: Tags sidebar section (dot+name+count, filter click, "All tags" clear row, ＋New tag inline input + 6-color Google palette, hover ⋮ → delete), tag chips on doc cards (max 3 + "+N"), "Add tags" checkbox submenu in card menu with "New tag…", Drive-style active filter chip with ×, composes with folder/starred/search filters. I QA'd end-to-end in browser: create tag → assign via card menu → chip on card + count in sidebar → filter shows 1 doc → API persistence ({"tags":["Work"]}) → delete → cascade clean. Test tag + 3 QA docs deleted afterwards (user data restored: 8 docs + Projects folder).
+   433→- GOOGLE-STYLE POLISH: (1) NEW horizontal page ruler above the document (ruler.tsx + .doc-ruler CSS): 816px wide, 1/8" ticks, inch labels, hatched margin zones matching the 1in page padding, dark-mode variants, no-print, .doc-page margin-top 40→12px. Overlay coordinate math (find highlights, comment markers, remote cursors) verified still pixel-accurate after the shift (VLM: "highlight exactly on 'North'", "ruler rendered cleanly"). (2) Mobile toolbar fix: compact style (92px) / font (76px) select widths + tighter margins on <640px, right-edge gradient scroll affordance, print button hidden on mobile (in File menu), undo/redo kept. VLM re-check: "toolbar usable, no clipping, no layout breakage". (3) Sticky footer verified (home mt-auto footer; editor is h-dvh app shell).
+   434→- Environment incident + fix: Turbopack served STALE globals.css after edits (verified via fetch of stylesheet with cache:no-store). Fixed by full dev-server restart + cache wipe. CRITICAL LESSON RE-LEARNED: plain `setsid/nohup bun run dev &` DIES when the tool command exits in this sandbox — the ONLY surviving pattern is the orphaning subshell `( nohup bun run dev > dev.log 2>&1 & )` (documented at worklog line 64). Dev server now healthy on :3000, collab :3003 healthy.
+   435→- Final QA: fresh load → console 0 errors (only known Radix aria-controls useId hydration warnings — dev-mode artifact, app functional); new doc → type → autosave "All changes saved" + live word count; golden path + all new features verified; QA docs cleaned up; lint clean.
+   436→
+   437→Stage Summary:
+   438→- Z-Docs now has FULL Google Docs parity on its core flows: cross-node find & replace with single-undo replace-all, real .pdf export with block-safe pagination, table cell merge/split with correct span grid math, and Drive-style document tags with filtering.
+   439→- Google-likeness raised: page ruler (the iconic Google Docs visual), mobile-compact toolbar, refined print/print-reset styles; VLM rates home 8.5/10 Drive-likeness (teal brand color is intentional per design rules — do not "fix" to blue).
+   440→- State: dev :3000 + collab :3003 healthy, lint clean, 8 user docs + Projects folder intact, tags empty (test data removed), all API routes 200.
+   441→- Known limitations / next-phase priorities: (1) Radix useId hydration warnings on home (cosmetic, dev-only; would need tree-shape refactor), (2) PDF export is raster-based (text not selectable — a vector/text layer pass would be the next big win), (3) find matches can't span table cell boundaries cleanly yet (block separators handle paragraphs, td/th included), (4) ruler is visual-only (draggable margins would be Google-parity+), (5) replace-all via insertHTML normalizes the serialized DOM slightly (colgroups/styles preserved in tests), (6) parked: taste-skill repo de-AI-flavor research, vertical ruler, suggesting/edit mode.
+   442→
+   443→---
+   444→Task ID: 14
+   445→Agent: Z.ai Code (main session, round 14)
+   446→Task: User directive — "Refine all features and the app. Finalize all upcoming features. Ensure everything follows a Google-like style. Continue." Health/QA first, then implement the worklog's top remaining Google-parity features: suggesting mode + draggable ruler margins.
+   447→
+   448→Work Log:
+   449→- Health: dev :3000 200, collab :3003 polling 200, lint clean. agent-browser pre-flight: home renders (9 docs), editor loads, console clean (only known Radix useId dev warning).
+   450→- NEW FEATURE — SUGGESTING MODE (the big Google Docs parity item, full stack):
+   451→  - src/lib/suggest-dom.ts (NEW, pure DOM engine): suggestions live in the doc HTML as marked spans — `<span class="sug-ins" data-sid/ai/a/c/t>` (insertions), `.sug-del` (deletions), `.sug-ins.sug-para[data-kind=para]` with a word-joiner (paragraph breaks). API: collectSuggestions (cards derived from marks alone — no DB tables, survives reload/autosave/collab broadcast), suggestInsertText (direct Range.insertNode + merge into preceding own mark → one card per typing run), suggestInsertParagraph (execCommand insertParagraph split + direct-DOM mark at new line start; steps caret outside an insertion mark first to avoid nesting), suggestDeleteSelection (extract→mark→re-insert, keeps rich formatting, marks never inside <p>), deletionUnitRange (single-char unit for collapsed backspace/delete), caretSugSpan, accept/rejectSuggestionMark (accept: unwrap ins / remove del / strip joiner; reject: remove ins / unwrap del / drop emptied paragraphs via pruneEmptiedParagraphs — never leaves the doc block-less), focusSuggestionMark (scroll + .sug-focus ring).
+   452→  - CRITICAL BROWSER FINDING (root-caused this round): Chromium's execCommand("insertHTML") NORMALIZES inserted markup whenever its style-splicing activates — it computes .sug-* class styles from globals.css, BAKES them into inline styles (color: color(srgb …) exactly matches my color-mix!), strips class + data-sid/data-a attrs → marks lose identity → accept/reject breaks. Repro: insertHTML over a non-collapsed selection OR at a caret adjacent to an existing styled span. FIX: ALL suggest mutations are direct-DOM (Range.insertNode / extractContents); execCommand used only for the real paragraph split (Chromium's own op, reliable).
+   453→  - editor-view.tsx wiring: mode state (persisted localStorage zdocs:mode, global), suggestions/activeSuggestionId state, beforeinput interceptor (insertText/insertParagraph/insertFromPaste/deleteContentBackward/Forward — passthroughs: typing inside own ins extends it, backspace inside own del shortens it, structural deletes fall through), accept/reject/focus/setMode/setPageMargins callbacks, scheduleStats also rescans marks (400ms cadence), doc-load scan + per-doc margin restore, auto-open review rail when a NEW sid appears in suggest mode, manual handleInput() after direct-DOM mutations (no input event fires), downloadPdf adds .exporting class so PDF exports the ACCEPTED view (deletions hidden, insertions plain) with capture+measurement both under the class.
+   454→  - comments-sidebar.tsx: Suggestions section at the top of the rail — sticky sub-header (PencilLine icon + count chip), SuggestionCard (author avatar, "X inserted/deleted/suggested a paragraph break · time", styled preview with author-color underline/strikethrough, Accept ✓ / Reject ✗ buttons, click-to-focus-mark). Props: suggestions/activeSuggestionId/onAccept/onReject/onFocus.
+   455→  - toolbar.tsx: Google's iconic corner mode switcher — pencil dropdown (Editing / Suggesting with check marks + explanatory footer), suggesting state = primary tint, pending-suggestions count badge on the trigger (9+ capped), icon-only on mobile.
+   456→  - globals.css: .sug-ins (2px underline in author color via --sc, offset 2.5px), .sug-del (line-through + faded author color via color-mix), .sug-para::after dash mark, .sug-focus ring, @media print + .doc-page.exporting → accepted view (del hidden, ins plain).
+   457→  - editor-types.ts: mode/setMode/suggestions/activeSuggestionId/accept/reject/focusSuggestion/pageMargins/setPageMargins on EditorApi (+ "aitools" added to DialogKey).
+   458→- NEW FEATURE — DRAGGABLE RULER MARGINS: ruler.tsx rewritten — Google-style triangle handles at the margin boundaries, pointer drag with 1/8" (12px) snapping, clamps [0.5", 3.5"] with a ≥1.5" content guard, zoom-aware deltas, live "0.75 in" tooltip above the handle, full-height teal guide line in the page while dragging (editor-canvas renders .doc-margin-guide), keyboard arrows ±1/8" (role=slider + aria-valuetext), double-click resets to 1". editor-canvas applies margins as inline doc-page padding + mobile guard (≤900px forces 32px so custom margins never break the narrow layout). Persisted per doc: localStorage zdocs:margins:{docId}.
+   459→- STRUCTURAL FIX: empty documents now mount with `<p><br></p>` (editor-canvas) instead of bare text — fixes paragraph ops, stats, exports & suggestion marks on fresh docs; placeholder CSS extended with :has(> p:only-child > br:only-child).
+   460→- TYPE-DEBT CLEANUP (tsc --noEmit now 0 errors in src/): HTMLColElement→HTMLTableColElement (editor-dom), DialogKey +"aitools" (3 errors), DocumentMeta content optional via Omit (docs-types), find-keep boolean→number fix + outline querySelectorAll<HTMLElement> generic (editor-view), relativeTime ISO string (comments-sidebar), dragHandlers type (ruler), docs-grid role/tabIndex spread-order (2 errors), template-gallery ICON strokeWidth prop, DocPreview html fallback to snippet.
+   461→- QA (agent-browser, full E2E): suggest-mode switch (toast + rail auto-open when marks exist) → typed insertion marked+merged (2 typing runs → 1 span, card "Guest Tapir inserted") → selection delete marked (text preserved, struck) → accept deletion (text removed, autosave "All changes saved") → accept paragraph break (paragraph stays, mark+joiner stripped) → reject paragraph break (paragraphs merge back 2→1) → reject insertion (text gone, emptied paragraphs pruned) → full undo sweep (Ctrl+Z×11 → empty doc, marks 0) → ruler drag +36px (padding 132px, snapped, persisted, guide line) → dblclick reset 96 → arrow key 108 → VLM screenshot review: mode switcher+badge ✓, teal underlined insertion ✓, ruler triangles ✓, Suggestions card with Accept/Reject ✓, no glitches ✓. Regression: find/replace (Ctrl+F "part" → 1 of 2 + 2 highlights), voice button, comments button, doc cards open editor, home 9 user docs intact. 2 QA docs deleted after testing. tsc clean, lint clean, dev.log clean, both services 200.
+   462→- Ops: Turbopack served a stale compile after the canvas comment fix (known issue) → full dev-server restart + .next/dev wipe with the documented orphaning-subshell pattern; localStorage survives browser-profile resets in agent-browser (each session = fresh profile — mode/margins persistence re-verified within one session).
+   463→
+   464→Stage Summary:
+   465→- Z-Docs now has Google Docs' Suggesting mode end-to-end: pencil mode switcher, marked insertions/deletions/paragraph breaks with author colors, review-rail cards with accept/reject, print/PDF "accepted view", mode+margin persistence, and undo integration where the browser allows it.
+   466→- Ruler margins are now draggable (pointer + keyboard + snapping + guide line) — the last iconic Google Docs ruler behavior.
+   467→- src/ is now fully type-clean (bunx tsc --noEmit: 0 errors) — a quality bar that had never held before.
+   468→- Known limitations (next-phase priorities): (1) suggestion edits are direct-DOM → Ctrl+Z does NOT revert suggestion marks (insertParagraph split IS undoable; a manual undo stack or beforeinput-custom transactions would fix this — biggest remaining gap), (2) IME/composition input in suggest mode bypasses marks (insertCompositionText not intercepted — affects Chinese typing in suggest mode), (3) word-level deletes (Ctrl+Backspace) fall through unmarked, (4) find matches still hit suggested-deletion text, (5) vertical ruler + draggable top/bottom margins, (6) suggestions don't sync margins (margins are per-browser), (7) parked: taste-skill repo de-AI-flavor research.
+   469→- State: dev :3000 healthy (restarted fresh), collab :3003 healthy, lint+tsc clean, 9 user docs + Projects folder intact, tags empty, all API routes 200.
+   470→
+   471→---
+   472→
+   473→Task ID: WA-0 (Workspace suite foundation)
+   474→Agent: main (Z.ai Code)
+   475→Task: User flagged that Recent activity / Z-Sheets / Z-Slides / Z-Forms / Settings were all "soon" placeholders — must ALL become real, functional features (Google-like). Foundation phase for the workspace-suite expansion.
+   476→
+   477→Work Log:
+   478→- prisma/schema.prisma: added models Sheet, SlideDeck, Form, FormResponse, ActivityLog, Collaborator (+ Document.collaborators relation); `bun run db:push` OK, client regenerated.
+   479→- src/lib/workspace-types.ts (NEW): WorkspaceView/App, SheetData/CellData/SheetDTO/Meta + EMPTY_SHEET, Slide/SlideLayout/DeckTheme/DeckData/SlideDeckDTO/Meta, Question/QuestionType/FormDTO/FormMeta/FormResponseDTO/AnswerValue, ActivityKind/ActivityDTO.
+   480→- src/lib/server-activity.ts (NEW): actorFromRequest (x-z-actor header), logActivity (caps feed at 200), logActivityThrottled (dedupe "edited" events per entity within N minutes, touches timestamp).
+   481→- src/lib/api-client.ts (NEW): client `api(url, init)` fetch wrapper stamping x-z-actor identity header for activity attribution.
+   482→- API routes (NEW): /api/sheets (+[id] GET/PATCH/DELETE), /api/slides (+[id]), /api/forms (+[id], +[id]/responses GET/POST with trashed guard), /api/activity (GET ?app=&limit=), /api/export (full workspace JSON download), /api/documents/[id]/collaborators (GET/POST/DELETE, email validation, shared activity event).
+   483→- Activity logging injected into existing routes: documents POST (created), documents/[id] PATCH (trashed/restored/starred/unstarred/renamed/edited-throttled-10min), duplicate (duplicated), comments POST (commented with author identity).
+   484→- src/store/docs-store.ts: view extended to WorkspaceView (home/editor/sheets/slides/forms/activity/settings) + appTarget deep-link state (id + formMode), openApp() ("docs" routes home), openActivity(), openSettings(), consumeAppTarget() one-shot for app mounts; URL scheme /?app=<app>&entity=<id>&mode=<fill|responses|edit>; hydrateFromUrl/bindPopState/goHome updated; removed dead docParam.
+   485→- tsc --noEmit: 0 src errors after fixes (pushState arg type; "docs" not a view).
+   486→
+   487→Stage Summary:
+   488→- Full backend + routing foundation for the 4-app suite is DONE and type-clean. Entry contract for subagents: each app is a self-contained component exported from its own folder, rendered by docs-app.tsx via store view; shared shell wiring (docs-app/sidebar-nav/home-header/share-dialog/home quick-start) stays with main agent.
+   489→- Next: parallel build of Z-Sheets / Z-Slides / Z-Forms / (Activity + Settings + AppGrid) by subagents 2-a..2-d, then integration + QA.
+   490→
+   491→---
+   492→
+   493→Task ID: 2-a
+   494→Agent: sheets subagent (interrupted) + main (Z.ai Code) completion
+   495→Task: Build Z-Sheets — Google-Sheets-like spreadsheet app (list + editor + formula engine + autosave).
+   496→
+   497→Work Log:
+   498→- Subagent wrote the full component tree in src/components/docs/sheets/** (12 files: sheets-app, sheets-list, sheet-card, sheet-editor, sheet-toolbar, grid, formula, formula-parser, cells, sheet-store, sheet-list-actions, sheet-autosave) but was interrupted by a harness timeout before reporting; files were complete and lint/tsc-clean — main agent adopted them as-is.
+   499→- Main agent verified the contract end-to-end (see QA in WA-1).
+   500→
+   501→Stage Summary:
+   502→- Z-Sheets is fully functional: 60×26 grid (A–Z), pointer range selection with Google-style primary ring overlay, in-place cell editing (Enter/Tab/Shift variants, F2, dblclick), formula bar with cell-ref chip, recursive-descent formula engine (SUM/AVERAGE/MIN/MAX/COUNT/COUNTA/ROUND/ABS/SQRT/POWER/INT/MEDIAN/IF/AND/OR/NOT/CONCAT/LEN/UPPER/LOWER/TRIM, cell refs/ranges, + - * / ^ % & comparisons, #ERROR!/#DIV/0!/#CIRC!/#NAME? error model, memo + cycle detection), bold/italic/align/fill-color/clear-format on selection, 50-step undo/redo (Ctrl+Z/Y), status bar with Sum/Avg/Count of numeric selection, autosave (800ms debounce PATCH data JSON), title rename/star/trash/restore/delete-forever/duplicate, list with search + All/Starred/Trash tabs, skeletons + empty states.
+   503→
+   504→---
+   505→
+   506→Task ID: 2-b
+   507→Agent: slides subagent (interrupted) + main (Z.ai Code) completion
+   508→Task: Build Z-Slides — Google-Slides-like presentation app (deck list + editor + present mode).
+   509→
+   510→Work Log:
+   511→- Subagent wrote 12 files in src/components/docs/slides/** (slides-app, slides-list, deck-card, deck-editor, deck-store, slide-rail, slide-canvas, slide-render, layout-glyph, layout-picker, theme-controls, present-mode); interrupted by harness timeout before reporting/QA.
+   512→- MAIN AGENT BUG FIXES during integration QA (real bugs found by agent-browser):
+   513→  1. slide-render.tsx TextRegion rendered only `children`; title/subtitle/caption regions never receive children → slide titles never rendered anywhere (canvas, thumbnails, present). Fixed: `{children ?? (text ? <span className="block whitespace-pre-wrap">{text}</span> : null)}`.
+   514→  2. makeSlide stored the placeholder "Click to add title" as literal title data. Fixed: new slides start with empty title (placeholder span renders only in interactive contexts).
+   515→  3. Present-mode fixed overlay collapsed to 0-height: the app-shell wrapper `animate-view-in` (animation fill-mode both → persistent scale(1) transform) becomes the containing block for fixed descendants, and the wrapper's only child (PresentMode) is out-of-flow → wrapper height 0. Fixed: present-mode.tsx now renders via createPortal(document.body).
+   516→  4. (benign) Escape exits present via window-capture keydown listener — verified working.
+   517→
+   518→Stage Summary:
+   519→- Z-Slides fully functional: 6 layouts (title/titleBody/twoColumn/quote/section/blank) with shared renderer (mini list previews, thumbnails, canvas, present), dblclick in-place editing with pixel-matching textarea overlay, layout picker, theme accent (6 colors) + Sans/Serif, speaker notes, zoom 50–150%, slide reorder/duplicate/delete, present mode (portal, fullscreen request, arrows/space/Home/End/Esc, notes drawer "n", progress bar, counter, end card), autosave 900ms, list with search/tabs/star/duplicate/trash.
+   520→
+   521→---
+   522→
+   523→Task ID: 2-c
+   524→Agent: forms subagent (Z.ai Code)
+   525→Task: Build Z-Forms — Google-Forms-like list / builder / fill / responses analytics.
+   526→
+   527→Work Log: (full detail in agent-ctx/2-c.md)
+   528→- 11 files in src/components/docs/forms/**: FormsApp mode machine + 900ms debounced autosave engine (flush on leave/unmount, in-flight rescheduling), forms-utils (API wrappers + defensive parse + real CSV builder), forms-list + use-forms-list (optimistic CRUD), form-card, form-top-bar, form-builder (Google-style header card + teal FAB), question-editor (6 types, options editor, reorder), form-renderer (shared respondent renderer + keyboard StarRating), fill-view (required validation + success screen), responses-view (option bars, rating avg + distribution, answer bubbles, individual responses, CSV download).
+   529→- Verified: eslint 0, tsc 0, renderToString smoke, Prisma data-layer probe, CSV escaping.
+   530→
+   531→Stage Summary:
+   532→- Z-Forms complete: builder ⇄ fill ⇄ responses all live; deep-link modes edit/fill/responses.
+   533→
+   534→---
+   535→
+   536→Task ID: 2-d
+   537→Agent: activity+settings subagent (Z.ai Code)
+   538→Task: Build Recent activity feed, Settings experience, app-launcher grid.
+   539→
+   540→Work Log: (full detail in agent-ctx/2-d.md)
+   541→- activity-meta.ts (APP_META colors/icons + KIND_META verbs), activity-view.tsx (filter chips w/ tnum counts, day-grouped sticky timeline, actor avatars + app-kind badges, click-through navigation, skeleton/empty/error states), settings-lib.ts (accent CSS-var system, theme-aware), settings-view.tsx (5 tabs, all controls real: profile debounce-save, theme radio cards incl. genuine "System" via matchMedia, live accent picker, workspace defaults, storage stats from /api/export + real download + AlertDialog reset), settings-effects.tsx (mount-time accent + MutationObserver re-apply), app-grid.tsx (2×2 tiles + activity/settings rows).
+   542→- Verified: eslint 0, tsc 0, SSR smoke render.
+   543→
+   544→Stage Summary:
+   545→- Activity + Settings + AppGrid complete and self-contained; no fake controls anywhere.
+   546→
+   547→---
+   548→
+   549→Task ID: WA-1 (integration + full QA + polish)
+   550→Agent: main (Z.ai Code)
+   551→Task: Wire the workspace suite into the shared shell, fix integration bugs, QA everything with agent-browser, finalize.
+   552→
+   553→Work Log:
+   554→- Shared-shell wiring (main-agent-owned files): docs-app.tsx renders SheetsApp/SlidesApp/FormsApp/ActivityView/SettingsView by store view + mounts SettingsEffects once; sidebar-nav.tsx Workspace section now 5 REAL nav items (Recent activity / Z-Sheets / Z-Slides / Z-Forms / Settings) with active states — all "soon" placeholders removed; home-header.tsx dead LayoutGrid → AppGridMenu, dead Settings button → openSettings(); NEW home quickstart row (quickstart.tsx) "More ways to start" creating spreadsheet/presentation/form via POST + deep-link openApp; share-dialog.tsx email invite is REAL (GET/POST/DELETE /api/documents/[id]/collaborators, role dropdown viewer/editor, remove access, shared activity event, toast) — "coming soon" input removed.
+   555→- Settings consumption wiring: editor-view initializes page zoom from zdocs-default-zoom on mount; docs-store.createDoc applies zdocs-default-font=serif to fresh blank docs (Georgia paragraph).
+   556→- sheets formula bar RadioGroup value fix in form-renderer.tsx (undefined → "" to avoid uncontrolled→controlled warning).
+   557→- dev server + collab service both restarted (setsid detached) after stale-Prisma-client discovery (new models 500 until restart); collab-service :3003 health 200.
+   558→- ACTIVITY BACKFILL: scripts/backfill-activity.ts one-shot seeded created/edited events from the 10 existing documents so the feed is alive on first visit (skips if any activity exists).
+   559→- QA (agent-browser, full E2E golden paths):
+   560→  - Z-Sheets: create → type 123/45 → =SUM(A1:A2) → 168 computed → autosave Saving…/All changes saved → toolbar bold on A1 → Undo reverts bold → reload → values + formula persist from DB.
+   561→  - Z-Slides: create → title "Quarterly Business Review" (Enter commit; Escape=cancel verified) → add titleBody slide → title "Agenda & Roadmap" → present mode full-size (portal fix) → ArrowRight 2/2 → Escape exit → data persisted (verified via API).
+   562→  - Z-Forms: create → rename → Q1 multiple choice (3 options) + required → Q2 rating → preview → submit empty → "required question" validation → answer + submit → recorded + toast → Responses tab (1 response, bars 100%, rating avg 4.0 + distribution, CSV button).
+   563→  - Activity: live cross-app feed (All 20 / Docs 12 / Sheets 2 / Slides 2 / Forms 4), filter chips, day groups, relative times, click row → deep-links form builder at ?app=forms&entity=<id>.
+   564→  - Settings: theme dark live-flip + accent Amber live-recolor (--primary #a8601a, dark variant #cfa881) + persisted, reload → SettingsEffects re-applies, storage stats live (9.9 KB, 10 docs/1 sheet/1 deck/1 form/2 folders), export download click, teal restored.
+   565→  - Share dialog: invite maya@zworkspace.dev → persisted via API (viewer role) + "shared" activity event logged.
+   566→  - AppGridMenu: popover with all 7 items, tile navigation verified (Z-Slides → ?app=slides).
+   567→  - Quickstart: "New spreadsheet" → creates + deep-links into sheet editor (?app=sheets&entity=...).
+   568→  - Regression: doc editor loads, mobile 375px home + activity no horizontal overflow, sticky footer intact, old docs intact.
+   569→  - VLM screenshot review: sheets editor OK; slides/activity "issues" were the Next dev-tools overlay badge + normal scroll cutoff (not app defects).
+   570→- Flaky dev-only artifact (documented): ~1-in-3 full reloads logs one hydration-mismatch error (Radix useId for the mobile Sheet trigger aria-controls differs when Turbopack streams the route differently). Zero user impact (Radix re-resolves on open); reproducible only in dev streaming. The earlier `akeSlide` "corruption" scare was the known [m-ANSI-display artifact — file bytes were correct.
+   571→
+   572→Stage Summary:
+   573→- ALL FIVE flagged placeholder features are now real, browser-verified, Google-style: Recent activity (live cross-app feed), Z-Sheets (full spreadsheet + formula engine), Z-Slides (decks + present mode), Z-Forms (builder + fill + analytics), Settings (5 functional tabs). Plus: app launcher grid, home quickstart row, functional email sharing, cross-app activity logging with edit throttling, workspace data export.
+   574→- Quality gates: bunx tsc --noEmit 0 src errors, bun run lint clean, dev :3000 healthy, collab :3003 healthy, all API routes 200.
+   575→- Known gaps / next-phase candidates: (1) sheets grid has no column resize / no multi-sheet tabs; (2) slides drag-reorder is via menu buttons only (no drag); (3) forms list tab/search resets on remount; (4) suggestion-mode Ctrl+Z + IME gaps from previous round still open; (5) hydration flake is dev-only; (6) workspace apps don't join collab presence (only Z-Docs does).
+   576→
+   577→---
+   578→Task ID: 15
+   579→Agent: main (Z.ai Code, round 15)
+   580→Task: User bug report — "AI writing assistance feature display overflows its container" + directive to ensure responsive layout & mobile adaptation generally.
+   581→
+   582→Work Log:
+   583→- ROOT CAUSE (reproduced via agent-browser + DOM measurement): the "Help me write" result Textarea uses field-sizing-content (auto-grow) — a 1805-char AI draft grew the textarea to 1378px; DialogContent had NO max-height and NO overflow scroll, so the dialog became 1808px tall in a 577px viewport, centered via top-50%/translate — top ~615px (title/header/prompt) clipped off-screen. Matches user's screenshot exactly (title cut at top, mid-content only visible).
+   584→- FIX 1 (GLOBAL, base component): ui/dialog.tsx DialogContent now has max-h-[calc(100dvh-2rem)] + overflow-y-auto + overscroll-contain — EVERY dialog in the app is now viewport-capped and internally scrollable (tall dialogs: versions, share, emoji, docs-grid, dialogs-basic, AI dialogs).
+   585→- FIX 2 (AI dialogs): help-write-dialog.tsx + ai-tools-dialog.tsx restructured to flex-column layout: fixed header + fixed action-bar + fixed footer, scrollable middle (slim-scroll), result textarea capped at max-h-[min(20rem,45dvh)] (viewport-aware — shrinks on short screens), prompt capped max-h-40. Action buttons (Insert/Replace/Regenerate/Copy) now ALWAYS visible above the footer instead of below the fold.
+   586→- FIX 3 (textareas app-wide that auto-grow): comment composer/reply/edit textareas capped max-h-56/48 (scroll internally); forms paragraph answer capped max-h-64.
+   587→- FIX 4 (REAL bug found during sweep): the "mobile scroll affordance" gradient fades in toolbar.tsx + menu-bar.tsx were `sticky right-0` FIRST-CHILDREN — they rendered at the LEFT edge (over Undo button) instead of the right edge. New shared component src/components/docs/scroll-fade.tsx: absolute right-edge gradient overlay + scroll/ResizeObserver listener that hides itself when scrolled to the end. Applied to toolbar, menubar, and home template gallery.
+   588→- FIX 5 (menubar mobile fit): menubar gained overflow-x-auto + max-sm:gap-0/px-1 — all 7 menus (File..Help) now fit at 375px without clipping (was 8px cut before).
+   589→- MOBILE QA sweep (375×667, programmatic overflow checks + VLM screenshot review): home ✅, editor ✅, sheets list+editor ✅, slides editor ✅, forms builder ✅, activity ✅, settings ✅, version-history Sheet (full-width mobile) ✅, share dialog ✅, comments sidebar (full-width) ✅, find-replace panel (x=8..367) ✅, AI dialog with long result: fully contained, buttons visible ✅. Desktop regression: find/replace (1 of 5), AI polish + help-write dialogs fully visible with action buttons ✅. Template gallery fade verified at desktop (opacity 1, right edge).
+   590→- Non-issues verified against VLM false-positives: editor-header save status ("All changes saved · time") not clipped at desktop; status pill fully within viewport on mobile (floating with backdrop-blur is intended); template cards partially visible at gallery edge = carousel affordance (now with fade).
+   591→- Quality: bun run lint clean, bunx tsc --noEmit 0 src errors, dev :3000 200, collab :3003 200, dev.log clean.
+   592→
+   593→Stage Summary:
+   594→- The AI writing assistant (Help me write + AI polish) now NEVER overflows: dialogs are viewport-capped, scrollable, with pinned header/actions/footer and viewport-aware result caps.
+   595→- Responsive/mobile hardening applied generally: all dialogs capped at the base level; all auto-growing textareas capped; menubar fits 375px; broken scroll fades replaced with a proper shared ScrollFade component (toolbar + menubar + template gallery).
+   596→- App-wide mobile sweep passed for every view (docs/sheets/slides/forms/activity/settings) and every overlay type (dialog/sheet/panel).
+   597→- Known remaining (from prior rounds, unchanged): suggestion-mode Ctrl+Z/IME gaps, raster PDF text layer, dev-only Radix useId hydration flake, taste-skill repo research parked.
+   598→
+   599→---
+   600→Task ID: 16
+   601→Agent: main (Z.ai Code) + 4 parallel i18n subagents (16-a / 16-b / 16-c / 16-d)
+   602→Task: 全部增加中文翻译 — 全应用中英双语 i18n（默认中文，可切换 English）
+   603→
+   604→Work Log:
+   605→- INFRA (main): src/lib/i18n.tsx — I18nProvider 挂载于 DocsApp 根（TooltipProvider 外层），useI18n() 返回 { lang, setLang, t }；t(key, params) 以英文原文为 key 查 zh 词典、{name} 插值、缺 key 回落英文；默认 zh（满足"全部增加中文翻译"），localStorage(zdocs-lang) 在 mount 后回放（避免 SSR hydration mismatch）；getCurrentLang() 供非 React 代码（store action/toast）使用；localeOf() 供 Intl 格式化；document.documentElement.lang 同步。
+   606→- INFRA (main): 7 个分组词典 src/lib/i18n/dict-{common,home,editor,sheets,slides,forms,apps}.ts 合并（组间零冲突：每组独占文件）；lang-toggle.tsx（Languages 图标 + DropdownMenu：中文/English + Check 选中态）；home-header 加 LangToggle（AppGridMenu 与 ThemeToggle 之间）；doc-utils.ts relativeTime/fullTime 增加 lang 参数（date-fns zhCN locale，zh 用 "yyyy年M月d日 HH:mm"）。
+   607→- 16-a (home/shell): 首页/侧边栏/模板库/快捷入口/文档网格/拖拽/AppGrid/UserMenu/DocPreview 全量 t() 化；templates.ts 双语化（6 模板 + blank：nameZh/descriptionZh/titleZh/contentZh + localizedTemplate(tpl, lang) 辅助；docs-store.createDoc 按 getCurrentLang() 取本地化标题/正文）；dict-home 139 条。
+   608→- 16-b (editor, 超时中断但工作已完成并经主代理核验): 编辑器全组件 t()/tForLang 化——menubar 七菜单+全部菜单项、toolbar 全 tooltip、editor-view 全对话框/toast、find-replace、comments-sidebar、version-history、share-dialog、info/emoji/AI/voice/ruler/outline/status-pill/table-resize；editor-header 加 LangToggle；AI 路由 /api/ai/write 与 /api/ai/transform 增加可选 lang 参数（zh 时 prompt 追加"用简体中文输出"，en 缺省不变，向后兼容）；dict-editor 428 条。中断后主代理核验：全部 editor 文件 useI18n 已接入、tsc/lint 0 错误（其临时的 editor-header/toolbar 语法笔误已自行修复）、浏览器 QA 菜单/查找/AI 对话框全中文。
+   609→- 16-c (sheets+slides): 两应用 19 个组件文件翻译（grid 状态栏 求和/平均值/计数、公式栏、列表页、布局名、主题色名、占位符"点击添加标题"、演示模式结束页/演讲者备注、Copy of X→X 的副本）；两个编辑器头部加 LangToggle（sheets 的包在 hidden min-[420px]:inline-flex 防溢出）；dict-sheets 84 条 + dict-slides 115 条。
+   610→- 16-d (forms+activity+settings): forms 11 文件（题型名/必填/选项编辑/填写校验"此题为必填"/成功页/回复分析/CSV）；activity（过滤 chips 全部/文档/表格/幻灯片/表单、今天/昨天、动词 t(KIND_META[kind].verb) 创建了/编辑了/…）；settings 5 标签页全量 + 新增「语言」区块（外观页，单选卡 中文/English 带示例行"你好，Z-Docs"/"Hello, Z-Docs"，点击实时 setLang）；dict-forms 157 条 + dict-apps 92 条。
+   611→- main 补漏: theme-toggle.tsx（aria/tooltip 词条）+ dict-common 3 条；quickstart 动态模板 key（New ${label}/Couldn't create the ${label}/tag color）核验为运行时可解析（词条在 dict-home/dict-sheets/dict-slides 均存在）。
+   612→- QA 覆盖率脚本（主代理）: 提取全部 t()/tForLang() key 与 7 词典交叉比对 → 词典 1005 条 / 使用 key 858 / 缺失 0；裸英文扫描 → 仅数据-key 模式（渲染处均已 t()）。
+   613→- QA (agent-browser E2E): 首页全中文（搜索文档/新建文档/全部文档/已加星标/回收站/文件夹/标签/近期动态/存储空间/开始新文档/模板库 8 模板中文名+描述/更多开始方式/最近文档/13 个文档/最后修改时间）；语言切换 EN↔ZH 实时生效（下拉 + 设置页两处）；编辑器（文档标题/所有更改已保存/文件-编辑-查看-插入-格式-工具-帮助/创建副本/重命名/版本历史/下载四格式/打印/移至回收站；工具菜单 AI 润色/语音输入/字数统计）；Ctrl+F 查找面板（查找和替换/在文档中查找/区分大小写 Aa/上下一个匹配项）；文档大纲（暂无标题+引导文案）；标尺 aria 全中文；AI 润色对话框（六操作+字数提示）；Sheets（无标题电子表格/公式输入/电子表格网格/全选所有单元格/Sheet1 · 60 行 × 26 列/加粗斜体 tooltip）；Slides（新建演示文稿/点击添加标题/副标题/布局/切换演讲者备注/从当前幻灯片开始演示/幻灯片缩略图/幻灯片画布）；Forms（问题/回复 标签/简答题/必填/添加问题/表单标题）；Activity（近期动态/全部 35/文档 16/表格 6/今天/昨天）；Settings（设置/常规/外观/工作区默认设置/数据和存储/关于/语言区块）。编辑器中文输入回归（"你好"成功写入）。控制台无业务错误（仅遗留 Radix useId dev-only 抖动，移动导航 Sheet 实测正常打开）。
+   614→- QA (mobile 375px): 修复 home-header 因新增 LangToggle 导致的 15px 溢出（移动搜索框 w-28→w-20、focus w-40→w-32）；全 7 视图 scrollWidth=clientWidth=375 零溢出；VLM 截图审查桌面+移动端通过（VLM 标记项均为预期：Projects=用户文件夹名、Z-*=产品名、"1 Issue"=Next dev 浮层、模板卡片右缘截断=轮播提示）。
+   615→- dev server 中途死亡一次（子代理并行期间），setsid 重启恢复；collab :3003 全程健康。
+   616→
+   617→Stage Summary:
+   618→- 全应用（Docs 编辑器 + 首页 + Z-Sheets + Z-Slides + Z-Forms + 动态 + 设置 + 全部对话框/面板/toast/aria）默认简体中文，语言可通过 3 处切换（首页头部/编辑器头部/Sheets/Slides 头部 LangToggle + 设置页语言区块）并持久化；AI 写作助手按界面语言输出中文；模板内容双语；日期本地化（date-fns zhCN）。
+   619→- 质量门: bunx tsc --noEmit src 0 错误；bun run lint 干净；dev :3000 200；collab :3003 健康；词典 1005 条 0 缺失。
+   620→- 子代理详情: agent-ctx/16-a.md、16-c.md、16-d.md（16-b 超时未留档，其成果由本节记录）。
+   621→- 遗留（低风险）: Radix useId hydration 抖动为 dev-only（worklog Task 15 已记录）；未翻译项均为刻意保留（产品名/字体名/DB 内容/公式/错误码/CSV 字段）；workspace 其他 app 的 AI 无（仅 Docs 有 AI）；后续可考虑：语言切换动画、zh 下首字母头像逻辑、AI 对话输入 placeholder 语言跟随（已做）。
+   622→

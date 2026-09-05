@@ -98,7 +98,9 @@ export function ShareDialog({
           : t("They can view this document."),
       })
     } catch (e) {
-      toast({ title: e instanceof Error ? e.message : t("Invite failed"), variant: "destructive" })
+      // API errors arrive as English source strings (e.g. "Sign in required.")
+      // — route them through t() so members see the zh translation when available
+      toast({ title: e instanceof Error ? t(e.message) : t("Invite failed"), variant: "destructive" })
     } finally {
       setInviteBusy(false)
     }

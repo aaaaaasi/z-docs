@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { serializeActivity } from "@/lib/server-activity"
+import { guardRoute } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
-// GET /api/activity?app=docs|sheets|slides|forms&limit=100
+// GET /api/activity?app=docs|sheets|slides|forms&limit=100 — signed-in members
 export async function GET(req: NextRequest) {
   try {
+    const guard = await guardRoute(req)
+    if (!guard.ok) return guard.response
+
     const app = req.nextUrl.searchParams.get("app")
     const limit = Math.min(Number(req.nextUrl.searchParams.get("limit") ?? 100) || 100, 200)
     const activities = await db.activityLog.findMany({

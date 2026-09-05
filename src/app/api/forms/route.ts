@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { actorFromRequest, logActivity } from "@/lib/server-activity"
+import { guardRoute, type SessionUser } from "@/lib/server-auth"
+import { logActivity } from "@/lib/server-activity"
 
 export const dynamic = "force-dynamic"
+
+/** Activity actor comes from the verified session, never client headers. */
+function actorFromUser(user: SessionUser) {
+  return { id: user.id, name: user.name, color: user.color }
+}
 
 function toMeta(f: {
   id: string
@@ -27,15 +33,27 @@ function toMeta(f: {
 }
 
 // GET /api/forms?filter=all|starred|trashed
+// Auth required. Members see only their own + legacy (ownerless) forms;
+// admins see the whole workspace.
 export async function GET(req: NextRequest) {
   try {
+    const g = await guardRoute(req)
+    if (!g.ok) return g.response
+    const user = g.user
+
     const filter = req.nextUrl.searchParams.get("filter") ?? "all"
     const q = (req.nextUrl.searchParams.get("q") ?? "").trim().toLowerCase()
-    const where: { starred?: boolean; trashed: boolean; title?: { contains: string } } = {
+    const where: {
+      starred?: boolean
+      trashed: boolean
+      title?: { contains: string }
+      OR?: { ownerId: string | null }[]
+    } = {
       trashed: filter === "trashed",
     }
     if (filter === "starred") where.starred = true
     if (q) where.title = { contains: q }
+    if (user.role !== "admin") where.OR = [{ ownerId: user.id }, { ownerId: null }]
     const forms = await db.form.findMany({
       where: where as never,
       orderBy: { updatedAt: "desc" },
@@ -49,8 +67,13 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/forms — { title?, description?, data? }
+// Auth required; the form is owned by the creating account.
 export async function POST(req: NextRequest) {
   try {
+    const g = await guardRoute(req, { mutating: true })
+    if (!g.ok) return g.response
+    const user = g.user
+
     const body = (await req.json().catch(() => ({}))) as {
       title?: string
       description?: string
@@ -62,6 +85,7 @@ export async function POST(req: NextRequest) {
         title,
         description: (body.description ?? "").slice(0, 400),
         data: body.data ?? "[]",
+        ownerId: user.id,
       },
     })
     await logActivity({
@@ -69,7 +93,7 @@ export async function POST(req: NextRequest) {
       kind: "created",
       entityId: form.id,
       entityTitle: form.title,
-      actor: actorFromRequest(req),
+      actor: actorFromUser(user),
     })
     return NextResponse.json({ form: { ...toMeta(form), data: "[]" } }, { status: 201 })
   } catch (e) {

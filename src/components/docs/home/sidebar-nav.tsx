@@ -57,6 +57,29 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
   const { t } = useI18n()
   const filter = useDocsStore((s) => s.filter)
   const setFilter = useDocsStore((s) => s.setFilter)
+  const storageUsage = useDocsStore((s) => s.storageUsage)
+  const fetchStorage = useDocsStore((s) => s.fetchStorage)
+
+  // real usage from /api/storage; refresh when the doc list changes shape
+  const docCount = useDocsStore((s) => s.documents.length)
+  React.useEffect(() => {
+    void fetchStorage()
+  }, [docCount, fetchStorage])
+
+  const storagePct = storageUsage
+    ? Math.min(100, (storageUsage.usedBytes / Math.max(1, storageUsage.quotaBytes)) * 100)
+    : 0
+  const storageLabel = storageUsage
+    ? t("{used} of {total} used — {count} items", {
+        used: formatBytes(storageUsage.usedBytes, t),
+        total: formatBytes(storageUsage.quotaBytes, t),
+        count:
+          (storageUsage.counts.documents ?? 0) +
+          (storageUsage.counts.sheets ?? 0) +
+          (storageUsage.counts.slides ?? 0) +
+          (storageUsage.counts.forms ?? 0),
+      })
+    : t("Calculating…")
   const view = useDocsStore((s) => s.view)
   const openApp = useDocsStore((s) => s.openApp)
   const openActivity = useDocsStore((s) => s.openActivity)
@@ -475,9 +498,14 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
             {t("Storage")}
           </div>
           <div className="mt-2 h-1 overflow-hidden rounded-full bg-border/70">
-            <div className="h-full w-[12%] rounded-full bg-primary transition-[width] duration-500" />
+            <div
+              className="h-full rounded-full bg-primary transition-[width] duration-500"
+              style={{ width: `${Math.max(0.5, Math.min(100, storagePct))}%` }}
+            />
           </div>
-          <p className="tnum mt-1.5 text-[11px] text-muted-foreground">{t("1.8 GB of 15 GB used")}</p>
+          <p className="tnum mt-1.5 text-[11px] text-muted-foreground" aria-live="polite">
+            {storageLabel}
+          </p>
         </div>
       </div>
     </div>
@@ -491,4 +519,12 @@ export function SidebarNav() {
       <SidebarNavContent />
     </aside>
   )
+}
+
+/** Human-readable byte size for the real storage meter. */
+function formatBytes(bytes: number, t: (k: string, p?: Record<string, string | number>) => string): string {
+  if (bytes < 1024) return `${bytes} ${t("B")}`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} ${t("KB")}`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} ${t("MB")}`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} ${t("GB")}`
 }

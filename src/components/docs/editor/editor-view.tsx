@@ -41,6 +41,9 @@ import { OutlineSidebar, type OutlineItem } from "./outline-sidebar"
 import { EmojiDialog } from "./emoji-dialog"
 import { FindReplacePanel } from "./find-replace"
 import { useVoiceTyping, VoicePill } from "./voice-typing"
+import { SpellCheckDialog } from "./spell-check-dialog"
+import { WritingStudioDialog } from "./writing-studio"
+import { createWritingTracker, type WritingStats, type WritingTracker } from "@/lib/writing-tracker"
 import { AiToolsDialog, type AiSource } from "./ai-tools-dialog"
 import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2, TableCellsMerge, TableCellsSplit } from "lucide-react"
 import {
@@ -56,7 +59,7 @@ export function EditorView() {
   const setOpenAiOnEditor = useDocsStore((s) => s.setOpenAiOnEditor)
   const { toast } = useToast()
   const user = useLocalUser()
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
 
   /* ---------------- document state ---------------- */
   const [doc, setDoc] = React.useState<DocumentDTO | null>(null)
@@ -78,6 +81,11 @@ export function EditorView() {
   const [dialog, setDialog] = React.useState<string | null>(null)
   const [linkHasSelection, setLinkHasSelection] = React.useState(false)
   const [aiSource, setAiSource] = React.useState<AiSource | null>(null)
+
+  /* ---------------- writing studio / telemetry ---------------- */
+  const trackerRef = React.useRef<WritingTracker | null>(null)
+  const [writingStats, setWritingStats] = React.useState<Partial<WritingStats> | null>(null)
+  const [editCount, setEditCount] = React.useState(0)
 
   // workspace default zoom (Settings → Workspace defaults) — applied once on mount
   React.useEffect(() => {
@@ -177,6 +185,16 @@ export function EditorView() {
         setStarred(d.starred)
         setStats(docStats(d.content))
         setLastSavedAt(new Date(d.updatedAt))
+        // writing telemetry from the server blob (if any)
+        const rawStats = (d as DocumentDTO & { stats?: unknown; editCount?: number }).stats
+        setWritingStats(
+          rawStats && typeof rawStats === "object" ? (rawStats as Partial<WritingStats>) : null
+        )
+        setEditCount(
+          typeof (d as DocumentDTO & { editCount?: number }).editCount === "number"
+            ? ((d as DocumentDTO & { editCount: number }).editCount)
+            : 0
+        )
       })
       .catch((e: Error) => {
         if (cancelled) return
@@ -218,6 +236,48 @@ export function EditorView() {
       setOpenAiOnEditor(false)
     }
   }, [openAiOnEditor, doc, setOpenAiOnEditor])
+
+  /* ---------------- writing telemetry tracker ----------------
+   * One tracker per document: observes beforeinput on the editable page,
+   * flushes to /api/documents/:id/stats every 30s + on unmount. */
+  React.useEffect(() => {
+    if (!docId) return
+    const tracker = createWritingTracker(docId)
+    trackerRef.current = tracker
+    let detach = () => {}
+    let cancelled = false
+    const attach = () => {
+      const el = pageRef.current
+      if (el) {
+        detach = tracker.observe(el)
+        return true
+      }
+      return false
+    }
+    // the canvas mounts after doc load — retry until it exists
+    const attachTimer = setInterval(() => {
+      if (cancelled || attach()) clearInterval(attachTimer)
+    }, 400)
+    const flushTimer = setInterval(() => {
+      void tracker.flush().then(() => {
+        const snap = tracker.snapshot()
+        if (snap) setWritingStats(snap)
+      })
+    }, 30_000)
+    const onUnload = () => {
+      void tracker.flush()
+    }
+    window.addEventListener("beforeunload", onUnload)
+    return () => {
+      cancelled = true
+      clearInterval(attachTimer)
+      clearInterval(flushTimer)
+      window.removeEventListener("beforeunload", onUnload)
+      detach()
+      void tracker.flush()
+      trackerRef.current = null
+    }
+  }, [docId])
 
   /* ---------------- comments: load & helpers ---------------- */
   React.useEffect(() => {
@@ -1318,6 +1378,23 @@ export function EditorView() {
     goToMatch((findActiveIndex - 1 + findMatches.length) % findMatches.length)
   }, [findMatches, findActiveIndex, goToMatch])
 
+  /**
+   * Highlight + scroll to a text snippet in the live document (used by the
+   * writing studio: sentence rhythm, paragraph density, echo, POV…).
+   */
+  const highlightText = React.useCallback(
+    (text: string) => {
+      const el = pageRef.current
+      if (!el || !text) return
+      const matches = findTextMatches(el, text, false)
+      if (matches.length === 0) return
+      setFindMatches(matches)
+      setFindActiveIndex(0)
+      scrollRangeIntoCanvasView(el, matches[0].range)
+    },
+    []
+  )
+
   /** Auto-select the first match whenever a fresh search produces results. */
   React.useEffect(() => {
     if (findOpen && findMatches.length > 0 && findActiveIndex === 0) {
@@ -2198,6 +2275,23 @@ img { max-width: 100%; }
         onInsert={insertAiResult}
       />
       <WordCountDialog open={dialog === "wordcount"} onOpenChange={onDialogChange} stats={stats} />
+      <SpellCheckDialog
+        open={dialog === "spellcheck"}
+        onOpenChange={onDialogChange}
+        pageRef={pageRef}
+        onFixed={handleInput}
+        lang={lang}
+      />
+      <WritingStudioDialog
+        open={dialog === "writing"}
+        onOpenChange={onDialogChange}
+        docId={docId}
+        html={contentRef.current ?? doc?.content ?? ""}
+        stats={writingStats}
+        editCount={editCount}
+        lang={lang}
+        highlightText={highlightText}
+      />
       <ShortcutsDialog open={dialog === "shortcuts"} onOpenChange={onDialogChange} />
       <AboutDialog open={dialog === "about"} onOpenChange={onDialogChange} />
       <VersionHistorySheet

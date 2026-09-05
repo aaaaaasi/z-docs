@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { actorFromRequest, logActivity, logActivityThrottled } from "@/lib/server-activity"
+import { sanitizeDocHtml, guardRoute, docAccessLevel, hasAccess, notFound, forbidden } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -14,13 +15,22 @@ function serialize(doc: {
   starred: boolean
   trashed: boolean
   folderId: string | null
+  stats: string
+  editCount: number
   createdAt: Date
   updatedAt: Date
   /** present when fetched with the tags include */
   tags?: { tag: { id: string; name: string; color: string } }[]
 }) {
+  let parsedStats: Record<string, unknown> = {}
+  try {
+    if (doc.stats) parsedStats = JSON.parse(doc.stats)
+  } catch {
+    parsedStats = {}
+  }
   return {
     ...doc,
+    stats: parsedStats,
     tags: [...(doc.tags ?? [])]
       .map((dt) => ({ id: dt.tag.id, name: dt.tag.name, color: dt.tag.color }))
       .sort((a, b) => a.name.localeCompare(b.name)),
@@ -60,10 +70,15 @@ async function maybeSnapshot(docId: string, oldTitle: string, oldContent: string
   }
 }
 
-// GET /api/documents/:id
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// GET /api/documents/:id — 404 when the caller has no access (existence hidden)
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req)
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (!hasAccess(level, "viewer")) return notFound()
+
     const doc = await db.document.findUnique({
       where: { id },
       include: {
@@ -78,10 +93,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 }
 
-// PATCH /api/documents/:id { title?, content?, starred?, trashed?, folderId? }
+// PATCH /api/documents/:id { title?, content?, starred?, trashed?, folderId? } — editor+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (level === "none") return notFound()
+    if (!hasAccess(level, "editor")) return forbidden()
+
     const body = (await req.json().catch(() => ({}))) as {
       title?: string
       content?: string
@@ -93,9 +114,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const doc = await db.document.findUnique({ where: { id } })
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
-    const data: { title?: string; content?: string; starred?: boolean; trashed?: boolean; folderId?: string | null } = {}
+    const data: { title?: string; content?: string; starred?: boolean; trashed?: boolean; folderId?: string | null; editCount?: number } = {}
     if (typeof body.title === "string" && body.title.trim()) data.title = body.title.trim().slice(0, 150)
-    if (typeof body.content === "string") data.content = body.content.slice(0, 5 * 1024 * 1024)
+    if (typeof body.content === "string") data.content = sanitizeDocHtml(body.content.slice(0, 5 * 1024 * 1024))
     if (typeof body.starred === "boolean") data.starred = body.starred
     if (typeof body.trashed === "boolean") data.trashed = body.trashed
     if (body.folderId === null || typeof body.folderId === "string") {
@@ -110,12 +131,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     if (data.content !== undefined && data.content !== doc.content) {
       await maybeSnapshot(id, doc.title, doc.content)
+      // every real saved change after the first version bumps the revision counter
+      data.editCount = doc.editCount + 1
     }
 
     const updated = await db.document.update({ where: { id }, data })
 
-    // activity feed attribution
-    const actor = actorFromRequest(req)
+    // activity feed attribution (session user wins over headers)
+    const actor = await actorFromRequest(req)
     if (data.trashed !== undefined && data.trashed !== doc.trashed) {
       await logActivity({
         app: "docs",
@@ -158,10 +181,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 }
 
-// DELETE /api/documents/:id — permanent delete
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// DELETE /api/documents/:id — permanent delete, editor+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (level === "none") return notFound()
+    if (!hasAccess(level, "editor")) return forbidden()
+
     const doc = await db.document.findUnique({ where: { id } })
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 })
     await db.document.delete({ where: { id } })

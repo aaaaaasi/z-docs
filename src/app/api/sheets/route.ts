@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { actorFromRequest, logActivity } from "@/lib/server-activity"
+import { guardRoute, type SessionUser } from "@/lib/server-auth"
+import { logActivity } from "@/lib/server-activity"
 
 export const dynamic = "force-dynamic"
+
+/** Activity actor comes from the verified session, never client headers. */
+function actorFromUser(user: SessionUser) {
+  return { id: user.id, name: user.name, color: user.color }
+}
 
 function toMeta(s: {
   id: string
@@ -23,16 +29,28 @@ function toMeta(s: {
 }
 
 // GET /api/sheets?filter=all|starred|trashed&q=...
+// Auth required. Members see only their own + legacy (ownerless) sheets;
+// admins see the whole workspace.
 export async function GET(req: NextRequest) {
   try {
+    const g = await guardRoute(req)
+    if (!g.ok) return g.response
+    const user = g.user
+
     const filter = req.nextUrl.searchParams.get("filter") ?? "all"
     const q = (req.nextUrl.searchParams.get("q") ?? "").trim().toLowerCase()
 
-    const where: { starred?: boolean; trashed: boolean; title?: { contains: string } } = {
+    const where: {
+      starred?: boolean
+      trashed: boolean
+      title?: { contains: string }
+      OR?: { ownerId: string | null }[]
+    } = {
       trashed: filter === "trashed",
     }
     if (filter === "starred") where.starred = true
     if (q) where.title = { contains: q }
+    if (user.role !== "admin") where.OR = [{ ownerId: user.id }, { ownerId: null }]
 
     const sheets = await db.sheet.findMany({
       where: where as never,
@@ -46,19 +64,24 @@ export async function GET(req: NextRequest) {
 }
 
 // POST /api/sheets — create a spreadsheet { title?, data? }
+// Auth required; the sheet is owned by the creating account.
 export async function POST(req: NextRequest) {
   try {
+    const g = await guardRoute(req, { mutating: true })
+    if (!g.ok) return g.response
+    const user = g.user
+
     const body = (await req.json().catch(() => ({}))) as { title?: string; data?: string }
     const title = (body.title ?? "").trim().slice(0, 120) || "Untitled spreadsheet"
     const sheet = await db.sheet.create({
-      data: { title, data: body.data ?? "{}" },
+      data: { title, data: body.data ?? "{}", ownerId: user.id },
     })
     await logActivity({
       app: "sheets",
       kind: "created",
       entityId: sheet.id,
       entityTitle: sheet.title,
-      actor: actorFromRequest(req),
+      actor: actorFromUser(user),
     })
     return NextResponse.json({ sheet: { ...toMeta(sheet), data: "{}" } }, { status: 201 })
   } catch (e) {

@@ -18,6 +18,13 @@ model Document {
   trashed   Boolean  @default(false)
   /// optional folder grouping (null = home root)
   folderId  String?
+  /// owner account (null = legacy doc created before accounts existed;
+  /// readable by signed-in members, manageable by admins)
+  ownerId   String?
+  /// Ellipsus-style writing telemetry: WritingStats JSON blob (client-merged)
+  stats     String   @default("")
+  /// number of saved content changes after the first version (server-managed)
+  editCount Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -26,6 +33,37 @@ model Document {
   tags     DocumentTag[]
   folder   Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
   collaborators Collaborator[]
+}
+
+/// A member account of the Z-Docs workspace (credentials auth).
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  /// scrypt hash: "salt:hex" — never the raw password
+  passwordHash String
+  /// display color used for presence/comments
+  color        String   @default("#0e7c74")
+  /// "admin" (first account, owns workspace) | "member"
+  role         String   @default("member")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions     UserSession[]
+}
+
+/// Server-side session tokens (random 32 bytes) issued as an httpOnly cookie.
+model UserSession {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 /// Named folders for organizing documents in the home view.
@@ -73,6 +111,8 @@ model Sheet {
   data      String   @default("{}")
   starred   Boolean  @default(false)
   trashed   Boolean  @default(false)
+  /// owner account (null = legacy entity, member-readable)
+  ownerId   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -85,6 +125,8 @@ model SlideDeck {
   data      String   @default("[]")
   starred   Boolean  @default(false)
   trashed   Boolean  @default(false)
+  /// owner account (null = legacy entity, member-readable)
+  ownerId   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -98,6 +140,8 @@ model Form {
   data        String   @default("[]")
   starred     Boolean  @default(false)
   trashed     Boolean  @default(false)
+  /// owner account (null = legacy entity, member-readable)
+  ownerId     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { guardRoute } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -7,9 +8,12 @@ export const dynamic = "force-dynamic"
 const TAG_COLORS = ["#0b6b62", "#d93025", "#f9ab00", "#1e8e3e", "#a142f4", "#5f6368"]
 const TAG_NAME_MAX = 24
 
-// GET /api/tags — all tags with document counts
-export async function GET() {
+// GET /api/tags — all tags with document counts (signed-in members)
+export async function GET(req: NextRequest) {
   try {
+    const guard = await guardRoute(req)
+    if (!guard.ok) return guard.response
+
     const tags = await db.tag.findMany({
       orderBy: { name: "asc" },
       include: { _count: { select: { documents: true } } },
@@ -33,6 +37,9 @@ export async function GET() {
 // POST /api/tags { name, color? } — create a tag (name unique, max 24 chars)
 export async function POST(req: NextRequest) {
   try {
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+
     const body = (await req.json().catch(() => ({}))) as { name?: string; color?: string }
     const name = typeof body.name === "string" ? body.name.trim().slice(0, TAG_NAME_MAX) : ""
     if (!name) return NextResponse.json({ error: "Tag name is required" }, { status: 400 })

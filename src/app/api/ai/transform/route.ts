@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import ZAI from "z-ai-web-dev-sdk"
+import { guardRoute } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 export const maxDuration = 60
@@ -25,8 +26,13 @@ const ACTION_PROMPTS: Record<AiAction, string> = {
 const MAX_INPUT = 12_000
 
 // POST /api/ai/transform { text, action, title?, lang? }
+// Auth + same-origin + strict rate limit (401/403/429 short-circuit) before
+// any AI call — anonymous callers can no longer burn AI quota.
 export async function POST(req: NextRequest) {
   try {
+    const g = await guardRoute(req, { mutating: true, limit: 6, windowMs: 60_000 })
+    if (!g.ok) return g.response
+
     const body = (await req.json().catch(() => ({}))) as {
       text?: string
       action?: string

@@ -16,7 +16,8 @@ import {
   Minus, CalendarDays, Sparkles, Bold, Italic, Underline, Strikethrough, Superscript,
   Subscript, RemoveFormatting, AlignLeft, AlignCenter, AlignRight, AlignJustify,
   List, ListOrdered, TextQuote, Calculator, Keyboard, Info, MessageSquarePlus, Table,
-  Rows3, Columns3, Heading, ChevronRight, ListTree, Smile, Mic, FileDown, TableCellsMerge, TableCellsSplit
+  Rows3, Columns3, Heading, ChevronRight, ListTree, Smile, Mic, FileDown, TableCellsMerge, TableCellsSplit,
+  SpellCheck, BarChart3
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -219,7 +220,13 @@ export function MenuBar({ api }: { api: EditorApi }) {
           <DropdownMenuShortcut>⇧⌘S</DropdownMenuShortcut>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => api.openDialog("spellcheck")}>
+          <SpellCheck className="h-4 w-4" /> {t("Spelling and grammar check…")}
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.openDialog("wordcount")}><Calculator className="h-4 w-4" /> {t("Word count")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.openDialog("writing")}>
+          <BarChart3 className="h-4 w-4" /> {t("Writing studio")}
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.openDialog("versions")}><History className="h-4 w-4" /> {t("Version history")}</DropdownMenuItem>
       </Menu>
 

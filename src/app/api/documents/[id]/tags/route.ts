@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { guardRoute, docAccessLevel, hasAccess, notFound, forbidden } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
 const MAX_TAGS_PER_DOC = 50
 
-// PUT /api/documents/:id/tags { tagIds: string[] } — set the exact tag set of the document
+// PUT /api/documents/:id/tags { tagIds: string[] } — set the exact tag set of the document, editor+
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (level === "none") return notFound()
+    if (!hasAccess(level, "editor")) return forbidden()
+
     const body = (await req.json().catch(() => ({}))) as { tagIds?: unknown }
 
     if (!Array.isArray(body.tagIds) || body.tagIds.some((v) => typeof v !== "string")) {

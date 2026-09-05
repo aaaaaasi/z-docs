@@ -1,0 +1,710 @@
+     1→"use client"
+     2→
+     3→/**
+     4→ * Text-offset utilities — convert between DOM Ranges and plain-text offsets.
+     5→ * Used for remote cursor sync and caret restoration across content updates.
+     6→ */
+     7→
+     8→export interface TextOffsets {
+     9→  start: number
+    10→  end: number
+    11→}
+    12→
+    13→function textNodesOf(root: Node): Text[] {
+    14→  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+    15→  const nodes: Text[] = []
+    16→  for (let n = walker.nextNode(); n; n = walker.nextNode()) nodes.push(n as Text)
+    17→  return nodes
+    18→}
+    19→
+    20→function totalTextLength(root: Node): number {
+    21→  return textNodesOf(root).reduce((acc, t) => acc + (t.textContent?.length ?? 0), 0)
+    22→}
+    23→
+    24→function offsetOf(root: Node, container: Node, offset: number): number {
+    25→  if (container.nodeType === Node.TEXT_NODE) {
+    26→    let total = 0
+    27→    for (const t of textNodesOf(root)) {
+    28→      if (t === container) return total + Math.min(offset, t.textContent?.length ?? 0)
+    29→      total += t.textContent?.length ?? 0
+    30→    }
+    31→    return total
+    32→  }
+    33→  // container is an element — offset is a child index; count text before that child
+    34→  let target: Node | null = null
+    35→  if (container === root) {
+    36→    target = offset < container.childNodes.length ? container.childNodes[offset] : null
+    37→  } else {
+    38→    target = container
+    39→  }
+    40→  if (!target) return totalTextLength(root)
+    41→  let total = 0
+    42→  for (const t of textNodesOf(root)) {
+    43→    if (t === target || (target.nodeType !== Node.TEXT_NODE && target.contains(t))) break
+    44→    total += t.textContent?.length ?? 0
+    45→  }
+    46→  return total
+    47→}
+    48→
+    49→export function selectionOffsets(root: HTMLElement): TextOffsets | null {
+    50→  const sel = window.getSelection()
+    51→  if (!sel || sel.rangeCount === 0) return null
+    52→  const range = sel.getRangeAt(0)
+    53→  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) return null
+    54→  return {
+    55→    start: offsetOf(root, range.startContainer, range.startOffset),
+    56→    end: offsetOf(root, range.endContainer, range.endOffset),
+    57→  }
+    58→}
+    59→
+    60→export function rangeFromOffsets(root: HTMLElement, start: number, end: number): Range | null {
+    61→  try {
+    62→    const nodes = textNodesOf(root)
+    63→    if (nodes.length === 0) return null
+    64→    const total = nodes.reduce((acc, t) => acc + (t.textContent?.length ?? 0), 0)
+    65→    const s = Math.max(0, Math.min(start, total))
+    66→    const e = Math.max(s, Math.min(end, total))
+    67→    const locate = (pos: number): Text => {
+    68→      let acc = 0
+    69→      for (const t of nodes) {
+    70→        const len = t.textContent?.length ?? 0
+    71→        if (pos <= acc + len) return t
+    72→        acc += len
+    73→      }
+    74→      return nodes[nodes.length - 1]
+    75→    }
+    76→    const sNode = locate(s)
+    77→    const eNode = locate(e)
+    78→    const range = document.createRange()
+    79→    range.setStart(sNode, Math.min(s - offsetOfBefore(nodes, sNode), sNode.textContent?.length ?? 0))
+    80→    range.setEnd(eNode, Math.min(e - offsetOfBefore(nodes, eNode), eNode.textContent?.length ?? 0))
+    81→    return range
+    82→  } catch {
+    83→    return null
+    84→  }
+    85→}
+    86→
+    87→function offsetOfBefore(nodes: Text[], node: Text): number {
+    88→  let acc = 0
+    89→  for (const t of nodes) {
+    90→    if (t === node) return acc
+    91→    acc += t.textContent?.length ?? 0
+    92→  }
+    93→  return acc
+    94→}
+    95→
+    96→export function setSelectionFromOffsets(root: HTMLElement, offsets: TextOffsets) {
+    97→  const range = rangeFromOffsets(root, offsets.start, offsets.end)
+    98→  if (!range) return
+    99→  const sel = window.getSelection()
+   100→  sel?.removeAllRanges()
+   101→  sel?.addRange(range)
+   102→}
+   103→
+   104→/** All block-level elements that intersect the current selection */
+   105→export function selectedBlocks(root: HTMLElement): HTMLElement[] {
+   106→  const sel = window.getSelection()
+   107→  const blockTags = new Set(["P", "H1", "H2", "H3", "H4", "LI", "BLOCKQUOTE", "DIV", "PRE", "TD", "TH"])
+   108→  const blocks: HTMLElement[] = []
+   109→  if (!sel || sel.rangeCount === 0) return blocks
+   110→  const range = sel.getRangeAt(0)
+   111→  const collapsed = range.collapsed
+   112→  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+   113→  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+   114→    const el = n as HTMLElement
+   115→    if (blockTags.has(el.tagName)) {
+   116→      if (collapsed) {
+   117→        // caret inside this block
+   118→        if (el.contains(range.startContainer)) blocks.push(el)
+   119→      } else if (range.intersectsNode(el)) {
+   120→        blocks.push(el)
+   121→      }
+   122→    }
+   123→  }
+   124→  if (blocks.length === 0 && collapsed && root.contains(range.startContainer)) {
+   125→    let node: Node | null = range.startContainer
+   126→    while (node && node !== root) {
+   127→      if (node.nodeType === Node.ELEMENT_NODE && blockTags.has((node as HTMLElement).tagName)) {
+   128→        blocks.push(node as HTMLElement)
+   129→        break
+   130→      }
+   131→      node = node.parentNode
+   132→    }
+   133→    if (blocks.length === 0) blocks.push(root)
+   134→  }
+   135→  return blocks
+   136→}
+   137→
+   138→export function escapeRegex(s: string): string {
+   139→  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+   140→}
+   141→
+   142→/* ------------------------------------------------------------------ find */
+   143→
+   144→export interface TextMatch {
+   145→  /** global text offset (within root) of the match start */
+   146→  start: number
+   147→  end: number
+   148→  /** live range spanning the matched text (valid until the DOM changes) */
+   149→  range: Range
+   150→}
+   151→
+   152→/**
+   153→ * Find every occurrence of `query` inside root's text content.
+   154→ * v2: matches may span text-node boundaries (e.g. a word half-bold), exactly
+   155→ * like Google Docs. Text nodes that live in the same block element are
+   156→ * concatenated seamlessly; a "\n" separator is inserted between different
+   157→ * blocks, so paragraph breaks are searchable as newlines and can never
+   158→ * produce a false match gluing two lines together.
+   159→ */
+   160→export function findTextMatches(root: HTMLElement, query: string, caseSensitive: boolean): TextMatch[] {
+   161→  if (!query) return []
+   162→  const nodes = textNodesOf(root)
+   163→  if (nodes.length === 0) return []
+   164→
+   165→  // Concatenated text + per-node base offsets (with block separators).
+   166→  const bases: number[] = []
+   167→  let full = ""
+   168→  let prevBlock: Element | null = null
+   169→  for (const t of nodes) {
+   170→    const block = t.parentElement?.closest("p,h1,h2,h3,h4,li,td,th,blockquote,pre,div") ?? null
+   171→    if (full.length > 0 && block !== prevBlock) full += "\n"
+   172→    bases.push(full.length)
+   173→    full += t.textContent ?? ""
+   174→    prevBlock = block
+   175→  }
+   176→  if (full.length < query.length) return []
+   177→
+   178→  const scan = caseSensitive ? full : full.toLowerCase()
+   179→  const needle = caseSensitive ? query : query.toLowerCase()
+   180→  const matches: TextMatch[] = []
+   181→  let i = scan.indexOf(needle)
+   182→  while (i !== -1) {
+   183→    const end = i + query.length
+   184→    try {
+   185→      // locate the text node containing the start / end boundary
+   186→      let sIdx = 0
+   187→      while (sIdx + 1 < nodes.length && bases[sIdx + 1] <= i) sIdx++
+   188→      let eIdx = 0
+   189→      while (eIdx + 1 < nodes.length && bases[eIdx + 1] < end) eIdx++
+   190→      const range = document.createRange()
+   191→      range.setStart(nodes[sIdx], i - bases[sIdx])
+   192→      range.setEnd(nodes[eIdx], end - bases[eIdx])
+   193→      matches.push({ start: i, end, range })
+   194→    } catch {
+   195→      // detached node — skip
+   196→    }
+   197→    i = scan.indexOf(needle, i + query.length) // non-overlapping, Google-style
+   198→  }
+   199→  return matches
+   200→}
+   201→
+   202→/**
+   203→ * Map a live Range onto a structurally identical clone of the root
+   204→ * (same text-node order, same offsets). Used to compute "what would the
+   205→ * document look like after replacing these matches" without touching the
+   206→ * live DOM — the live match ranges stay valid while we walk them.
+   207→ */
+   208→export function mapRangeToClone(root: HTMLElement, clone: HTMLElement, range: Range): Range | null {
+   209→  try {
+   210→    const liveNodes = textNodesOf(root)
+   211→    const cloneNodes = textNodesOf(clone)
+   212→    const sIdx = liveNodes.indexOf(range.startContainer as Text)
+   213→    const eIdx = liveNodes.indexOf(range.endContainer as Text)
+   214→    if (sIdx === -1 || eIdx === -1 || sIdx >= cloneNodes.length || eIdx >= cloneNodes.length) return null
+   215→    const out = document.createRange()
+   216→    out.setStart(cloneNodes[sIdx], range.startOffset)
+   217→    out.setEnd(cloneNodes[eIdx], range.endOffset)
+   218→    return out
+   219→  } catch {
+   220→    return null
+   221→  }
+   222→}
+   223→
+   224→/**
+   225→ * Center a live Range inside the document canvas' scroll container
+   226→ * (visual pixels — the canvas' scroll space is the zoomed space).
+   227→ */
+   228→export function scrollRangeIntoCanvasView(root: HTMLElement, range: Range): void {
+   229→  try {
+   230→    const rect = range.getBoundingClientRect()
+   231→    if (!rect.height && !rect.width) return
+   232→    const canvas = root.closest(".doc-canvas-bg")
+   233→    if (!(canvas instanceof HTMLElement)) return
+   234→    const cRect = canvas.getBoundingClientRect()
+   235→    const margin = 60
+   236→    if (rect.bottom > cRect.bottom - margin || rect.top < cRect.top + margin) {
+   237→      canvas.scrollTop += rect.top + rect.height / 2 - (cRect.top + cRect.height / 2)
+   238→    }
+   239→  } catch {
+   240→    // range detached — ignore
+   241→  }
+   242→}
+   243→
+   244→/* ------------------------------------------------------------------ tables */
+   245→
+   246→export interface TableContext {
+   247→  table: HTMLTableElement
+   248→  row: HTMLTableRowElement
+   249→  cell: HTMLTableCellElement
+   250→  rowIndex: number
+   251→  colIndex: number
+   252→}
+   253→
+   254→/** Table info for UI state (serializable, safe for React state). */
+   255→export interface TableInfo {
+   256→  rows: number
+   257→  cols: number
+   258→  rowIndex: number
+   259→  colIndex: number
+   260→  hasHeader: boolean
+   261→  /** cell merge/split availability at the caret (Google Docs table menu) */
+   262→  canMergeRight: boolean
+   263→  canMergeDown: boolean
+   264→  canSplit: boolean
+   265→}
+   266→
+   267→/** Resolve the table/row/cell containing the current selection, if any. */
+   268→export function getTableContext(root: HTMLElement): TableContext | null {
+   269→  const sel = window.getSelection()
+   270→  if (!sel || sel.rangeCount === 0) return null
+   271→  let node: Node | null = sel.anchorNode
+   272→  if (!node || !root.contains(node)) return null
+   273→  while (node && node !== root) {
+   274→    const el = node as HTMLElement
+   275→    if (el.tagName === "TD" || el.tagName === "TH") break
+   276→    node = node.parentNode
+   277→  }
+   278→  if (!node || node === root) return null
+   279→  const cell = node as HTMLTableCellElement
+   280→  const row = cell.closest("tr") as HTMLTableRowElement | null
+   281→  const table = cell.closest("table") as HTMLTableElement | null
+   282→  if (!row || !table || !root.contains(table)) return null
+   283→  const rowIndex = Array.prototype.indexOf.call(table.rows, row)
+   284→  const colIndex = Array.prototype.indexOf.call(row.cells, cell)
+   285→  if (rowIndex < 0 || colIndex < 0) return null
+   286→  return { table, row, cell, rowIndex, colIndex }
+   287→}
+   288→
+   289→/** Serializable descriptor of the table at the selection (for menu state). */
+   290→export function describeTableAt(root: HTMLElement): TableInfo | null {
+   291→  const ctx = getTableContext(root)
+   292→  if (!ctx) return null
+   293→  const cap = cellMergeCapability(root)
+   294→  return {
+   295→    rows: ctx.table.rows.length,
+   296→    cols: ctx.row.cells.length,
+   297→    rowIndex: ctx.rowIndex,
+   298→    colIndex: ctx.colIndex,
+   299→    hasHeader: !!ctx.table.rows[0]?.cells[0] && ctx.table.rows[0].cells[0].tagName === "TH",
+   300→    canMergeRight: cap.right,
+   301→    canMergeDown: cap.down,
+   302→    canSplit: cap.split,
+   303→  }
+   304→}
+   305→
+   306→/* ---------------- cell merge / split (grid model) ---------------- */
+   307→
+   308→/**
+   309→ * Build the occupied-grid model of a table: grid[r][c] = the DOM cell whose
+   310→ * rowspan/colspan footprint covers visual position (r, c). This is the only
+   311→ * correct way to reason about merges when spans are already present.
+   312→ */
+   313→function buildTableGrid(table: HTMLTableElement): (HTMLTableCellElement | null)[][] {
+   314→  const grid: (HTMLTableCellElement | null)[][] = []
+   315→  Array.from(table.rows).forEach((row, ri) => {
+   316→    let ci = 0
+   317→    for (const cell of Array.from(row.cells)) {
+   318→      while (grid[ri]?.[ci]) ci++ // skip columns held by rowspans from above
+   319→      for (let dr = 0; dr < cell.rowSpan; dr++) {
+   320→        const r = ri + dr
+   321→        grid[r] = grid[r] ?? []
+   322→        for (let dc = 0; dc < cell.colSpan; dc++) grid[r][ci + dc] = cell
+   323→      }
+   324→      ci += cell.colSpan
+   325→    }
+   326→  })
+   327→  return grid
+   328→}
+   329→
+   330→/** Visual { r, c } of a cell's top-left corner in the grid model. */
+   331→function cellGridPos(
+   332→  grid: (HTMLTableCellElement | null)[][],
+   333→  cell: HTMLTableCellElement
+   334→): { r: number; c: number } | null {
+   335→  for (let r = 0; r < grid.length; r++) {
+   336→    for (let c = 0; c < (grid[r]?.length ?? 0); c++) {
+   337→      if (grid[r][c] === cell) return { r, c }
+   338→    }
+   339→  }
+   340→  return null
+   341→}
+   342→
+   343→/** Merge capability at the caret cell (for enabling menu items). */
+   344→export function cellMergeCapability(root: HTMLElement): { right: boolean; down: boolean; split: boolean } {
+   345→  const ctx = getTableContext(root)
+   346→  const none = { right: false, down: false, split: false }
+   347→  if (!ctx) return none
+   348→  const grid = buildTableGrid(ctx.table)
+   349→  const pos = cellGridPos(grid, ctx.cell)
+   350→  if (!pos) return none
+   351→  const rs = ctx.cell.rowSpan
+   352→  const cs = ctx.cell.colSpan
+   353→  const right = grid[pos.r]?.[pos.c + cs] != null && grid[pos.r][pos.c + cs] !== ctx.cell
+   354→  const belowRow = grid[pos.r + rs]
+   355→  const down = !!belowRow && belowRow[pos.c] != null && belowRow[pos.c] !== ctx.cell
+   356→  const split = rs > 1 || cs > 1
+   357→  return { right, down, split }
+   358→}
+   359→
+   360→/** Merge the caret cell with its right neighbor (Google Docs "Merge cells"). */
+   361→export function mergeTableCells(ctx: TableContext, dir: "right" | "down"): boolean {
+   362→  const grid = buildTableGrid(ctx.table)
+   363→  const pos = cellGridPos(grid, ctx.cell)
+   364→  if (!pos) return false
+   365→  const rs = ctx.cell.rowSpan
+   366→  const cs = ctx.cell.colSpan
+   367→  let target: HTMLTableCellElement | null = null
+   368→  if (dir === "right") {
+   369→    target = grid[pos.r]?.[pos.c + cs] ?? null
+   370→    // the neighbor must align vertically for a clean rectangle merge
+   371→    if (!target || target.rowSpan !== rs) return false
+   372→  } else {
+   373→    const belowRow = grid[pos.r + rs]
+   374→    target = belowRow?.[pos.c] ?? null
+   375→    if (!target || target.colSpan !== cs) return false
+   376→  }
+   377→  if (!target || target === ctx.cell) return false
+   378→  // absorb content: join non-empty cell bodies with a space
+   379→  const a = (ctx.cell.textContent ?? "").trim()
+   380→  const b = (target.textContent ?? "").replace(/\u00a0/g, "").trim()
+   381→  if (b) {
+   382→    if (a) ctx.cell.appendChild(document.createTextNode(" "))
+   383→    while (target.firstChild) ctx.cell.appendChild(target.firstChild)
+   384→  }
+   385→  if (dir === "right") ctx.cell.colSpan += target.colSpan
+   386→  else ctx.cell.rowSpan += target.rowSpan
+   387→  target.remove()
+   388→  placeCaretInCell(ctx.cell)
+   389→  return true
+   390→}
+   391→
+   392→/** Split a merged cell back into 1×1 cells (content stays in the top-left). */
+   393→export function splitTableCell(ctx: TableContext): boolean {
+   394→  const { table, cell } = ctx
+   395→  const rs = cell.rowSpan
+   396→  const cs = cell.colSpan
+   397→  if (rs === 1 && cs === 1) return false
+   398→  const grid = buildTableGrid(table)
+   399→  const pos = cellGridPos(grid, cell)
+   400→  if (!pos) return false
+   401→  // 1) carve full-width empty cells into each extra spanned row
+   402→  for (let dr = 1; dr < rs; dr++) {
+   403→    const row = table.rows[pos.r + dr]
+   404→    if (!row) break
+   405→    const fresh = document.createElement(cell.tagName === "TH" ? "th" : "td")
+   406→    fresh.innerHTML = "&nbsp;"
+   407→    fresh.colSpan = cs
+   408→    // DOM insertion point: before the first cell whose visual start column
+   409→    // (top-left c works for both same-row and rowspan-from-above cells) is
+   410→    // further right than the split position
+   411→    let ref: Node | null = null
+   412→    for (const domCell of Array.from(row.cells)) {
+   413→      const p = cellGridPos(grid, domCell)
+   414→      if (p && p.c > pos.c) {
+   415→        ref = domCell
+   416→        break
+   417→      }
+   418→    }
+   419→    row.insertBefore(fresh, ref)
+   420→  }
+   421→  cell.rowSpan = 1
+   422→  // 2) split the columns in the anchor row
+   423→  for (let i = 1; i < cs; i++) {
+   424→    const fresh = document.createElement(cell.tagName === "TH" ? "th" : "td")
+   425→    fresh.innerHTML = "&nbsp;"
+   426→    cell.after(fresh)
+   427→  }
+   428→  cell.colSpan = 1
+   429→  placeCaretInCell(cell)
+   430→  return true
+   431→}
+   432→
+   433→function makeCell(tag: string): HTMLTableCellElement {
+   434→  const c = document.createElement(tag === "TH" ? "th" : "td")
+   435→  c.innerHTML = "&nbsp;"
+   436→  return c
+   437→}
+   438→
+   439→/** Place the caret inside a cell so the user can keep typing. */
+   440→export function placeCaretInCell(cell: HTMLElement): void {
+   441→  try {
+   442→    const range = document.createRange()
+   443→    range.selectNodeContents(cell)
+   444→    range.collapse(false)
+   445→    const sel = window.getSelection()
+   446→    sel?.removeAllRanges()
+   447→    sel?.addRange(range)
+   448→  } catch {
+   449→    // ignore
+   450→  }
+   451→}
+   452→
+   453→/** Insert a row above/below the context row; returns the new row. */
+   454→export function insertTableRow(ctx: TableContext, where: "above" | "below"): HTMLTableRowElement {
+   455→  const tr = document.createElement("tr")
+   456→  const tags = Array.from(ctx.row.cells).map((c) => c.tagName)
+   457→  if (tags.length === 0) tags.push("TD")
+   458→  for (const t of tags) tr.appendChild(makeCell(t))
+   459→  if (where === "above" || ctx.row.nextSibling == null) {
+   460→    if (where === "above") ctx.row.parentNode?.insertBefore(tr, ctx.row)
+   461→    else ctx.row.parentNode?.appendChild(tr)
+   462→  } else {
+   463→    ctx.row.parentNode?.insertBefore(tr, ctx.row.nextSibling)
+   464→  }
+   465→  return tr
+   466→}
+   467→
+   468→/** Insert a column left/right of the context column; returns the new cells.
+   469→ *  Keeps the <colgroup> (if any) in sync by splitting the source column's width. */
+   470→export function insertTableColumn(ctx: TableContext, where: "left" | "right"): HTMLTableCellElement[] {
+   471→  const cells: HTMLTableCellElement[] = []
+   472→  for (const row of Array.from(ctx.table.rows)) {
+   473→    const ref = row.cells[ctx.colIndex] ?? row.cells[row.cells.length - 1]
+   474→    const cell = makeCell(ref?.tagName ?? "TD")
+   475→    if (ref && where === "left") row.insertBefore(cell, ref)
+   476→    else if (ref?.nextSibling) row.insertBefore(cell, ref.nextSibling)
+   477→    else row.appendChild(cell)
+   478→    cells.push(cell)
+   479→  }
+   480→  syncColgroupWithColumns(ctx.table, ctx.colIndex + (where === "left" ? 0 : 1), where === "left" ? "left" : "right")
+   481→  return cells
+   482→}
+   483→
+   484→/** Delete the context row. Returns true if the table itself became empty and was removed. */
+   485→export function deleteTableRow(ctx: TableContext): boolean {
+   486→  const rowCount = ctx.table.rows.length
+   487→  ctx.row.remove()
+   488→  if (ctx.table.rows.length === 0) {
+   489→    ctx.table.remove()
+   490→    return true
+   491→  }
+   492→  return rowCount > 1
+   493→}
+   494→
+   495→/** Delete the context column. Returns true if the table itself became empty and was removed. */
+   496→export function deleteTableColumn(ctx: TableContext): boolean {
+   497→  for (const row of Array.from(ctx.table.rows)) {
+   498→    const cell = row.cells[ctx.colIndex]
+   499→    if (cell) cell.remove()
+   500→  }
+   501→  const cg = ctx.table.querySelector(":scope > colgroup")
+   502→  if (cg && cg.children.length === ctx.table.rows[0]?.cells.length + 1) {
+   503→    cg.children[ctx.colIndex]?.remove()
+   504→  }
+   505→  if (ctx.table.rows.length > 0 && ctx.table.rows[0].cells.length === 0) {
+   506→    ctx.table.remove()
+   507→    return true
+   508→  }
+   509→  return false
+   510→}
+   511→
+   512→/** Remove the whole table. */
+   513→export function deleteTableEl(ctx: TableContext): void {
+   514→  ctx.table.remove()
+   515→}
+   516→
+   517→/** Toggle the first row between header (th) and body (td) cells. Returns the new header state. */
+   518→export function toggleTableHeader(ctx: TableContext): boolean {
+   519→  const firstRow = ctx.table.rows[0]
+   520→  if (!firstRow) return false
+   521→  const isHeader = firstRow.cells[0]?.tagName === "TH"
+   522→  for (const cell of Array.from(firstRow.cells)) {
+   523→    const next = document.createElement(isHeader ? "td" : "th")
+   524→    next.innerHTML = cell.innerHTML
+   525→    if (cell === ctx.cell) ctx.cell = next
+   526→    cell.replaceWith(next)
+   527→  }
+   528→  return !isHeader
+   529→}
+   530→
+   531→/** Make sure the document always has a paragraph to type in after structural deletes. */
+   532→export function ensureParagraph(root: HTMLElement): void {
+   533→  if (root.querySelector("p, h1, h2, h3, h4, li, table, blockquote, pre")) return
+   534→  const p = document.createElement("p")
+   535→  p.innerHTML = "<br>"
+   536→  root.appendChild(p)
+   537→}
+   538→
+   539→/* ================================ column resizing ================================ */
+   540→
+   541→/**
+   542→ * Materialize the table's current column distribution into a <colgroup> with
+   543→ * percentage widths, so the columns become resizable and the layout stays
+   544→ * responsive. No-op when a width-bearing colgroup already exists.
+   545→ */
+   546→export function ensureTableColWidths(table: HTMLTableElement): HTMLTableColElement[] | null {
+   547→  const cols = colWidthsFrom(table)
+   548→  if (cols) return cols
+   549→  const firstRow = table.rows[0]
+   550→  if (!firstRow || firstRow.cells.length === 0) return null
+   551→  const tableWidth = table.getBoundingClientRect().width
+   552→  if (tableWidth <= 0) return null
+   553→  table.querySelectorAll("colgroup").forEach((g) => g.remove())
+   554→  const cg = document.createElement("colgroup")
+   555→  for (const cell of Array.from(firstRow.cells)) {
+   556→    const col = document.createElement("col")
+   557→    const pct = (cell.getBoundingClientRect().width / tableWidth) * 100
+   558→    col.style.width = `${pct.toFixed(3)}%`
+   559→    cg.appendChild(col)
+   560→  }
+   561→  table.insertBefore(cg, table.firstChild)
+   562→  return Array.from(cg.children) as HTMLTableColElement[]
+   563→}
+   564→
+   565→/** Existing width-bearing colgroup, if present. */
+   566→function colWidthsFrom(table: HTMLTableElement): HTMLTableColElement[] | null {
+   567→  // NOTE: HTMLTableElement has no `colgroup` DOM property — query it explicitly
+   568→  const cg = table.querySelector(":scope > colgroup")
+   569→  if (!cg) return null
+   570→  const cols = Array.from(cg.children) as HTMLTableColElement[]
+   571→  if (cols.length === 0 || cols.some((c) => !c.style.width)) return null
+   572→  return cols
+   573→}
+   574→
+   575→/** Keep the colgroup aligned after a structural column change. */
+   576→function syncColgroupWithColumns(
+   577→  table: HTMLTableElement,
+   578→  newColIndex: number,
+   579→  side: "left" | "right",
+   580→): void {
+   581→  const cols = colWidthsFrom(table)
+   582→  if (!cols) return // no colgroup yet — percentages materialize on first resize
+   583→  const firstRow = table.rows[0]
+   584→  const cellCount = firstRow?.cells.length ?? 0
+   585→  if (cols.length !== cellCount - 1) return // unexpected shape, leave alone
+   586→  const sourceIndex = Math.max(0, newColIndex - (side === "left" ? 0 : 1))
+   587→  const source = cols[Math.min(sourceIndex, cols.length - 1)]
+   588→  const sourcePct = parseColPct(source) ?? 100 / (cols.length + 1)
+   589→  const half = Math.max(sourcePct / 2, 2)
+   590→  const other = Math.max(sourcePct - half, 2)
+   591→  source.style.width = `${other.toFixed(3)}%`
+   592→  const col = document.createElement("col")
+   593→  col.style.width = `${half.toFixed(3)}%`
+   594→  source.after(col)
+   595→}
+   596→
+   597→function parseColPct(col: HTMLTableColElement): number | null {
+   598→  const m = /^([\d.]+)%$/.exec(col.style.width)
+   599→  return m ? Number(m[1]) : null
+   600→}
+   601→
+   602→/**
+   603→ * Adjust the boundary between two adjacent columns by a pixel delta,
+   604→ * Google-Docs style: the two neighbors share the table width between them.
+   605→ * Returns the applied delta in pixels (0 when clamped).
+   606→ */
+   607→export function resizeTableColumn(
+   608→  table: HTMLTableElement,
+   609→  boundaryIndex: number,
+   610→  deltaPx: number,
+   611→  minPct = 4,
+   612→): number {
+   613→  const cols = ensureTableColWidths(table)
+   614→  if (!cols) return 0
+   615→  const i = boundaryIndex
+   616→  const j = boundaryIndex + 1
+   617→  if (i < 0 || j >= cols.length) return 0
+   618→  const a = parseColPct(cols[i])
+   619→  const b = parseColPct(cols[j])
+   620→  if (a == null || b == null) return 0
+   621→  const tableWidth = table.getBoundingClientRect().width
+   622→  if (tableWidth <= 0) return 0
+   623→  const deltaPct = (deltaPx / tableWidth) * 100
+   624→  let na = a + deltaPct
+   625→  let nb = b - deltaPct
+   626→  // clamp: keep both columns at the minimum width
+   627→  if (na < minPct) {
+   628→    nb -= minPct - na
+   629→    na = minPct
+   630→  }
+   631→  if (nb < minPct) {
+   632→    na -= minPct - nb
+   633→    nb = minPct
+   634→  }
+   635→  na = Math.max(na, minPct)
+   636→  nb = Math.max(nb, minPct)
+   637→  const appliedPct = na - a
+   638→  cols[i].style.width = `${na.toFixed(3)}%`
+   639→  cols[j].style.width = `${nb.toFixed(3)}%`
+   640→  return (appliedPct / 100) * tableWidth
+   641→}
+   642→
+   643→/** Current pixel width of a column (from the first row's cells). */
+   644→export function tableColumnPixelWidth(table: HTMLTableElement, colIndex: number): number {
+   645→  const firstRow = table.rows[0]
+   646→  const cell = firstRow?.cells[colIndex]
+   647→  return cell ? cell.getBoundingClientRect().width : 0
+   648→}
+   649→
+   650→/** Caret range from a point, cross-browser (WebKit + Firefox). */
+   651→export function caretRangeFromPoint(x: number, y: number): Range | null {
+   652→  try {
+   653→    const d = document as Document & { caretRangeFromPoint?: (x: number, y: number) => Range | null }
+   654→    if (typeof d.caretRangeFromPoint === "function") return d.caretRangeFromPoint(x, y)
+   655→    const dd = document as Document & {
+   656→      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+   657→    }
+   658→    if (typeof dd.caretPositionFromPoint === "function") {
+   659→      const pos = dd.caretPositionFromPoint(x, y)
+   660→      if (!pos) return null
+   661→      const r = document.createRange()
+   662→      r.setStart(pos.offsetNode, pos.offset)
+   663→      r.collapse(true)
+   664→      return r
+   665→    }
+   666→  } catch {
+   667→    // ignore
+   668→  }
+   669→  return null
+   670→}
+   671→
+   672→/** Is the point inside the selection's rendered rects? */
+   673→export function pointInSelection(x: number, y: number): boolean {
+   674→  const sel = window.getSelection()
+   675→  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return false
+   676→  const rects = sel.getRangeAt(0).getClientRects()
+   677→  for (const r of rects) {
+   678→    if (x >= r.left - 1 && x <= r.right + 1 && y >= r.top - 1 && y <= r.bottom + 1) return true
+   679→  }
+   680→  return false
+   681→}
+   682→
+   683→/**
+   684→ * Locate the DOM range for a comment's quoted text. First tries the stored
+   685→ * creation-time offset hint; when the document has shifted (text added or
+   686→ * removed before the quote), falls back to a full-text search. Returns null
+   687→ * when the quote no longer exists in the document.
+   688→ */
+   689→export function findQuoteRange(
+   690→  root: HTMLElement,
+   691→  quote: string,
+   692→  hintOffset: number
+   693→): { range: Range; start: number } | null {
+   694→  if (!quote) return null
+   695→  try {
+   696→    const hinted = rangeFromOffsets(root, hintOffset, hintOffset + quote.length)
+   697→    if (hinted && hinted.toString() === quote) {
+   698→      return { range: hinted, start: hintOffset }
+   699→    }
+   700→    const text = root.textContent ?? ""
+   701→    const idx = text.indexOf(quote)
+   702→    if (idx === -1) return null
+   703→    const found = rangeFromOffsets(root, idx, idx + quote.length)
+   704→    if (!found || found.toString() !== quote) return null
+   705→    return { range: found, start: idx }
+   706→  } catch {
+   707→    return null
+   708→  }
+   709→}
+   710→

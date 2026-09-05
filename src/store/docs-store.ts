@@ -6,6 +6,8 @@ import type { WorkspaceView, WorkspaceApp } from "@/lib/workspace-types"
 import { getSnippet, countWords, htmlToText } from "@/lib/doc-utils"
 import { getTemplate, localizedTemplate } from "@/lib/templates"
 import { getCurrentLang, tForLang } from "@/lib/i18n"
+import { saveLocalUser } from "@/lib/identity"
+import { api } from "@/lib/api-client"
 
 export interface CreateDocOptions {
   title?: string
@@ -13,6 +15,9 @@ export interface CreateDocOptions {
   templateId?: string
   folderId?: string | null
 }
+
+/** Bulk operations supported by docs-store.batchOp (loops the PATCH/DELETE APIs). */
+export type BatchOp = "star" | "unstar" | "trash" | "restore" | "deleteForever" | "move"
 
 export type AppView = WorkspaceView
 export type { WorkspaceApp }
@@ -24,6 +29,23 @@ export interface AppTarget {
   app: WorkspaceApp
   id: string | null
   formMode: FormOpenMode | null
+}
+
+/** Client-side copy of the session user (plain data — no server imports). */
+export interface AuthUser {
+  id: string
+  email: string
+  name: string
+  color: string
+  role: "admin" | "member"
+}
+
+/** Real storage usage from /api/storage. */
+export interface StorageUsage {
+  usedBytes: number
+  quotaBytes: number
+  breakdown: Record<string, number>
+  counts: Record<string, number>
 }
 
 interface DocsState {
@@ -44,6 +66,39 @@ interface DocsState {
   tagFilter: string | null
   layout: "grid" | "list"
   openAiOnEditor: boolean
+
+  /* multi-select + bulk actions (home grid) */
+  /** ids of documents currently selected in the home grid */
+  selection: string[]
+  toggleSelect: (id: string) => void
+  selectAll: (ids: string[]) => void
+  clearSelection: () => void
+  /**
+   * Run one bulk operation over `ids` by looping the existing document APIs
+   * (PATCH starred/trashed/folderId, DELETE for deleteForever) via api().
+   * Refreshes the list afterwards and returns per-item statistics; failures
+   * (403/404/network) are counted instead of thrown.
+   */
+  batchOp: (
+    ids: string[],
+    op: BatchOp,
+    folderId?: string | null
+  ) => Promise<{ ok: number; failed: number }>
+
+  /* auth (real account system) */
+  authUser: AuthUser | null
+  authLoaded: boolean
+  authError: string | null
+  authBusy: boolean
+  /** real storage usage from /api/storage (null until loaded) */
+  storageUsage: StorageUsage | null
+
+  fetchMe: () => Promise<void>
+  login: (email: string, password: string) => Promise<boolean>
+  signup: (email: string, name: string, password: string) => Promise<boolean>
+  logout: () => Promise<void>
+  fetchStorage: () => Promise<void>
+  initUnauthorizedListener: () => void
 
   hydrateFromUrl: () => Promise<void>
   bindPopState: () => () => void
@@ -126,13 +181,132 @@ export const useDocsStore = create<DocsState>((set, get) => ({
   tagFilter: null,
   layout: "grid",
   openAiOnEditor: false,
+  selection: [],
+  authUser: null,
+  authLoaded: false,
+  authError: null,
+  authBusy: false,
+  storageUsage: null,
+
+  fetchMe: async () => {
+    try {
+      const res = await fetch("/api/auth/me", { cache: "no-store" })
+      if (res.ok) {
+        const data = (await res.json()) as { user: AuthUser }
+        set({ authUser: data.user, authLoaded: true, authError: null })
+        // keep the presence identity in sync with the real account
+        try {
+          saveLocalUser({ id: data.user.id, name: data.user.name, color: data.user.color })
+        } catch {
+          /* identity is best-effort */
+        }
+      } else {
+        set({ authUser: null, authLoaded: true })
+      }
+    } catch {
+      set({ authUser: null, authLoaded: true })
+    }
+  },
+
+  login: async (email, password) => {
+    set({ authBusy: true, authError: null })
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { user?: AuthUser; error?: string }
+      if (!res.ok || !data.user) {
+        set({ authBusy: false, authError: data.error ?? "登录失败" })
+        return false
+      }
+      set({ authUser: data.user, authBusy: false, authError: null, authLoaded: true })
+      try {
+        saveLocalUser({ id: data.user.id, name: data.user.name, color: data.user.color })
+      } catch {
+        /* best-effort */
+      }
+      await get().refresh({ silent: true })
+      await get().refreshFolders()
+      await get().loadTags()
+      void get().fetchStorage()
+      return true
+    } catch {
+      set({ authBusy: false, authError: "网络错误，请重试" })
+      return false
+    }
+  },
+
+  signup: async (email, name, password) => {
+    set({ authBusy: true, authError: null })
+    try {
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, name, password }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { user?: AuthUser; error?: string }
+      if (!res.ok || !data.user) {
+        set({ authBusy: false, authError: data.error ?? "注册失败" })
+        return false
+      }
+      set({ authUser: data.user, authBusy: false, authError: null, authLoaded: true })
+      try {
+        saveLocalUser({ id: data.user.id, name: data.user.name, color: data.user.color })
+      } catch {
+        /* best-effort */
+      }
+      await get().refresh({ silent: true })
+      await get().refreshFolders()
+      await get().loadTags()
+      void get().fetchStorage()
+      return true
+    } catch {
+      set({ authBusy: false, authError: "网络错误，请重试" })
+      return false
+    }
+  },
+
+  logout: async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" })
+    } catch {
+      /* still reset locally */
+    }
+    set({ authUser: null, storageUsage: null, documents: [], folders: [], tags: [], view: "home", currentDocId: null })
+  },
+
+  /* listen for 401s from any api() call → force the login screen */
+  initUnauthorizedListener: () => {
+    if (typeof window === "undefined") return
+    window.addEventListener("zdocs-unauthorized", () => {
+      const state = get()
+      if (state.authUser) {
+        set({ authUser: null, storageUsage: null, documents: [], folders: [], tags: [], view: "home", currentDocId: null })
+      }
+    })
+  },
+
+  fetchStorage: async () => {
+    try {
+      const res = await fetch("/api/storage", { cache: "no-store" })
+      if (!res.ok) return
+      const data = (await res.json()) as StorageUsage
+      set({ storageUsage: data })
+    } catch {
+      /* storage stays stale on failure */
+    }
+  },
 
   hydrateFromUrl: async () => {
+    await get().fetchMe()
     const { view, docId, target } = viewFromUrl()
     set({ view, currentDocId: docId, appTarget: target })
     await get().refresh({ silent: true })
     await get().refreshFolders()
     await get().loadTags()
+    void get().fetchStorage()
   },
 
   bindPopState: () => {
@@ -145,7 +319,9 @@ export const useDocsStore = create<DocsState>((set, get) => ({
   },
 
   setFilter: (f) => {
-    set({ filter: f })
+    // leaving a view invalidates the current selection (selected docs may not
+    // be visible in the next filter — Google Drive clears selection too)
+    set({ filter: f, selection: [] })
     void get().refresh({ silent: true })
   },
   setSearchQuery: (q) => set({ searchQuery: q }),
@@ -347,6 +523,57 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     set({ documents: get().documents.map((d) => (d.id === id ? { ...d, ...patch } : d)) })
   },
 
+  /* ---------------- multi-select + batch ops ---------------- */
+
+  toggleSelect: (id) => {
+    const cur = get().selection
+    set({ selection: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
+  },
+
+  selectAll: (ids) => {
+    set({ selection: Array.from(new Set(ids)) })
+  },
+
+  clearSelection: () => set({ selection: [] }),
+
+  batchOp: async (ids, op, folderId) => {
+    let ok = 0
+    let failed = 0
+    for (const id of ids) {
+      try {
+        let res: Response
+        if (op === "deleteForever") {
+          res = await api(`/api/documents/${encodeURIComponent(id)}`, { method: "DELETE" })
+        } else {
+          const body: Record<string, unknown> =
+            op === "star"
+              ? { starred: true }
+              : op === "unstar"
+                ? { starred: false }
+                : op === "trash"
+                  ? { trashed: true }
+                  : op === "restore"
+                    ? { trashed: false }
+                    : { folderId: folderId ?? null }
+          res = await api(`/api/documents/${encodeURIComponent(id)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+        }
+        if (res.ok) ok++
+        else failed++
+      } catch {
+        failed++
+      }
+    }
+    if (ok > 0) {
+      await get().refresh({ silent: true })
+      if (op === "move") await get().refreshFolders()
+    }
+    return { ok, failed }
+  },
+
   /* ---------------- tags ---------------- */
   loadTags: async () => {
     try {
@@ -424,7 +651,7 @@ export const useDocsStore = create<DocsState>((set, get) => ({
 
   /* ---------------- folders ---------------- */
   openFolder: (id) => {
-    set({ filter: "folder", activeFolderId: id })
+    set({ filter: "folder", activeFolderId: id, selection: [] })
     void get().refresh({ silent: true })
   },
 

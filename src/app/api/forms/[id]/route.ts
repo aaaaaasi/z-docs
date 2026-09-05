@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { actorFromRequest, logActivity, logActivityThrottled } from "@/lib/server-activity"
+import { guardRoute, ownedAccessLevel, hasAccess, type SessionUser } from "@/lib/server-auth"
+import { logActivity, logActivityThrottled } from "@/lib/server-activity"
 
 export const dynamic = "force-dynamic"
 
 type Params = { params: Promise<{ id: string }> }
+
+/** Activity actor comes from the verified session, never client headers. */
+function actorFromUser(user: SessionUser) {
+  return { id: user.id, name: user.name, color: user.color }
+}
 
 function serialize(f: {
   id: string
@@ -30,10 +36,17 @@ function serialize(f: {
   }
 }
 
-// GET /api/forms/:id
-export async function GET(_req: NextRequest, { params }: Params) {
+// GET /api/forms/:id — owner/admin/legacy-viewer only; 404 hides existence.
+// (Anonymous respondents go through the dedicated fill/submit flow, not here.)
+export async function GET(req: NextRequest, { params }: Params) {
   try {
+    const g = await guardRoute(req)
+    if (!g.ok) return g.response
+
     const { id } = await params
+    const level = await ownedAccessLevel(g.user, "form", id)
+    if (level === "none") return NextResponse.json({ error: "Not found" }, { status: 404 })
+
     const form = await db.form.findUnique({
       where: { id },
       include: { _count: { select: { responses: true } } },
@@ -47,9 +60,26 @@ export async function GET(_req: NextRequest, { params }: Params) {
 }
 
 // PATCH /api/forms/:id — { title?, description?, data?, starred?, trashed? }
+// Owner/admin only (server-enforced); 404 for strangers, 403 for viewers.
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
+    const g = await guardRoute(req, { mutating: true })
+    if (!g.ok) return g.response
+    const user = g.user
+
     const { id } = await params
+    const level = await ownedAccessLevel(user, "form", id)
+    if (level === "none") {
+      // 404 for ids that don't exist; explicit 403 when the form exists
+      // but belongs to someone else (form ids are unguessable cuids)
+      const exists = await db.form.findUnique({ where: { id }, select: { id: true } })
+      if (!exists) return NextResponse.json({ error: "Not found" }, { status: 404 })
+      return NextResponse.json({ error: "You do not have permission to edit this form" }, { status: 403 })
+    }
+    if (!hasAccess(level, "owner")) {
+      return NextResponse.json({ error: "You do not have permission to edit this form" }, { status: 403 })
+    }
+
     const body = (await req.json().catch(() => ({}))) as {
       title?: string
       description?: string
@@ -78,7 +108,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       data,
       include: { _count: { select: { responses: true } } },
     })
-    const actor = actorFromRequest(req)
+    const actor = actorFromUser(user)
 
     if (data.trashed !== undefined && data.trashed !== before.trashed) {
       await logActivity({
@@ -123,10 +153,23 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   }
 }
 
-// DELETE /api/forms/:id
-export async function DELETE(_req: NextRequest, { params }: Params) {
+// DELETE /api/forms/:id — permanent delete; owner/admin only.
+export async function DELETE(req: NextRequest, { params }: Params) {
   try {
+    const g = await guardRoute(req, { mutating: true })
+    if (!g.ok) return g.response
+
     const { id } = await params
+    const level = await ownedAccessLevel(g.user, "form", id)
+    if (level === "none") {
+      const exists = await db.form.findUnique({ where: { id }, select: { id: true } })
+      if (!exists) return NextResponse.json({ error: "Not found" }, { status: 404 })
+      return NextResponse.json({ error: "You do not have permission to delete this form" }, { status: 403 })
+    }
+    if (!hasAccess(level, "owner")) {
+      return NextResponse.json({ error: "You do not have permission to delete this form" }, { status: 403 })
+    }
+
     const form = await db.form.findUnique({ where: { id } })
     if (!form) return NextResponse.json({ error: "Not found" }, { status: 404 })
     await db.form.delete({ where: { id } })

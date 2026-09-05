@@ -66,6 +66,8 @@ export type DialogKey =
   | "table"
   | "emoji"
   | "aitools"
+  | "spellcheck"
+  | "writing"
 
 export interface EditorApi {
   docId: string

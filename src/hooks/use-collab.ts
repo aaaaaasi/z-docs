@@ -74,6 +74,13 @@ export function useCollab(
       join()
     })
 
+    // server rejected the join (no access to this doc) — stop collab quietly
+    socket.on("join-error", (err: { message?: string }) => {
+      console.warn("collab join rejected:", err?.message ?? "no access")
+      setConnected(false)
+      socket.disconnect()
+    })
+
     socket.on("presence", (p: { docId: string; users: CollabUser[] }) => {
       if (p.docId === docId) setPresence(p.users ?? [])
     })

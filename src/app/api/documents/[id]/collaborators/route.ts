@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { actorFromRequest, logActivity } from "@/lib/server-activity"
+import { guardRoute, docAccessLevel, hasAccess, notFound, forbidden } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
 type Params = { params: Promise<{ id: string }> }
 
-// GET /api/documents/:id/collaborators
-export async function GET(_req: NextRequest, { params }: Params) {
+// GET /api/documents/:id/collaborators — viewer+
+export async function GET(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req)
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (!hasAccess(level, "viewer")) return notFound()
+
     const collaborators = await db.collaborator.findMany({
       where: { docId: id },
       orderBy: { createdAt: "asc" },
@@ -31,10 +37,17 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 }
 
-// POST /api/documents/:id/collaborators — { email, role?, name?, color? }
+// POST /api/documents/:id/collaborators — { email, role?, name?, color? } — owner/admin only:
+// inviting collaborators is the document owner's privilege.
 export async function POST(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (level === "none") return notFound()
+    if (!hasAccess(level, "owner")) return forbidden()
+
     const body = (await req.json().catch(() => ({}))) as {
       email?: string
       role?: string
@@ -72,7 +85,7 @@ export async function POST(req: NextRequest, { params }: Params) {
       entityId: id,
       entityTitle: doc.title,
       detail: `shared with ${email}`,
-      actor: actorFromRequest(req),
+      actor: await actorFromRequest(req),
     })
     return NextResponse.json(
       { collaborator: { ...collaborator, createdAt: collaborator.createdAt.toISOString() } },
@@ -84,10 +97,16 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 }
 
-// DELETE /api/documents/:id/collaborators?email=...
+// DELETE /api/documents/:id/collaborators?email=... — owner/admin only
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (level === "none") return notFound()
+    if (!hasAccess(level, "owner")) return forbidden()
+
     const email = (req.nextUrl.searchParams.get("email") ?? "").trim().toLowerCase()
     if (!email) return NextResponse.json({ error: "email required" }, { status: 400 })
     await db.collaborator.deleteMany({ where: { docId: id, email } })

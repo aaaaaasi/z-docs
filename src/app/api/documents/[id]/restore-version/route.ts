@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { guardRoute, docAccessLevel, hasAccess, notFound, forbidden } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
-// POST /api/documents/:id/restore-version { versionId }
+// POST /api/documents/:id/restore-version { versionId } — editor+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (level === "none") return notFound()
+    if (!hasAccess(level, "editor")) return forbidden()
+
     const body = (await req.json().catch(() => ({}))) as { versionId?: string }
     if (!body.versionId) return NextResponse.json({ error: "versionId is required" }, { status: 400 })
 

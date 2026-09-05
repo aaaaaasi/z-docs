@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { logActivity } from "@/lib/server-activity"
+import { guardRoute, docAccessLevel, hasAccess, notFound, forbidden } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
@@ -44,10 +45,15 @@ function serialize(c: {
   }
 }
 
-// GET /api/documents/:id/comments — threaded comment list
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// GET /api/documents/:id/comments — threaded comment list, viewer+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
+    const guard = await guardRoute(req)
+    if (!guard.ok) return guard.response
+    const level = await docAccessLevel(guard.user, id)
+    if (!hasAccess(level, "viewer")) return notFound()
+
     const doc = await db.document.findUnique({ where: { id }, select: { id: true } })
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
@@ -67,11 +73,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 }
 
-// POST /api/documents/:id/comments — create a comment (or reply when parentId set)
+// POST /api/documents/:id/comments — create a comment (or reply when parentId set), editor+.
+// The author identity is taken from the session user (server-side truth);
+// any authorId/authorName/authorColor in the body is ignored.
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const body = (await req.json()) as {
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+    const { user } = guard
+    const level = await docAccessLevel(user, id)
+    if (level === "none") return notFound()
+    if (!hasAccess(level, "editor")) return forbidden()
+
+    const body = (await req.json().catch(() => ({}))) as {
       content?: string
       quote?: string
       anchorOffset?: number
@@ -84,9 +99,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const text = (body.content ?? "").trim()
     if (!text) return NextResponse.json({ error: "Comment text is required" }, { status: 400 })
     if (text.length > 2000) return NextResponse.json({ error: "Comment is too long" }, { status: 400 })
-    if (!body.authorId || !body.authorName) {
-      return NextResponse.json({ error: "Author identity is required" }, { status: 400 })
-    }
 
     const doc = await db.document.findUnique({ where: { id }, select: { id: true, title: true } })
     if (!doc) return NextResponse.json({ error: "Not found" }, { status: 404 })
@@ -105,9 +117,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       data: {
         docId: id,
         parentId: body.parentId ?? null,
-        authorId: body.authorId,
-        authorName: body.authorName.slice(0, 60),
-        authorColor: body.authorColor ?? "#0e7c74",
+        authorId: user.id,
+        authorName: user.name.slice(0, 60),
+        authorColor: user.color.slice(0, 32),
         quote: (body.quote ?? "").slice(0, 400),
         anchorOffset: Math.max(0, Math.floor(body.anchorOffset ?? 0)),
         content: text,
@@ -120,7 +132,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       entityId: id,
       entityTitle: doc.title,
       detail: body.parentId ? "replied to a comment" : text.slice(0, 80),
-      actor: { id: body.authorId, name: body.authorName.slice(0, 60), color: body.authorColor ?? "#0e7c74" },
+      actor: { id: user.id, name: user.name.slice(0, 60), color: user.color.slice(0, 32) },
     })
 
     return NextResponse.json({ comment: serialize(created) }, { status: 201 })

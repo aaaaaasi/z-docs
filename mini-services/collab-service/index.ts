@@ -10,7 +10,20 @@
  *
  * Event contract (matches src/hooks/use-collab.ts in the Next.js app):
  *   client -> server: join-doc, leave-doc, doc-change, cursor, comments-changed
- *   server -> client: presence, doc-change, cursor, comments-changed
+ *   server -> client: presence, doc-change, cursor, comments-changed, join-error
+ *
+ * REALTIME AUTHORIZATION (fail closed):
+ *   Every join-doc is authorized against the Next.js app
+ *   (GET /api/internal/doc-access) using the browser's forwarded session
+ *   cookie plus the INTERNAL_SECRET shared secret:
+ *     - access "none"  -> join rejected with a "join-error" event
+ *     - access viewer  -> may join and watch presence/doc-change, but this
+ *                         socket's doc-change events are DROPPED server-side
+ *     - editor/owner/admin -> full read/write relay
+ *   If the app (:3000) is unreachable, joins are rejected (fail closed).
+ *   All relays (doc-change/cursor/comments-changed) additionally require the
+ *   socket's verified session docId to match the payload docId, so a socket
+ *   can never broadcast into a room it never joined.
  */
 
 import { createServer } from 'http'
@@ -23,6 +36,8 @@ export interface CollabUser {
   name: string
   color: string
 }
+
+type AccessLevel = 'none' | 'viewer' | 'editor' | 'owner' | 'admin'
 
 interface JoinDocPayload {
   docId: string
@@ -62,11 +77,24 @@ interface BroadcastCursor extends CursorPayload {
   user: CollabUser
 }
 
+interface JoinErrorPayload {
+  message: string
+}
+
 /** Per-socket session state (keyed by socket.id). */
 interface SocketSession {
   docId: string | null
   user: CollabUser | null
+  /** server-verified access level for the joined doc (null until joined) */
+  access: AccessLevel | null
 }
+
+// ---------------------------------------------------------------- config
+
+const PORT = 3003
+const APP_ORIGIN = process.env.APP_ORIGIN ?? 'http://localhost:3000'
+const INTERNAL_SECRET = process.env.INTERNAL_SECRET ?? ''
+const AUTH_TIMEOUT_MS = 3000
 
 // ---------------------------------------------------------------- state
 
@@ -96,6 +124,60 @@ function broadcastPresence(docId: string): void {
   console.log(`[presence] doc=${docId} users=${payload.users.length}`)
 }
 
+// ---------------------------------------------------------------- realtime auth
+
+interface DocAccessResult {
+  access: AccessLevel
+  user: { id: string; name: string; color: string } | null
+}
+
+const ACCESS_LEVELS: AccessLevel[] = ['viewer', 'editor', 'owner', 'admin']
+
+/**
+ * Ask the Next.js app who this socket is (via the forwarded browser cookie)
+ * and what access they have to the doc. FAIL CLOSED: any error — app down,
+ * non-200, malformed payload, unknown access value — yields access "none".
+ */
+async function fetchDocAccess(cookie: string | undefined, docId: string): Promise<DocAccessResult> {
+  try {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS)
+    const res = await fetch(
+      `${APP_ORIGIN}/api/internal/doc-access?docId=${encodeURIComponent(docId)}`,
+      {
+        headers: {
+          ...(cookie ? { cookie } : {}),
+          'x-internal-secret': INTERNAL_SECRET,
+        },
+        signal: controller.signal,
+      }
+    )
+    clearTimeout(timer)
+    if (!res.ok) return { access: 'none', user: null }
+
+    const data = (await res.json().catch(() => null)) as {
+      access?: string
+      user?: { id?: string; name?: string; color?: string } | null
+    } | null
+    if (!data || !ACCESS_LEVELS.includes(data.access as AccessLevel)) {
+      return { access: 'none', user: null }
+    }
+    const u = data.user
+    const user =
+      u && typeof u.id === 'string' && typeof u.name === 'string'
+        ? {
+            id: u.id,
+            name: u.name,
+            color: typeof u.color === 'string' ? u.color : '#0e7c74',
+          }
+        : null
+    return { access: data.access as AccessLevel, user }
+  } catch {
+    // app unreachable / timeout / bad payload — fail closed
+    return { access: 'none', user: null }
+  }
+}
+
 // ---------------------------------------------------------------- server
 
 const httpServer = createServer()
@@ -112,12 +194,25 @@ const io = new Server(httpServer, {
 
 io.on('connection', (socket: Socket) => {
   console.log(`[connect] ${socket.id}`)
-  sessions.set(socket.id, { docId: null, user: null })
+  sessions.set(socket.id, { docId: null, user: null, access: null })
 
   // ---------------------------------------------------------- join-doc
-  socket.on('join-doc', (payload: JoinDocPayload) => {
+  socket.on('join-doc', async (payload: JoinDocPayload) => {
     const { docId, user } = payload ?? ({} as JoinDocPayload)
-    if (!docId || !user?.id) return
+    // strict payload validation: docId is an opaque cuid-like string
+    if (typeof docId !== 'string' || !docId || docId.length > 40) return
+    if (!user || typeof user.id !== 'string') return
+
+    // ---- realtime authorization (fail closed) ----
+    const cookie = socket.request.headers.cookie
+    const auth = await fetchDocAccess(cookie, docId)
+    if (auth.access === 'none') {
+      // no session, no access to this doc, or the auth backend is down:
+      // never join the room, never announce presence
+      console.log(`[join-denied] ${socket.id} -> doc:${docId}`)
+      socket.emit('join-error', { message: 'No access' } satisfies JoinErrorPayload)
+      return
+    }
 
     // leave any previous room first (doc switching)
     const prev = sessions.get(socket.id)
@@ -127,9 +222,16 @@ io.on('connection', (socket: Socket) => {
     }
 
     socket.join(roomName(docId))
-    sessions.set(socket.id, { docId, user })
+    // the presence identity is the SERVER-VERIFIED session user (falls back
+    // to the client-supplied profile only when the API returned no identity)
+    const presenceUser: CollabUser = auth.user ?? {
+      id: user.id,
+      name: user.name ?? user.id,
+      color: user.color,
+    }
+    sessions.set(socket.id, { docId, user: presenceUser, access: auth.access })
     console.log(
-      `[join] ${socket.id} -> doc:${docId} (${user.name ?? user.id})`
+      `[join] ${socket.id} -> doc:${docId} (${presenceUser.name ?? presenceUser.id}, access=${auth.access})`
     )
 
     // announce presence to EVERYONE in the room (including the joiner)
@@ -143,7 +245,7 @@ io.on('connection', (socket: Socket) => {
 
     const leftDocId = session.docId
     socket.leave(roomName(leftDocId))
-    sessions.set(socket.id, { docId: null, user: null })
+    sessions.set(socket.id, { docId: null, user: null, access: null })
     console.log(`[leave] ${socket.id} <- doc:${leftDocId}`)
 
     broadcastPresence(leftDocId)
@@ -152,7 +254,19 @@ io.on('connection', (socket: Socket) => {
   // ---------------------------------------------------------- doc-change
   socket.on('doc-change', (payload: DocChangePayload) => {
     const { docId, content, title, version } = payload ?? ({} as DocChangePayload)
-    if (!docId) return
+    if (!docId || typeof content !== 'string') return
+
+    const session = sessions.get(socket.id)
+    // server-side authority: the socket must have VERIFIABLY joined THIS doc
+    // with write access — viewers may watch, but their changes are dropped
+    if (!session?.docId || session.docId !== docId) return
+    if (session.access === 'viewer') {
+      console.log(`[denied] viewer ${socket.id} attempted doc-change on doc:${docId}`)
+      return
+    }
+
+    // sanity cap on relayed content
+    if (content.length > 1_000_000) return
 
     const broadcast: BroadcastDocChange = {
       docId,
@@ -172,6 +286,7 @@ io.on('connection', (socket: Socket) => {
 
     const session = sessions.get(socket.id)
     if (!session?.user) return // no profile yet -> ignore
+    if (session.docId !== docId) return // not verified in this room -> ignore
 
     const broadcast: BroadcastCursor = {
       docId,
@@ -186,10 +301,13 @@ io.on('connection', (socket: Socket) => {
   // A client mutated a comment (add/reply/resolve/delete) through the REST
   // API; relay a lightweight notification so other editors refetch the
   // comment list for this document. No payload data — the source of truth
-  // is always the database.
+  // is always the database (and the REST routes enforce access).
   socket.on('comments-changed', (payload: CommentsChangedPayload) => {
     const { docId, action, commentId } = payload ?? ({} as CommentsChangedPayload)
     if (!docId) return
+
+    const session = sessions.get(socket.id)
+    if (!session?.docId || session.docId !== docId) return // not in this room
 
     socket.to(roomName(docId)).emit('comments-changed', {
       docId,
@@ -222,7 +340,6 @@ io.on('connection', (socket: Socket) => {
 
 // ---------------------------------------------------------------- boot
 
-const PORT = 3003
 httpServer.listen(PORT, () => {
   console.log(`collab-service (socket.io) listening on port ${PORT}`)
 })

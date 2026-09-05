@@ -1,29 +1,34 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { guardRoute, docAccessLevel, hasAccess, notFound } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
 const ALLOWED_EMOJI = ["👍", "❤️", "😂", "🎉", "✅", "👀"]
 
-// POST /api/comments/:id/reactions — toggle an emoji reaction for a user.
+// POST /api/comments/:id/reactions — toggle an emoji reaction, viewer+.
+// The reacting identity is the session user; userId/userName in the body are ignored.
 // Adding when absent, removing when already present (idempotent toggle).
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    const body = (await req.json()) as { emoji?: string; userId?: string; userName?: string }
+    const guard = await guardRoute(req, { mutating: true, limit: 60 })
+    if (!guard.ok) return guard.response
+    const { user } = guard
+
+    const body = (await req.json().catch(() => ({}))) as { emoji?: string; userId?: string; userName?: string }
 
     if (!body.emoji || !ALLOWED_EMOJI.includes(body.emoji)) {
       return NextResponse.json({ error: "Unsupported emoji" }, { status: 400 })
     }
-    if (!body.userId || !body.userName) {
-      return NextResponse.json({ error: "User identity is required" }, { status: 400 })
-    }
 
-    const comment = await db.comment.findUnique({ where: { id }, select: { id: true } })
+    const comment = await db.comment.findUnique({ where: { id }, select: { id: true, docId: true } })
     if (!comment) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const level = await docAccessLevel(user, comment.docId)
+    if (!hasAccess(level, "viewer")) return notFound()
 
     const existing = await db.commentReaction.findUnique({
-      where: { commentId_userId_emoji: { commentId: id, userId: body.userId, emoji: body.emoji } },
+      where: { commentId_userId_emoji: { commentId: id, userId: user.id, emoji: body.emoji } },
       select: { id: true },
     })
 
@@ -35,8 +40,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await db.commentReaction.create({
       data: {
         commentId: id,
-        userId: body.userId,
-        userName: body.userName.slice(0, 60),
+        userId: user.id,
+        userName: user.name.slice(0, 60),
         emoji: body.emoji,
       },
     })

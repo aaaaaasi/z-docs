@@ -1,0 +1,35 @@
+/**
+ * zh translations for auth (login screen, account menu, permission errors).
+ * Keys are the exact English source strings used in components.
+ */
+export const dictAuth: Record<string, string> = {
+  "Sign in to Z-Docs": "登录 Z-Docs",
+  "Create your account": "创建账号",
+  "Your workspace is private and encrypted at rest": "你的工作区为私有，数据已加密存储",
+  "Name": "姓名",
+  "Email": "邮箱",
+  "Password": "密码",
+  "At least 8 characters": "至少 8 个字符",
+  "Sign in": "登录",
+  "Create account": "创建账号",
+  "No account? Create one": "没有账号？立即注册",
+  "Already have an account? Sign in": "已有账号？直接登录",
+  "The first account becomes the workspace admin and owns all existing content.": "首个注册账号将成为工作区管理员，并接管所有现有内容。",
+  "Workspace admin": "工作区管理员",
+  "Workspace member": "工作区成员",
+  "Sign out": "退出登录",
+  "Calculating…": "正在计算…",
+  "{used} of {total} used — {count} items": "已使用 {used}，共 {total} · {count} 项内容",
+  "B": "B",
+  "KB": "KB",
+  "MB": "MB",
+  "GB": "GB",
+  "Local account · demo": "本地账号 · 演示",
+  "Display name": "显示名称",
+  "Save profile": "保存资料",
+  "Sign in required.": "需要登录。",
+  "You do not have permission to do that.": "你没有执行此操作的权限。",
+  "Too many requests — slow down and try again shortly.": "请求过于频繁，请稍后再试。",
+  "Cross-origin request rejected.": "已拒绝跨源请求。",
+  "Guest": "访客",
+}

@@ -8,6 +8,11 @@ import { dictSheets } from "./i18n/dict-sheets"
 import { dictSlides } from "./i18n/dict-slides"
 import { dictForms } from "./i18n/dict-forms"
 import { dictApps } from "./i18n/dict-apps"
+import { dictAuth } from "./i18n/dict-auth"
+import { dictMulti } from "./i18n/dict-multi"
+import { dictSpell } from "./i18n/dict-spell"
+import { dictStats } from "./i18n/dict-stats"
+import { dictInsights } from "./i18n/dict-insights"
 
 export type Lang = "en" | "zh"
 
@@ -22,6 +27,11 @@ const zhDict: Record<string, string> = {
   ...dictSlides,
   ...dictForms,
   ...dictApps,
+  ...dictAuth,
+  ...dictMulti,
+  ...dictSpell,
+  ...dictStats,
+  ...dictInsights,
 }
 
 /** BCP-47 locale for Intl formatting. */

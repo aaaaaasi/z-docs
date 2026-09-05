@@ -1,14 +1,13 @@
 import type { NextRequest } from "next/server"
 import { db } from "@/lib/db"
+import { getSessionUser } from "@/lib/server-auth"
 import type { ActivityKind, WorkspaceApp } from "@/lib/workspace-types"
 
-/**
- * Server-side activity feed logger (Google Drive "activity" style).
- * Actor identity is passed by the client as the `x-z-actor` header:
- *   { "id": "...", "name": "...", "color": "#..." }
- * The header is injected automatically by the client `api()` helper (src/lib/api-client.ts).
- */
-export function actorFromRequest(req: NextRequest): { id: string; name: string; color: string } {
+/** Identity used for activity-feed attribution. */
+export type ActivityActor = { id: string; name: string; color: string }
+
+/** Legacy `x-z-actor` header parsing (trusted internal service calls only). */
+function actorFromHeader(req: NextRequest): ActivityActor {
   try {
     const raw = req.headers.get("x-z-actor")
     if (raw) {
@@ -27,6 +26,22 @@ export function actorFromRequest(req: NextRequest): { id: string; name: string; 
   return { id: "local", name: "Local user", color: "#0b6b62" }
 }
 
+/**
+ * Resolve the activity actor. The authenticated session user always wins
+ * (server-side truth — a client cannot spoof attribution via headers).
+ * Without a session (internal service calls, e.g. collab-service :3003) the
+ * legacy `x-z-actor` header is honored as a fallback.
+ */
+export async function actorFromRequest(req: NextRequest): Promise<ActivityActor> {
+  try {
+    const user = await getSessionUser(req)
+    if (user) return { id: user.id, name: user.name.slice(0, 60), color: user.color.slice(0, 32) }
+  } catch {
+    // session lookup failed — fall through to header fallback
+  }
+  return actorFromHeader(req)
+}
+
 /** Never throws — activity logging must not break the mutation it decorates. */
 export async function logActivity(input: {
   app: WorkspaceApp
@@ -34,9 +49,11 @@ export async function logActivity(input: {
   entityId: string
   entityTitle: string
   detail?: string
-  actor: { id: string; name: string; color: string }
+  /** resolved actor — or a pending one (callers may pass `actorFromRequest(req)` un-awaited). */
+  actor: ActivityActor | Promise<ActivityActor>
 }): Promise<void> {
   try {
+    const actor = await input.actor
     await db.activityLog.create({
       data: {
         app: input.app,
@@ -44,9 +61,9 @@ export async function logActivity(input: {
         entityId: input.entityId,
         entityTitle: input.entityTitle.slice(0, 120),
         detail: (input.detail ?? "").slice(0, 160),
-        actorId: input.actor.id,
-        actorName: input.actor.name,
-        actorColor: input.actor.color,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorColor: actor.color,
       },
     })
     // cap the feed at 200 rows (oldest pruned first)

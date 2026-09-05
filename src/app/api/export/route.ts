@@ -1,14 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { guardRoute, forbidden } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
 /**
  * GET /api/export — full workspace snapshot (documents, sheets, decks, forms +
  * response counts, folders, tags, activity) used by Settings → "Export your data".
+ * Admin only: the snapshot crosses every member's private documents.
  */
-export async function GET(_req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
+    const guard = await guardRoute(req)
+    if (!guard.ok) return guard.response
+    if (guard.user.role !== "admin") return forbidden()
+
     const [documents, folders, tags, sheets, decks, forms, activity] = await Promise.all([
       db.document.findMany({
         where: { trashed: false },
