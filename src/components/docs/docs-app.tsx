@@ -21,6 +21,8 @@ export function DocsApp() {
   const bindPopState = useDocsStore((s) => s.bindPopState)
   const authUser = useDocsStore((s) => s.authUser)
   const authLoaded = useDocsStore((s) => s.authLoaded)
+  const guestMode = useDocsStore((s) => s.guestMode)
+  const authScreen = useDocsStore((s) => s.authScreen)
   const hydrated = React.useRef(false)
 
   React.useEffect(() => {
@@ -32,6 +34,10 @@ export function DocsApp() {
     return unbind
   }, [hydrateFromUrl, bindPopState])
 
+  // signed-in users get the app; guests get the local-only app; everyone else
+  // gets the login screen (which itself offers "continue as guest")
+  const showApp = !!authUser || (guestMode && !authScreen)
+
   return (
     <I18nProvider>
       <TooltipProvider delayDuration={250}>
@@ -41,7 +47,7 @@ export function DocsApp() {
           <div className="flex min-h-dvh items-center justify-center bg-background" aria-label="Loading">
             <DocsLogo size="sm" />
           </div>
-        ) : !authUser ? (
+        ) : !showApp ? (
           <LoginScreen />
         ) : (
           <div key={view} className="animate-view-in">

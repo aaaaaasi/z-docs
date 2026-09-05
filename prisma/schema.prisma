@@ -18,8 +18,7 @@ model Document {
   trashed   Boolean  @default(false)
   /// optional folder grouping (null = home root)
   folderId  String?
-  /// owner account (null = legacy doc created before accounts existed;
-  /// readable by signed-in members, manageable by admins)
+  /// owner account (null = orphaned legacy doc, invisible to every user)
   ownerId   String?
   /// Ellipsus-style writing telemetry: WritingStats JSON blob (client-merged)
   stats     String   @default("")
@@ -36,6 +35,7 @@ model Document {
 }
 
 /// A member account of the Z-Docs workspace (credentials auth).
+/// Every user is fully independent — no admin, no shared workspace data.
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -44,8 +44,6 @@ model User {
   passwordHash String
   /// display color used for presence/comments
   color        String   @default("#0e7c74")
-  /// "admin" (first account, owns workspace) | "member"
-  role         String   @default("member")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -66,24 +64,26 @@ model UserSession {
   @@index([expiresAt])
 }
 
-/// Named folders for organizing documents in the home view.
+/// Named folders for organizing documents in the home view (per user).
 model Folder {
   id        String   @id @default(cuid())
   name      String
   color     String   @default("#0b6b62")
+  /// owner account (null = legacy folder, hidden)
+  ownerId   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   documents Document[]
-
-  @@unique([name])
 }
 
-/// Colored labels (Google Drive style) attached to documents.
+/// Colored labels (Google Drive style) attached to documents (per user).
 model Tag {
   id        String        @id @default(cuid())
-  name      String        @unique
+  name      String
   color     String        @default("#0b6b62")
+  /// owner account (null = legacy tag, hidden)
+  ownerId   String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
@@ -111,7 +111,7 @@ model Sheet {
   data      String   @default("{}")
   starred   Boolean  @default(false)
   trashed   Boolean  @default(false)
-  /// owner account (null = legacy entity, member-readable)
+  /// owner account (null = orphaned legacy entity, invisible)
   ownerId   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -125,7 +125,7 @@ model SlideDeck {
   data      String   @default("[]")
   starred   Boolean  @default(false)
   trashed   Boolean  @default(false)
-  /// owner account (null = legacy entity, member-readable)
+  /// owner account (null = orphaned legacy entity, invisible)
   ownerId   String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -140,7 +140,7 @@ model Form {
   data        String   @default("[]")
   starred     Boolean  @default(false)
   trashed     Boolean  @default(false)
-  /// owner account (null = legacy entity, member-readable)
+  /// owner account (null = orphaned legacy entity, invisible)
   ownerId     String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

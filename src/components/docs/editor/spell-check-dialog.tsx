@@ -154,9 +154,12 @@ export function SpellCheckDialog({
         setPhase("error")
         return
       }
-      const data = (await res.json().catch(() => ({}))) as { issues?: SpellCheckIssue[] }
+      const data = (await res.json().catch(() => ({}))) as { issues?: SpellCheckIssue[]; error?: string }
       if (!res.ok || !Array.isArray(data.issues)) {
-        setErrorMsg(t("The AI service is unavailable right now."))
+        // guests get a targeted "sign in to use AI" message from the local
+        // API shim — surface it verbatim instead of a generic outage
+        const guestHint = res.status === 403 && data.error ? data.error : ""
+        setErrorMsg(guestHint || t("The AI service is unavailable right now."))
         setPhase("error")
         return
       }

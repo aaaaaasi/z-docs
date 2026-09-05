@@ -620,3 +620,33 @@
    620→- 子代理详情: agent-ctx/16-a.md、16-c.md、16-d.md（16-b 超时未留档，其成果由本节记录）。
    621→- 遗留（低风险）: Radix useId hydration 抖动为 dev-only（worklog Task 15 已记录）；未翻译项均为刻意保留（产品名/字体名/DB 内容/公式/错误码/CSV 字段）；workspace 其他 app 的 AI 无（仅 Docs 有 AI）；后续可考虑：语言切换动画、zh 下首字母头像逻辑、AI 对话输入 placeholder 语言跟随（已做）。
    622→
+   623→---
+   624→Task ID: 17
+   625→Agent: main (Z.ai Code) + 6 parallel subagents (17-a/b/c/d/e1/e2)
+   626→Task: 用户四大需求：①多选功能 ②真实数据（假存储条）③真实可用的拼写检查 ④权限分化/防越权/安全机制 ⑤Ellipsus 式写作历程+写作心得
+   627→
+   628→Work Log:
+   629→- AUTH & SECURITY FOUNDATION (main):
+   630→  - Prisma: User（email/name/passwordHash scrypt/role admin|member/color）+ UserSession（随机 32B token、14 天、httpOnly cookie zdocs_session、SameSite=Lax）；Document/Sheet/SlideDeck/Form 增加 ownerId（null=legacy 成员可读）；Document 增加 stats(String JSON) + editCount(Int)。db:push + 重启 dev（stale client 教训）+ .env 与 collab-service/.env 共享 INTERNAL_SECRET。
+   631→  - src/lib/server-auth.ts（安全库）：hashPassword/verifyPassword（scrypt+timingSafeEqual）、createSession/userFromToken/getSessionUser、guardRoute（会话+同源 Origin 校验+按用户限流 240r/min、60w/min）、rateLimit（内存固定窗口）+clientIp+tooManyRequests(429)、docAccessLevel（owner/editor/viewer/admin/none，collaborator 角色真实生效）、ownedAccessLevel、sanitizeDocHtml（白名单标签+去 script/iframe/事件属性/javascript: URL）、isInternalRequest（内部密钥）。
+   632→  - 认证路由：/api/auth/signup（首个账号=admin 并 updateMany 接管全部无主实体 claimedWorkspace、邮箱正则、密码≥8、5次/10min 限流）、login（scrypt 校验、通用错误防枚举、10次/5min 防爆破）、logout（删会话+清 cookie）、me；/api/internal/doc-access（内部密钥或会话，collab 服务用）。
+   633→  - /api/storage 真实存储：从 DB 逐实体 SUM 内容长度（documents/versions/sheets/slides/forms/responses/comments/other breakdown + counts），quota 15GB。侧边栏假"1.8 GB"删除，改真实数据（实测 8.3 KB · 25 项内容，进度条按真实百分比，文档数变化自动刷新）。
+   634→  - 前端：login-screen.tsx（Google 风格登录/注册双模式、中英、错误提示、首账号提示）；docs-app 认证门（authLoaded 前骨架、未登录 LoginScreen）；docs-store：authUser/authLoaded/authBusy/authError/storageUsage + fetchMe/login/signup/logout/fetchStorage + initUnauthorizedListener（任何 api() 401 → 窗口事件 → 自动清态回登录门）；user-menu 显示真实账号+邮箱+角色徽章+退出登录；身份桥接（登录后 saveLocalUser 同步 presence 名字/颜色）。api-client credentials same-origin + 401 事件。
+   635→  - editor 接线（新功能挂载点）：DialogKey 增 spellcheck/writing；menu-bar 工具菜单加"拼写和语法检查…/写作工作室"；editor-view 挂 tracker（每 doc 一个、beforeinput 观察、30s+卸载 flush、beforeunload）、highlightText（复用 findMatches 高亮+scrollRangeIntoCanvasView 定位）、两对话框挂载；documents/[id] PATCH：content 入库前 sanitizeDocHtml、内容变化 editCount+1（服务端权威）；GET 返回 stats+editCount。
+   636→- 17-a (多选): docs-store selection/toggleSelect/selectAll/clearSelection/batchOp（star/unstar/trash/restore/deleteForever/move，逐项统计 ok/failed）；docs-grid 网格卡片+列表行复选框（48px 命中区、hover 淡入、选中态点击卡片=切换选择而非打开）；"已选 N 项+全选+取消"；浮动批量操作栏（createPortal 规避 transform containing-block、elev-4、星标/取消星标/移动文件夹/回收/恢复/永久删除、批量删除 AlertDialog、375px overflow-x 适配）；Escape 清空；dict-multi 23 条。
+   637→- 17-b (拼写检查): /api/ai/spellcheck（guardRoute 6/min、12k 截断、严格中文 system prompt 强制 quote 逐字原文、四层防御解析含引号修复器、quote 必须存在于原文校验）；spell-check-dialog.tsx 重写（打开即扫、类型徽章四色、quote 点击定位滚动高亮、单条修正 range.deleteContents+insertNode+onFixed 触发保存、忽略、全部修正（按 start 倒序防 range 失效）、Recheck、429/502 友好态、布局契约遵守）；dict-spell 32 条。E2E 实测：Their is a mispelled sentense+错别次 → 2 issues → 全部修正 → 文档变 There is a misspelled sentence+错别字 ✓。
+   638→- 17-c (写作历程): writing-tracker.ts 真实实现（契约签名不变；beforeinput 纯观察：insertText/IME 增量/删除=击键、insertFromPaste=pastedChars 不算击键；gap≤5s→activeMs、5s-30min→pauses/pauseMs、>30min→新 session；基线 GET 合并防覆盖、eventSeq 竞态防护、keepalive 卸载补写、401/403 静默重试）；writing-metrics.tsx 8 指标卡（总字数/有效写作时间/写作次数/平均速度（zh 字/min、en 词/min、粘贴不计）/思考停顿(次+时长)/总编辑次数(服务端)/字数修改比/粘贴比例进度条）；stats 路由（主代理建）：PATCH 白名单字段合并 + GET；dict-stats 27 条。
+   639→- 17-d (写作心得): writing-insights.ts 纯函数引擎 937 行（中英混合分句分词、Flesch-Kincaid 英文年级+中文句长加权估算、TTR 词汇多样性、四档句长、句子节奏数组、段落密度评分、句子开头词性分类、被动语态 be+分词（不规则表+黑名单）、-ly 副词（名词白名单）+中文"地"三层守卫、词频 top10 停用词过滤（中英）、词语回声（英文词交集+中文 LCS）、重复 2-6gram ≥3 次 top10、对话平衡引号配对扫描、三视角人称、每千字标点频率）；writing-insights-ui.tsx 15 区块可视化（bar chart 全手写 CSS、句子节奏柱点击 highlightText 定位文档对应句、段落密度彩色圆点悬停定位、被动句/回声例句点击定位、双语说明文案、空态）；dict-insights 89 条。自测：英文 grade 3.9/被动 7/重复短语、中文 grade 13.1/地-副词、27840 词 191ms。
+   640→- 17-e1 (安全 I): documents 全树 10 路由+comments 2+folders/tags 3+activity+export 共 17 文件守卫：列表可见性 OR[own/legacy/collaborator]（admin 全量）、单文档 none→404 防存在性泄露、PATCH/DELETE editor+、duplicate editor+ 且副本归复制者（堵越权放大洞）、collaborators 管理仅 owner、comments 作者本人或 owner、export 仅 admin；server-activity actorFromRequest 改会话优先（x-z-actor 伪造失效）；share-dialog 错误 t() 化。安全矩阵 7 项实测通过（401/隔离 404/403/201 归属/238 次 429/伪造 Origin 403）。
+   641→- 17-e2 (安全 II): sheets/slides/forms 列表 OR[own/legacy]、单实体 none→404、写 owner/admin、forms responses GET owner-only / POST 匿名允许（Google Forms 场景）8次/10min 严格限流+载荷校验+ack 不泄露；AI write/transform guardRoute 6/min；collab-service join-doc 异步鉴权（cookie 转发 /api/internal/doc-access、none/app挂→join-error fail-closed、viewer 进房可看但 doc-change 服务端丢弃、presence 身份服务端权威、房间注入防护）；use-collab +3 行 join-error 监听；next.config.ts 安全头（nosniff/referrer/permissions-policy/object-src 'none'，无 frame/CSP 以保 iframe 预览与 Turbopack）。
+   642→- QA (agent-browser E2E by main): 登录闭环（注册 admin 接管 25 项→登录→真实存储 8.3KB→登出→401 事件自动回登录门→cookie 过期模拟）；多选全链路（复选框进入选择模式→已选 N→批量星标"1 篇文档已加星标"→批量回收→回收站恢复"1 篇文档已恢复"）；拼写检查全链路（含错文本→2 issues→全部修正→文档真实变更）；写作工作室（历程 8 卡+心得 15 区块"适合 11 年级"、节奏柱点击定位）；移动端 375px 全视图零溢出；控制台 Ecmascript 报错为 agent-browser 历史累积日志（dev.log 无、tsc/lint 干净、页面渲染正常）。词典 1186 条 / 使用 1008 key / 缺失 0（补了带省略号的菜单词条）。
+   643→- 质量门：bunx tsc --noEmit src 0 错误；bun run lint 干净；dev :3000 200；collab :3003 健康。
+   644→
+   645→Stage Summary:
+   646→- 四大需求全部真实落地：①多选+批量操作（全链路 E2E）②真实存储数据（DB 字节级测量）③AI 拼写语法检查（真实定位+修正，Grammarly 级体验）④完整安全体系（账号+会话+所有权+协作者角色+全 API 守卫+实时层鉴权+限流+同源+XSS 消毒+安全头+防爆破）。
+   647→- Ellipsus 双功能：写作历程（有效时间/会话/停顿/WPM/粘贴比真实遥测+持久化）+ 写作心得（15 项中英混合文本分析+文档内定位交互）。
+   648→- 所有新 UI 中英双语（词典 1186 条 0 缺失）。
+   649→- 测试账号：admin@zdocs.test / Admin123456（admin）；member@zdocs.test / Member123456（member，权限隔离用）。
+   650→- 已知限制：拼写修正不可 Ctrl+Z 撤销（直接 DOM 编辑）、AI 限流 6/min、FKGL 音节为启发式（UI 已标注）、多标签遥测 last-writer-wins、raster PDF 文本层等前轮遗留不变。
+   651→- 下一阶段候选：拼写修正接入 execCommand 撤销栈、表单/表格/幻灯片协作者细粒度角色（现仅 owner/legacy）、限流升级 Redis、表单允许匿名开关（owner 可控）、collab 断线重连时重鉴权。
+   652→

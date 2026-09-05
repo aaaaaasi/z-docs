@@ -6,8 +6,7 @@ export const dynamic = "force-dynamic"
 
 /**
  * Access check for a single comment: the caller needs editor+ on the parent
- * document AND must either be the comment's author or the doc owner/admin
- * (legacy comments authored by pre-account local identities fall to owner/admin).
+ * document AND must either be the comment's author or the doc owner.
  */
 async function commentGuard(
   req: NextRequest,
@@ -25,7 +24,7 @@ async function commentGuard(
   if (level === "none") return { ok: false, response: notFound() }
   if (!hasAccess(level, "editor")) return { ok: false, response: forbidden() }
   const isAuthor = comment.authorId === guard.user.id
-  const isManager = level === "owner" || level === "admin"
+  const isManager = level === "owner"
   if (!isAuthor && !isManager) return { ok: false, response: forbidden() }
   return { ok: true, user: guard.user, comment }
 }

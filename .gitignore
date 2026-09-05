@@ -40,7 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-local-*
+local-*.env
+!src/lib/local-mode*
+!src/lib/local-mode/**
 .claude
 .z-ai-config
 *.log

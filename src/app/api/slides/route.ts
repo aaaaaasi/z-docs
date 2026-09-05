@@ -30,7 +30,7 @@ function toMeta(d: {
 
 // GET /api/slides?filter=all|starred|trashed
 // Auth required. Members see only their own + legacy (ownerless) decks;
-// admins see the whole workspace.
+// every user sees only their own entities.
 export async function GET(req: NextRequest) {
   try {
     const g = await guardRoute(req)
@@ -43,13 +43,13 @@ export async function GET(req: NextRequest) {
       starred?: boolean
       trashed: boolean
       title?: { contains: string }
-      OR?: { ownerId: string | null }[]
+      ownerId?: string
     } = {
       trashed: filter === "trashed",
     }
     if (filter === "starred") where.starred = true
     if (q) where.title = { contains: q }
-    if (user.role !== "admin") where.OR = [{ ownerId: user.id }, { ownerId: null }]
+    where.ownerId = user.id // every user is independent — own entities only
     const decks = await db.slideDeck.findMany({ where: where as never, orderBy: { updatedAt: "desc" } })
     return NextResponse.json({ decks: decks.map(toMeta) })
   } catch (e) {

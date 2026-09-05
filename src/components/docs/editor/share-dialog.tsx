@@ -17,7 +17,9 @@ import { initialsOf, colorForId } from "@/lib/doc-utils"
 import { api } from "@/lib/api-client"
 import { useToast } from "@/hooks/use-toast"
 import { Copy, Check, Globe, Lock, UserPlus, X } from "lucide-react"
+import { CloudUpload } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
+import { useDocsStore } from "@/store/docs-store"
 
 interface CollaboratorRow {
   id: string
@@ -46,6 +48,8 @@ export function ShareDialog({
   const [collaborators, setCollaborators] = React.useState<CollaboratorRow[]>([])
   const { toast } = useToast()
   const { t } = useI18n()
+  const guestMode = useDocsStore((s) => s.guestMode)
+  const showAuthScreen = useDocsStore((s) => s.showAuthScreen)
   const link = typeof window !== "undefined" ? `${window.location.origin}/?doc=${docId}` : `/?doc=${docId}`
 
   // load saved collaborators whenever the dialog opens
@@ -152,6 +156,21 @@ export function ShareDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {guestMode ? (
+          <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed bg-muted/40 px-4 py-6 text-center">
+            <CloudUpload className="h-6 w-6 text-primary" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-medium">{t("Sharing needs an account")}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {t("Sign in to share this document and collaborate in real time. Your local work syncs up automatically.")}
+              </p>
+            </div>
+            <Button size="sm" className="rounded-full" onClick={() => { onOpenChange(false); showAuthScreen() }}>
+              {t("Sign in to sync & share")}
+            </Button>
+          </div>
+        ) : (
+        <>
         <div className="space-y-2">
           <Label htmlFor="share-link">{t("Document link")}</Label>
           <div className="flex items-center gap-2">
@@ -291,6 +310,8 @@ export function ShareDialog({
             {inviteBusy ? t("Sharing…") : t("Share")}
           </Button>
         </div>
+        </>
+        )}
       </DialogContent>
     </Dialog>
   )

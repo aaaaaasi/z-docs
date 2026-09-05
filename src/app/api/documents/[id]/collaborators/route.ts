@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, { params }: Params) {
   }
 }
 
-// POST /api/documents/:id/collaborators — { email, role?, name?, color? } — owner/admin only:
+// POST /api/documents/:id/collaborators — { email, role?, name?, color? } — owner only:
 // inviting collaborators is the document owner's privilege.
 export async function POST(req: NextRequest, { params }: Params) {
   try {
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 }
 
-// DELETE /api/documents/:id/collaborators?email=... — owner/admin only
+// DELETE /api/documents/:id/collaborators?email=... — owner only
 export async function DELETE(req: NextRequest, { params }: Params) {
   try {
     const { id } = await params

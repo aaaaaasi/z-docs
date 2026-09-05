@@ -8,13 +8,16 @@ import { useLocalUser, saveLocalUser } from "@/lib/identity"
 import { initialsOf, PRESENCE_COLORS } from "@/lib/doc-utils"
 import { useI18n } from "@/lib/i18n"
 import { useDocsStore } from "@/store/docs-store"
-import { Check, LogOut, ShieldCheck } from "lucide-react"
+import { Check, CloudUpload, HardDrive, LogOut } from "lucide-react"
 
-/** Avatar button + account popover: real account info, presence color, sign out */
+/** Avatar button + account popover: real account info, presence color, sign out;
+ *  guests get a local-mode card with a sign-in call to action. */
 export function UserMenu({ align = "end" }: { align?: "start" | "center" | "end" }) {
   const presence = useLocalUser()
   const authUser = useDocsStore((s) => s.authUser)
+  const guestMode = useDocsStore((s) => s.guestMode)
   const logout = useDocsStore((s) => s.logout)
+  const showAuthScreen = useDocsStore((s) => s.showAuthScreen)
   const { t } = useI18n()
 
   if (!presence) {
@@ -43,11 +46,14 @@ export function UserMenu({ align = "end" }: { align?: "start" | "center" | "end"
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-medium">{authUser?.name ?? presence.name}</p>
-              {authUser && <p className="truncate text-xs text-muted-foreground">{authUser.email}</p>}
-              <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                <ShieldCheck className="h-3 w-3 text-primary" aria-hidden="true" />
-                {authUser?.role === "admin" ? t("Workspace admin") : t("Workspace member")}
-              </p>
+              {authUser ? (
+                <p className="truncate text-xs text-muted-foreground">{authUser.email}</p>
+              ) : guestMode ? (
+                <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <HardDrive className="h-3 w-3 text-primary" aria-hidden="true" />
+                  {t("Guest · Local mode — data stays on this device")}
+                </p>
+              ) : null}
             </div>
           </div>
           <Separator className="my-3" />
@@ -67,15 +73,26 @@ export function UserMenu({ align = "end" }: { align?: "start" | "center" | "end"
               </button>
             ))}
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="mt-4 w-full text-muted-foreground hover:text-destructive hover:border-destructive/40"
-            onClick={() => void logout()}
-          >
-            <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
-            {t("Sign out")}
-          </Button>
+          {guestMode && !authUser ? (
+            <Button
+              size="sm"
+              className="mt-4 w-full rounded-full"
+              onClick={showAuthScreen}
+            >
+              <CloudUpload className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("Sign in to sync & share")}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-4 w-full text-muted-foreground hover:text-destructive hover:border-destructive/40"
+              onClick={() => void logout()}
+            >
+              <LogOut className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("Sign out")}
+            </Button>
+          )}
         </div>
       </PopoverContent>
     </Popover>

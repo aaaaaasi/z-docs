@@ -8,6 +8,16 @@ import { getTemplate, localizedTemplate } from "@/lib/templates"
 import { getCurrentLang, tForLang } from "@/lib/i18n"
 import { saveLocalUser } from "@/lib/identity"
 import { api } from "@/lib/api-client"
+import {
+  installGuestApi,
+  uninstallGuestApi,
+  readGuestSnapshot,
+  clearGuestData,
+  hasGuestData,
+} from "@/lib/local-mode"
+
+/** localStorage flag: continue in guest (local-only) mode on next visit. */
+const GUEST_FLAG = "zdocs-guest"
 
 export interface CreateDocOptions {
   title?: string
@@ -37,7 +47,6 @@ export interface AuthUser {
   email: string
   name: string
   color: string
-  role: "admin" | "member"
 }
 
 /** Real storage usage from /api/storage. */
@@ -46,6 +55,12 @@ export interface StorageUsage {
   quotaBytes: number
   breakdown: Record<string, number>
   counts: Record<string, number>
+}
+
+interface AuthResult {
+  ok: boolean
+  /** items uploaded from guest-local storage to the cloud account */
+  imported: number
 }
 
 interface DocsState {
@@ -85,18 +100,30 @@ interface DocsState {
     folderId?: string | null
   ) => Promise<{ ok: number; failed: number }>
 
-  /* auth (real account system) */
+  /* auth (real account system) + guest (local-only) mode */
   authUser: AuthUser | null
   authLoaded: boolean
   authError: string | null
   authBusy: boolean
+  /** true while the workspace runs fully locally (guest mode) */
+  guestMode: boolean
+  /** login screen explicitly opened from inside guest mode */
+  authScreen: boolean
   /** real storage usage from /api/storage (null until loaded) */
   storageUsage: StorageUsage | null
 
   fetchMe: () => Promise<void>
-  login: (email: string, password: string) => Promise<boolean>
-  signup: (email: string, name: string, password: string) => Promise<boolean>
+  /** shared post-auth flow: exit guest mode, sync local data up, reload */
+  finishAuth: (user: AuthUser) => Promise<AuthResult>
+  login: (email: string, password: string) => Promise<AuthResult>
+  signup: (email: string, name: string, password: string) => Promise<AuthResult>
   logout: () => Promise<void>
+  /** enter local-only guest mode (installs the local API shim) */
+  continueAsGuest: () => Promise<void>
+  /** show the login screen from inside guest mode */
+  showAuthScreen: () => void
+  /** dismiss the login screen, back to the guest workspace */
+  hideAuthScreen: () => void
   fetchStorage: () => Promise<void>
   initUnauthorizedListener: () => void
 
@@ -186,6 +213,8 @@ export const useDocsStore = create<DocsState>((set, get) => ({
   authLoaded: false,
   authError: null,
   authBusy: false,
+  guestMode: false,
+  authScreen: false,
   storageUsage: null,
 
   fetchMe: async () => {
@@ -208,6 +237,55 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     }
   },
 
+  /** Shared post-auth flow: exit guest mode, upload local-only content to
+   *  the cloud account, then reload the (now server-backed) workspace. */
+  finishAuth: async (user: AuthUser): Promise<AuthResult> => {
+    const wasGuest = get().guestMode
+    let snapshot: ReturnType<typeof readGuestSnapshot> | null = null
+    if (wasGuest && hasGuestData()) snapshot = readGuestSnapshot()
+    // leave local mode BEFORE any data requests so they hit the real server
+    uninstallGuestApi()
+    try {
+      window.localStorage.removeItem(GUEST_FLAG)
+    } catch {
+      /* storage unavailable */
+    }
+    set({ authUser: user, guestMode: false, authScreen: false, authBusy: false, authError: null, authLoaded: true })
+    try {
+      saveLocalUser({ id: user.id, name: user.name, color: user.color })
+    } catch {
+      /* best-effort */
+    }
+    let imported = 0
+    if (snapshot) {
+      try {
+        const res = await fetch("/api/import/local", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(snapshot),
+        })
+        if (res.ok) {
+          const data = (await res.json()) as { imported?: Record<string, number> }
+          imported = Object.values(data.imported ?? {}).reduce((a, b) => a + b, 0)
+          clearGuestData()
+        }
+      } catch {
+        /* keep local data — it syncs again on the next sign-in */
+      }
+    }
+    await get().refresh({ silent: true })
+    await get().refreshFolders()
+    await get().loadTags()
+    void get().fetchStorage()
+    // local-only entity ids (local-…) no longer resolve in cloud mode —
+    // land the freshly signed-in user on a clean home view
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, "", "/")
+    }
+    set({ view: "home", currentDocId: null, appTarget: null })
+    return { ok: true, imported }
+  },
+
   login: async (email, password) => {
     set({ authBusy: true, authError: null })
     try {
@@ -219,22 +297,12 @@ export const useDocsStore = create<DocsState>((set, get) => ({
       const data = (await res.json().catch(() => ({}))) as { user?: AuthUser; error?: string }
       if (!res.ok || !data.user) {
         set({ authBusy: false, authError: data.error ?? "登录失败" })
-        return false
+        return { ok: false, imported: 0 }
       }
-      set({ authUser: data.user, authBusy: false, authError: null, authLoaded: true })
-      try {
-        saveLocalUser({ id: data.user.id, name: data.user.name, color: data.user.color })
-      } catch {
-        /* best-effort */
-      }
-      await get().refresh({ silent: true })
-      await get().refreshFolders()
-      await get().loadTags()
-      void get().fetchStorage()
-      return true
+      return await get().finishAuth(data.user)
     } catch {
       set({ authBusy: false, authError: "网络错误，请重试" })
-      return false
+      return { ok: false, imported: 0 }
     }
   },
 
@@ -249,22 +317,12 @@ export const useDocsStore = create<DocsState>((set, get) => ({
       const data = (await res.json().catch(() => ({}))) as { user?: AuthUser; error?: string }
       if (!res.ok || !data.user) {
         set({ authBusy: false, authError: data.error ?? "注册失败" })
-        return false
+        return { ok: false, imported: 0 }
       }
-      set({ authUser: data.user, authBusy: false, authError: null, authLoaded: true })
-      try {
-        saveLocalUser({ id: data.user.id, name: data.user.name, color: data.user.color })
-      } catch {
-        /* best-effort */
-      }
-      await get().refresh({ silent: true })
-      await get().refreshFolders()
-      await get().loadTags()
-      void get().fetchStorage()
-      return true
+      return await get().finishAuth(data.user)
     } catch {
       set({ authBusy: false, authError: "网络错误，请重试" })
-      return false
+      return { ok: false, imported: 0 }
     }
   },
 
@@ -274,7 +332,23 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     } catch {
       /* still reset locally */
     }
-    set({ authUser: null, storageUsage: null, documents: [], folders: [], tags: [], view: "home", currentDocId: null })
+    uninstallGuestApi()
+    try {
+      window.localStorage.removeItem(GUEST_FLAG)
+    } catch {
+      /* ignore */
+    }
+    set({
+      authUser: null,
+      guestMode: false,
+      authScreen: false,
+      storageUsage: null,
+      documents: [],
+      folders: [],
+      tags: [],
+      view: "home",
+      currentDocId: null,
+    })
   },
 
   /* listen for 401s from any api() call → force the login screen */
@@ -283,10 +357,44 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     window.addEventListener("zdocs-unauthorized", () => {
       const state = get()
       if (state.authUser) {
-        set({ authUser: null, storageUsage: null, documents: [], folders: [], tags: [], view: "home", currentDocId: null })
+        try {
+          window.localStorage.removeItem(GUEST_FLAG)
+        } catch {
+          /* ignore */
+        }
+        uninstallGuestApi()
+        set({
+          authUser: null,
+          guestMode: false,
+          authScreen: false,
+          storageUsage: null,
+          documents: [],
+          folders: [],
+          tags: [],
+          view: "home",
+          currentDocId: null,
+        })
       }
     })
   },
+
+  continueAsGuest: async () => {
+    try {
+      window.localStorage.setItem(GUEST_FLAG, "1")
+    } catch {
+      /* storage unavailable — session-only guest mode */
+    }
+    installGuestApi()
+    set({ guestMode: true, authLoaded: true, authScreen: false, authError: null })
+    await get().refresh({ silent: true })
+    await get().refreshFolders()
+    await get().loadTags()
+    void get().fetchStorage()
+  },
+
+  showAuthScreen: () => set({ authScreen: true }),
+
+  hideAuthScreen: () => set({ authScreen: false }),
 
   fetchStorage: async () => {
     try {
@@ -303,6 +411,31 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     await get().fetchMe()
     const { view, docId, target } = viewFromUrl()
     set({ view, currentDocId: docId, appTarget: target })
+    if (get().authUser) {
+      // a real session exists — make sure no guest shim lingers and the
+      // guest flag doesn't auto-resume local mode after this session ends
+      uninstallGuestApi()
+      try {
+        window.localStorage.removeItem(GUEST_FLAG)
+      } catch {
+        /* ignore */
+      }
+      set({ guestMode: false, authScreen: false })
+    } else {
+      // no session: a returning guest resumes local mode automatically
+      let guestFlag = false
+      try {
+        guestFlag = window.localStorage.getItem(GUEST_FLAG) === "1"
+      } catch {
+        /* ignore */
+      }
+      if (guestFlag) {
+        await get().continueAsGuest()
+        return
+      }
+      set({ authLoaded: true })
+      return // login screen
+    }
     await get().refresh({ silent: true })
     await get().refreshFolders()
     await get().loadTags()

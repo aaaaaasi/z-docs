@@ -1,12 +1,14 @@
 import { NextRequest } from "next/server"
 import { db } from "@/lib/db"
-import { hashPassword, createSession, sessionCookieOptions, SESSION_COOKIE, rateLimit, clientIp, tooManyRequests, isSameOrigin } from "@/lib/server-auth"
+import { hashPassword, createSession, SESSION_COOKIE, rateLimit, clientIp, tooManyRequests, isSameOrigin } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 // POST /api/auth/signup { email, name, password }
+// Every account is fully independent: no admin, no workspace takeover —
+// a fresh account starts with a private, empty workspace of its own.
 export async function POST(req: NextRequest) {
   try {
     if (!isSameOrigin(req)) return Response.json({ error: "Cross-origin request rejected." }, { status: 403 })
@@ -25,26 +27,13 @@ export async function POST(req: NextRequest) {
     const existing = await db.user.findUnique({ where: { email }, select: { id: true } })
     if (existing) return Response.json({ error: "该邮箱已注册" }, { status: 409 })
 
-    const userCount = await db.user.count()
-    const isFirst = userCount === 0
-
     const user = await db.user.create({
-      data: { email, name, passwordHash: hashPassword(password), role: isFirst ? "admin" : "member" },
+      data: { email, name, passwordHash: hashPassword(password) },
     })
-
-    // The very first account bootstraps the workspace: it claims every
-    // ownerless legacy entity so existing content keeps a real owner.
-    if (isFirst) {
-      await db.document.updateMany({ where: { ownerId: null }, data: { ownerId: user.id } })
-      await db.sheet.updateMany({ where: { ownerId: null }, data: { ownerId: user.id } })
-      await db.slideDeck.updateMany({ where: { ownerId: null }, data: { ownerId: user.id } })
-      await db.form.updateMany({ where: { ownerId: null }, data: { ownerId: user.id } })
-    }
 
     const { token, expiresAt } = await createSession(user.id)
     const res = Response.json({
-      user: { id: user.id, email: user.email, name: user.name, color: user.color, role: user.role },
-      claimedWorkspace: isFirst,
+      user: { id: user.id, email: user.email, name: user.name, color: user.color },
     })
     res.headers.append(
       "Set-Cookie",

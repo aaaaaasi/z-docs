@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic"
  * collab-service (:3003) to authorize realtime joins. Two ways in:
  *   1. x-internal-secret header (first-party services)
  *   2. forwarded session cookie (the caller must pass the browser's cookie)
- * Returns { access: "owner" | "editor" | "viewer" | "admin" | "none", user }.
+ * Returns { access: "owner" | "editor" | "viewer" | "none", user }.
  */
 export async function GET(req: NextRequest) {
   // require the shared secret OR an authenticated browser session

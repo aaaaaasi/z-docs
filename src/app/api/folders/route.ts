@@ -7,13 +7,14 @@ export const dynamic = "force-dynamic"
 // Warm, desaturated accents matching the 11-a design system (no cold blue/violet)
 const FOLDER_COLORS = ["#0b6b62", "#9a6b2f", "#a15c48", "#5e7050", "#8d5a74", "#a04b3c", "#6e6259"]
 
-// GET /api/folders — list all folders (signed-in members)
+// GET /api/folders — the caller's own folders (independent workspaces)
 export async function GET(req: NextRequest) {
   try {
     const guard = await guardRoute(req)
     if (!guard.ok) return guard.response
 
     const folders = await db.folder.findMany({
+      where: { ownerId: guard.user.id },
       orderBy: { name: "asc" },
       include: { _count: { select: { documents: true } } },
     })
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
     const name = typeof body.name === "string" ? body.name.trim().slice(0, 80) : ""
     if (!name) return NextResponse.json({ error: "Folder name is required" }, { status: 400 })
 
-    const existing = await db.folder.findFirst({ where: { name } })
+    const existing = await db.folder.findFirst({ where: { name, ownerId: guard.user.id } })
     if (existing) {
       return NextResponse.json({ error: "A folder with this name already exists" }, { status: 409 })
     }
@@ -53,7 +54,7 @@ export async function POST(req: NextRequest) {
         ? body.color
         : FOLDER_COLORS[Math.floor(Math.random() * FOLDER_COLORS.length)]
 
-    const folder = await db.folder.create({ data: { name, color } })
+    const folder = await db.folder.create({ data: { name, color, ownerId: guard.user.id } })
     return NextResponse.json(
       { folder: { ...folder, count: 0, createdAt: folder.createdAt.toISOString(), updatedAt: folder.updatedAt.toISOString() } },
       { status: 201 }
@@ -73,6 +74,11 @@ export async function PATCH(req: NextRequest) {
     const body = (await req.json().catch(() => ({}))) as { id?: string; name?: string; color?: string }
     if (!body.id) return NextResponse.json({ error: "Folder id is required" }, { status: 400 })
 
+    const owned = await db.folder.findUnique({ where: { id: body.id }, select: { ownerId: true } })
+    if (!owned || owned.ownerId !== guard.user.id) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
+
     const data: { name?: string; color?: string } = {}
     if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim().slice(0, 80)
     if (typeof body.color === "string" && /^#[0-9a-fA-F]{6}$/.test(body.color)) data.color = body.color
@@ -81,7 +87,7 @@ export async function PATCH(req: NextRequest) {
     }
 
     if (data.name) {
-      const dupe = await db.folder.findFirst({ where: { name: data.name, NOT: { id: body.id } } })
+      const dupe = await db.folder.findFirst({ where: { name: data.name, ownerId: guard.user.id, NOT: { id: body.id } } })
       if (dupe) return NextResponse.json({ error: "A folder with this name already exists" }, { status: 409 })
     }
 
@@ -104,8 +110,8 @@ export async function DELETE(req: NextRequest) {
     const id = new URL(req.url).searchParams.get("id")
     if (!id) return NextResponse.json({ error: "Folder id is required" }, { status: 400 })
 
-    const existing = await db.folder.findUnique({ where: { id }, select: { id: true } })
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const existing = await db.folder.findUnique({ where: { id }, select: { id: true, ownerId: true } })
+    if (!existing || existing.ownerId !== guard.user.id) return NextResponse.json({ error: "Not found" }, { status: 404 })
 
     await db.document.updateMany({ where: { folderId: id }, data: { folderId: null } })
     await db.folder.delete({ where: { id } })

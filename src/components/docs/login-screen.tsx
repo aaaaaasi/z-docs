@@ -1,48 +1,78 @@
 "use client"
 
 import * as React from "react"
-import { Loader2, Lock } from "lucide-react"
+import { ArrowLeft, CloudUpload, Loader2, UserRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { useToast } from "@/hooks/use-toast"
 import { useDocsStore } from "@/store/docs-store"
 import { useI18n } from "@/lib/i18n"
 import { DocsLogo } from "./home/home-header"
 
 /**
- * Full-screen auth gate — the workspace is private: every document, sheet,
- * deck, form and API route requires a real account. First signup becomes the
- * workspace admin and claims all legacy content.
+ * Full-screen auth gate. An account exists for exactly three cloud
+ * superpowers — sync, storage, sharing. Guests keep working locally:
+ * "Continue as guest" runs the whole suite on this device only, and
+ * signing in later uploads that local work to the account.
  */
 export function LoginScreen() {
   const { t } = useI18n()
+  const { toast } = useToast()
   const login = useDocsStore((s) => s.login)
   const signup = useDocsStore((s) => s.signup)
   const authError = useDocsStore((s) => s.authError)
   const authBusy = useDocsStore((s) => s.authBusy)
+  const continueAsGuest = useDocsStore((s) => s.continueAsGuest)
+  const hideAuthScreen = useDocsStore((s) => s.hideAuthScreen)
+  const cameFromGuest = useDocsStore((s) => s.guestMode)
 
   const [mode, setMode] = React.useState<"login" | "signup">("login")
   const [email, setEmail] = React.useState("")
   const [name, setName] = React.useState("")
   const [password, setPassword] = React.useState("")
+  const [guestBusy, setGuestBusy] = React.useState(false)
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (mode === "login") await login(email, password)
-    else await signup(email, name, password)
+    const result =
+      mode === "login" ? await login(email, password) : await signup(email, name, password)
+    if (result.ok && result.imported > 0) {
+      toast({
+        title: t("Synced {n} items to your account", { n: result.imported }),
+        description: t("Your local work now lives in the cloud."),
+      })
+    }
+  }
+
+  const onGuest = async () => {
+    setGuestBusy(true)
+    await continueAsGuest()
+    setGuestBusy(false)
   }
 
   return (
     <div className="flex min-h-dvh flex-col items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm">
+        {cameFromGuest && (
+          <button
+            type="button"
+            onClick={hideAuthScreen}
+            className="mb-4 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("Back to guest mode")}
+          </button>
+        )}
+
         <div className="mb-8 flex flex-col items-center gap-3">
           <DocsLogo />
           <h1 className="text-center text-[22px] font-normal text-foreground">
             {mode === "login" ? t("Sign in to Z-Docs") : t("Create your account")}
           </h1>
           <p className="flex items-center gap-1.5 text-center text-[13px] text-muted-foreground">
-            <Lock className="h-3.5 w-3.5" aria-hidden="true" />
-            {t("Your workspace is private and encrypted at rest")}
+            <CloudUpload className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("An account unlocks sync, cloud storage and sharing")}
           </p>
         </div>
 
@@ -120,10 +150,31 @@ export function LoginScreen() {
           </div>
         </form>
 
-        {mode === "signup" && (
-          <p className="mt-4 text-center text-xs leading-relaxed text-muted-foreground">
-            {t("The first account becomes the workspace admin and owns all existing content.")}
-          </p>
+        {!cameFromGuest && (
+          <>
+            <div className="my-5 flex items-center gap-3" aria-hidden="true">
+              <span className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">{t("or")}</span>
+              <span className="h-px flex-1 bg-border" />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={guestBusy}
+              onClick={() => void onGuest()}
+              className="h-11 w-full rounded-full"
+            >
+              {guestBusy ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <UserRound className="h-4 w-4" aria-hidden="true" />
+              )}
+              {t("Continue as guest")}
+            </Button>
+            <p className="mt-2.5 text-center text-xs leading-relaxed text-muted-foreground">
+              {t("Guest mode — everything stays on this device; sign in anytime to sync it to the cloud.")}
+            </p>
+          </>
         )}
       </div>
     </div>

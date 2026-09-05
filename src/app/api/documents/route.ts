@@ -36,8 +36,9 @@ function toMeta(doc: {
 }
 
 // GET /api/documents?filter=all|starred|trash&q=search
-// Visibility: members see own docs + ownerless legacy docs + docs shared with
-// them (collaborator rows keyed by email). Admins see the whole workspace.
+// Visibility: strictly the caller's own documents plus docs shared with them
+// (collaborator rows keyed by email). No admin, no legacy visibility —
+// every user's workspace is fully private.
 export async function GET(req: NextRequest) {
   try {
     const guard = await guardRoute(req)
@@ -66,15 +67,12 @@ export async function GET(req: NextRequest) {
     // with the search OR at the top level
     const and: Record<string, unknown>[] = [base]
     if (q) and.push({ OR: [{ title: { contains: q } }, { content: { contains: q } }] })
-    if (user.role !== "admin") {
-      and.push({
-        OR: [
-          { ownerId: user.id },
-          { ownerId: null },
-          { collaborators: { some: { email: user.email } } },
-        ],
-      })
-    }
+    and.push({
+      OR: [
+        { ownerId: user.id },
+        { collaborators: { some: { email: user.email } } },
+      ],
+    })
 
     const documents = await db.document.findMany({
       where: { AND: and } as never,

@@ -56,7 +56,14 @@ export function HelpWriteDialog({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: p, title: docTitle, lang }),
       })
-      if (!res.ok) throw new Error(t("The AI service is unavailable right now."))
+      if (!res.ok) {
+        // guests get a targeted "sign in to use AI" message from the local
+        // API shim — surface it verbatim instead of a generic outage
+        const errData = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(
+          res.status === 403 && errData.error ? errData.error : t("The AI service is unavailable right now.")
+        )
+      }
       const data = (await res.json()) as { text?: string }
       if (!data.text) throw new Error(t("Empty response. Try rephrasing your prompt."))
       setResult(data.text)

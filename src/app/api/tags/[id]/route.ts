@@ -11,8 +11,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     const guard = await guardRoute(req, { mutating: true, limit: 60 })
     if (!guard.ok) return guard.response
 
-    const existing = await db.tag.findUnique({ where: { id }, select: { id: true, name: true } })
-    if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    const existing = await db.tag.findUnique({ where: { id }, select: { id: true, name: true, ownerId: true } })
+    if (!existing || existing.ownerId !== guard.user.id) {
+      return NextResponse.json({ error: "Not found" }, { status: 404 })
+    }
 
     await db.tag.delete({ where: { id } })
     return NextResponse.json({ ok: true })

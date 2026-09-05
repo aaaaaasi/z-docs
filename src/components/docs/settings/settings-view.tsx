@@ -570,19 +570,32 @@ function DataSection() {
     }
   }, [])
 
-  const exportAll = () => {
-    const a = document.createElement("a")
-    a.href = "/api/export"
-    a.setAttribute("download", "")
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    toast({ title: t("Download started"), description: t("Your workspace is exporting as JSON.") })
+  const exportAll = async () => {
+    // fetch-based so guest mode is served by the local API shim (an anchor
+    // navigation would bypass it and hit the server unauthenticated)
+    try {
+      const res = await fetch("/api/export")
+      if (!res.ok) throw new Error("export failed")
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "z-workspace-export.json"
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      toast({ title: t("Download started"), description: t("Your workspace is exporting as JSON.") })
+    } catch {
+      toast({ title: t("Download failed"), description: t("Please try again in a moment.") })
+    }
   }
 
   const resetLocal = () => {
     for (const key of [
       USER_STORAGE_KEY,
+      "zdocs-guest",
+      "zdocs-guest-db",
       ACCENT_STORAGE_KEY,
       FONT_STORAGE_KEY,
       ZOOM_STORAGE_KEY,

@@ -350,9 +350,11 @@ export function EditorView() {
     [refreshComments, toast]
   )
 
+  // guests run fully locally — no realtime collaboration socket at all
+  const guestMode = useDocsStore((s) => s.guestMode)
   const { connected, myId, presence, remoteCursors, emitDocChange, emitCursor, emitCommentsChanged } = useCollab(
     docId || null,
-    user,
+    guestMode ? null : user,
     onDocChange,
     onCommentsChanged
   )

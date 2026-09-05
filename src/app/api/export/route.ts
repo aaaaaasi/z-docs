@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { guardRoute, forbidden } from "@/lib/server-auth"
+import { guardRoute } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
 /**
- * GET /api/export — full workspace snapshot (documents, sheets, decks, forms +
- * response counts, folders, tags, activity) used by Settings → "Export your data".
- * Admin only: the snapshot crosses every member's private documents.
+ * GET /api/export — the caller's OWN data snapshot (documents, sheets, decks,
+ * forms + response counts, folders, tags, activity) used by Settings →
+ * "Export your data". Every user is independent: only their private entities.
  */
 export async function GET(req: NextRequest) {
   try {
     const guard = await guardRoute(req)
     if (!guard.ok) return guard.response
-    if (guard.user.role !== "admin") return forbidden()
+    const me = guard.user
 
     const [documents, folders, tags, sheets, decks, forms, activity] = await Promise.all([
       db.document.findMany({
-        where: { trashed: false },
+        where: { trashed: false, ownerId: me.id },
         select: {
           id: true,
           title: true,
@@ -28,18 +28,18 @@ export async function GET(req: NextRequest) {
           updatedAt: true,
         },
       }),
-      db.folder.findMany({ select: { id: true, name: true, color: true } }),
-      db.tag.findMany({ select: { id: true, name: true, color: true } }),
+      db.folder.findMany({ where: { ownerId: me.id }, select: { id: true, name: true, color: true } }),
+      db.tag.findMany({ where: { ownerId: me.id }, select: { id: true, name: true, color: true } }),
       db.sheet.findMany({
-        where: { trashed: false },
+        where: { trashed: false, ownerId: me.id },
         select: { id: true, title: true, data: true, starred: true, updatedAt: true },
       }),
       db.slideDeck.findMany({
-        where: { trashed: false },
+        where: { trashed: false, ownerId: me.id },
         select: { id: true, title: true, data: true, starred: true, updatedAt: true },
       }),
       db.form.findMany({
-        where: { trashed: false },
+        where: { trashed: false, ownerId: me.id },
         select: {
           id: true,
           title: true,
@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
         },
       }),
       db.activityLog.findMany({
+        where: { actorId: me.id },
         orderBy: { createdAt: "desc" },
         take: 100,
         select: { app: true, kind: true, entityTitle: true, detail: true, createdAt: true },

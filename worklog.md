@@ -649,3 +649,65 @@ Stage Summary:
 - 测试账号：admin@zdocs.test / Admin123456（admin）；member@zdocs.test / Member123456（member，权限隔离用）。
 - 已知限制：拼写修正不可 Ctrl+Z 撤销（直接 DOM 编辑）、AI 限流 6/min、FKGL 音节为启发式（UI 已标注）、多标签遥测 last-writer-wins、raster PDF 文本层等前轮遗留不变。
 - 下一阶段候选：拼写修正接入 execCommand 撤销栈、表单/表格/幻灯片协作者细粒度角色（现仅 owner/legacy）、限流升级 Redis、表单允许匿名开关（owner 可控）、collab 断线重连时重鉴权。
+
+---
+Task ID: 18-d
+Agent: guest-mode local API subagent
+Task: 游客模式（本地离线）——src/lib/local-mode.ts 拦截 window.fetch，让整个应用（Docs 编辑器/Sheets/Slides/Forms/动态/存储/导出/评论/文件夹/标签/版本）在纯浏览器 localStorage 上完整离线运行；登录相关 /api/auth、/api/import 直通，AI/分享返回 403 双语提示。
+
+Work Log:
+- 新建 3 个文件（未改动任何其他文件）：
+  - src/lib/local-mode.ts（入口）：installGuestApi()/uninstallGuestApi() 包裹/还原 window.fetch（函数标记 __zdocsGuestApi 保证幂等；字符串/URL/Request 三种入参均可；URL 用 new URL(raw, location.href) 解析）。pathname 以 /api/ 开头且不在 /api/auth/、/api/import/ 之下的请求全部本地处理并返回真实 Response（Content-Type: application/json）；其余（auth/import/静态资源/bare /api）原样透传。非 GET 处理完同步 persist()。另再导出 readGuestSnapshot/clearGuestData/hasGuestData/guestDbStats。
+  - src/lib/local-mode/db.ts：单 JSON blob 存储（key "zdocs-guest-db"），行结构 1:1 镜像 Prisma 模型（日期存 ISO 字符串）；内存缓存 + 每次 mutat 后同步写回；localStorage 不可用（隐私模式/超额）静默降级内存。id = "local-"+randomUUID/base36；guestActor() 取 readLocalUser()（镜像服务端"会话为真"）；logActivity/logActivityThrottled 与 server-activity 同语义（feed 上限 200、edited 10 分钟节流并 touch 时间戳）。
+  - src/lib/local-mode/routes.ts：完整路由表，逐条镜像服务端实现的响应形状（包装键 { documents }/{ document }/{ folder }/{ tags }/{ sheets }/{ deck }/{ forms }/{ comments }/{ comment }/{ activities }、状态码 200/201/400/403/404/409/410/413、字段名、slice 上限、活动日志副作用）。
+- 路由覆盖：documents 列表(filter=all|starred|trash|folder + q 标题+正文 + folder=root|id, updatedAt desc, take 200)/创建/详情(stats 解析为对象+tags)/PATCH(内容变化→5 分钟限速快照"旧内容"为版本+editCount+1；文件夹校验 400；活动 trashed/starred/renamed/edited 节流)/删除(级联版本+评论+表情+标签链)/副本(201 "Copy of …"，列默认值+snippet/wordCount)/tags PUT(去重上限 50、未知 id 丢弃)/versions(最新优先 50)/restore-version(先快照当前态再回滚)/stats GET+PATCH(CLIENT_FIELDS 白名单逐字段合并、数值≥0 或字符串≤40)/collaborators 三方法 403；comments 线程化 GET/POST(作者=本地身份，忽略 body 伪造字段)/PATCH(裸行响应)/DELETE(级联回复+表情)/reactions 点赞开关(201/200 { active, emoji })；folders GET/POST/PATCH/DELETE(文档归根)；tags GET/POST/DELETE(级联链)；sheets/slides/forms 列表(filter=trashed)/创建/详情/PATCH/删除 + forms responses GET(最新优先、answers 原始 JSON 字符串)/POST(校验 400、>20k 413、已回收 410 "Form is closed"、201 { response:{id,submittedAt} })；activity GET(?app=、limit≤200、最新优先、serializeActivity 形状)；storage GET({ usedBytes, quotaBytes:15GB, breakdown, counts }，len() 语义与服务端一致)；export GET(同 payload 形状、pretty-print、Content-Disposition attachment)；/api/ai/write|transform|spellcheck → 403 双语；未知 /api/*（含 /api/internal/*）→ 404 { error: "Not found" }。
+- AI/分享 403 文案（getCurrentLang() 取 zh/en，未用词典 key，主代理无需合并任何词典条目）：zh "登录后即可使用 AI 功能（游客模式仅保留本地功能）" / en "Sign in to use AI features — guest mode keeps everything local."；分享 zh "登录后才能分享文档" / en "Sign in to share documents."
+- 镜像中发现的形状怪癖（均已精确复刻）：①POST /api/documents 返回裸 Prisma 行（stats 是空字符串，仅 [id] GET/PATCH 解析成对象）②PATCH /api/comments/[id] 响应无 replies/reactions ③POST sheets/slides/forms 响应硬编码 data:"{}"/"[]"（但真实 body.data 已入库）④docs 垃圾过滤是 filter=trash 而 sheets/slides/forms 是 filter=trashed ⑤restore-version 不加 editCount、不记活动 ⑥stats PATCH 也会刷新 updatedAt（Prisma @updatedAt）⑦folder PATCH 响应无 count、folder POST 含 ownerId+count、tags 响应从不含 ownerId。
+- 刻意的游客差异（记录在案）：本地不做 sanitizeDocHtml（服务端专属函数；同步登录后走服务端路由会被消毒）；/api/export 的 activity 含全部行（服务端按 actorId 过滤——本地单用户库按身份过滤在身份重建时会丢数据）。
+- 自测（bun 脚本 + window/localStorage polyfill，未入仓库）：主脚本 196/196 全绿——透传规则（auth/import/静态/bare /api/Request 对象）、幂等双装、全部 CRUD 家族、过滤/搜索、版本+限速+恢复、评论+表情+级联、stats 白名单合并、三应用+表单回复(400/413/410)、活动 kinds/apps/排序、存储形状+增长、导出形状+头、AI+协作者 403 双语（默认 zh、跟随 zdocs-lang=en）、未知路由 404、5 文档批量星标循环、snapshot/stats/clear、卸载还原原始 fetch、重装可用；重载脚本 13/13 全绿（新模块实例从 blob 水合：文档/标题/内容/标签链/stats/版本/评论/动态/存储计数 + 隐私模式 setItem 抛错→201+内存读）。
+- 质量门：bunx tsc --noEmit → src/ 0 错误（仅 examples/skills 预存错误）；bun run lint 干净；dev :3000 未动、健康（新文件为纯 lib，尚无路由引用）。
+- ⚠ 给主代理的接线提醒：.gitignore 第 43 行模式 local-* 恰好忽略了 src/lib/local-mode.ts 和 src/lib/local-mode/（磁盘上工作正常，但 git add 会跳过——提交前建议改为 /local-*.env 或加 ！src/lib/local-mode* 反选）。主代理接线时在进入游客模式的客户端 effect 里先 installGuestApi()（离开时 uninstall），应用内现有 fetch("/api/...") 调用零改动即可离线工作。
+
+Stage Summary:
+- 交付：src/lib/local-mode.ts（installGuestApi/uninstallGuestApi + readGuestSnapshot/clearGuestData/hasGuestData/guestDbStats 再导出）+ src/lib/local-mode/db.ts + src/lib/local-mode/routes.ts。
+- 验证：bun 双脚本 209 项断言全绿（196 主 + 13 重载/隐私模式）；tsc src 0 错误；lint 干净。
+- 词典：无需新增（两条 403 文案内联双语）。
+- 待主代理：接线 installGuestApi（客户端 effect）、修 .gitignore 的 local-* 误伤、可选的登录后 readGuestSnapshot→云端同步消费。
+
+---
+Task ID: 18
+Agent: main (Z.ai Code) + guest-mode subagent (18-d)
+Task: 用户三大问题：①注册/登录在公网预览链路全部 403（"Cross-origin request rejected"）②根本删除管理员——每个用户完全独立 ③必须有游客模式（登录仅为同步+云端储存+分享，游客仅本地功能）
+
+Work Log:
+- 18-a 根因定位与修复（主代理）: 临时调试端点探测真实网关链路，发现上游代理把 Host 和 X-Forwarded-Host 都改写成内部函数计算主机名（ws-bb-*.fcapp.run），Origin 永远对不上 → guardRoute isSameOrigin 误杀所有浏览器 POST。修复（src/lib/server-auth.ts）: 三级信任判定 ①Origin==Host 直连 ②Origin∈X-Forwarded-Host 标准代理 ③**Sec-Fetch-Site Fetch Metadata 头**（浏览器强制携带、JS 不可伪造、代理不会发明）same-origin/same-site 放行。公网链路 curl 实测: 浏览器模拟（Sec-Fetch-Site: same-origin）→ 200/401 正常业务响应；攻击模拟（cross-site + evil origin）→ 仍然 403 拒绝。注册+登录在 preview 域名全通。
+- 18-b 彻底删除管理员（主代理）: Prisma User 删 role 字段（db push）；server-auth SessionUser/AccessLevel 去 admin、docAccessLevel/ownedAccessLevel 砍 admin+legacy 可见分支（ownerless 文档对所有人 none）；signup 删"首账号=admin+接管全部内容"；login/me 响应去 role；documents 列表 OR[own/collaborator]；sheets/slides/forms 列表 own-only + where 类型修正；comments manager=owner；export 从 admin-only 全库快照改为**每用户自有数据导出**（activity 过滤 actorId=me）；storage 从全库 SUM 改为**每用户真实字节**（own docs/versions/sheets/decks/forms/responses/comments/folders/tags）；**Folder/Tag 加 ownerId 按用户隔离**（删全局 unique，代码层 per-owner 去重）；activity feed 过滤为"自己的动作+自己实体上的事件"；internal/doc-access 注释同步；UI 清理（user-menu 角色徽章、login-screen 首账号提示、dict-admin 词条）。
+- 18-c 数据库清零: 一次性脚本删除 admin@zdocs.test/member@zdocs.test 测试账号及其全部内容（文档/版本/评论/协作者/sheets/decks/forms/responses/folders/tags/activity）→ 全新起点，QA 后 chain-test/qa1/qa2 也已清，**当前 0 用户**，用户注册即得完全独立的空工作区。
+- 18-d 游客本地 API 拦截层（子代理 full-stack-developer）: src/lib/local-mode.ts + local-mode/{db,routes}.ts —— installGuestApi() 包装 window.fetch，把除 /api/auth/* 和 /api/import/* 外的所有 /api/* 请求用 localStorage 数据库（zdocs-guest-db 单 JSON blob、同步持久化、隐私模式内存降级）就地应答，Response 形状与真实路由逐字段一致（子代理逐个读了全部服务端路由）。覆盖: documents 全 CRUD+filter/q/folder 检索+duplicate+tags+versions（5min 节流快照 cap20）+restore+stats 合并+editCount；评论线程+反应；folders/tags CRUD（409/400 语义）；sheets/slides/forms CRUD+表单 responses GET/POST；activity 合成（created/edited/renamed/starred/trashed/restored/duplicated/commented/submitted、200 条 cap）；storage 真实字节测量；export 同构 payload；AI/分享路由 403 双语引导登录。幂等安装/卸载。子代理自测 196/196 + 重载 13/13 全绿。主代理修 .gitignore（local-* 模式误伤）+快照导出 folder id。
+- 18-e 游客模式集成（主代理）:
+  - docs-store: guestMode/authScreen 状态机；continueAsGuest（装 shim+写 zdocs-guest flag+加载数据）；hydrateFromUrl 会话优先（有会话→卸 shim 清 flag；无会话+flag→自动恢复游客；否则登录屏）；finishAuth（登录/注册共用: 先读快照→卸 shim→建会话→POST /api/import/local 上传→清本地→回首页（local- id 在云端无效））；login/signup 返回 {ok,imported}；logout/401 监听清 guest 态。
+  - /api/import/local: guardRoute+限流 30/min+载荷校验（200 项/1MB/字段截断），文件夹 local-id→cloud-id 映射、标签按名去重 upsert、文档 sanitizeDocHtml 消毒后入库、sheets/decks/forms 重建，返回 {imported:{...}}。
+  - login-screen: 副标题改"账号解锁同步、云端储存与分享"；（游客上下文）"返回游客模式"；分割线"或"+"以游客身份继续"按钮+说明；登录成功且同步 N 项→toast。
+  - user-menu: 游客卡片（HardDrive 图标"游客 · 本地模式"+CloudUpload"登录以同步与分享"），账号用户正常退出登录。
+  - share-dialog: 游客 banner（"分享需要登录账号"+登录 CTA 一键跳登录屏）替代邀请表单。
+  - spell-check/help-write 对话框: 403 时透传 shim 的双语引导文案（不再误报"AI 服务不可用"）；ai-tools-dialog 本就透传。
+  - editor-view: 游客不连 collab（useCollab user=null），全部走本地 autosave。
+  - settings: 导出改 fetch+blob 下载（a 标签会绕过 shim）；"清除浏览器数据"加清 zdocs-guest/zdocs-guest-db 键。
+- QA（agent-browser + 公网 curl）:
+  - 登录屏: 中文渲染、游客入口、注册/登录切换。
+  - 游客全链路: 进入→home 全中文、存储真实 0B→建文档→输入→**localStorage 持久化（len43/editCount1）**→刷新自动恢复（flag+数据+243B 真实测量）→内容回流编辑器→版本/活动合成（"你 创建了…"今天分组+chips）→Sheets 创建+刷新持久化（1560 cells 网格）→Slides 创建+编辑器→Forms 创建+builder→设置页导出/重置含 guest 键。
+  - AI: 拼写检查对话框游客态→修正后显示 shim 的"登录后即可使用 AI 功能"引导（修复了误报）。
+  - 分享: 游客 banner+登录 CTA→登录屏带返回→返回游客模式。
+  - 注册+同步 E2E: 游客建文档→user-menu 登录→注册 qa1→**toast"已将 1 项内容同步到你的账号"**→云端列表出现文档→打开内容完整（"游客模式本地写作测试…"）→guest-db/flag 清空→登录后回首页（修 local- 链接失效停留）。
+  - 用户隔离（权限分化核心）: qa2 注册→存储 0B/0 项、列表空；API 直测 qa2 会话 GET/PATCH/DELETE qa1 文档→**全部 404**（存在性不泄露）；跨源攻击 403。
+  - 公网链路: 注册 200+user（用户报障路径修复确认）。
+  - 移动端 375×667: 登录屏/游客 home/编辑器/设置 sw=375 零溢出。
+  - 期间发现并处理: collab-service 掉线→重启（:3003 200）；agent-browser ref 点击偶发失效改 JS click（非应用 bug）。
+- 收尾: QA 账号与浏览器 localStorage 全部清空，工作区 0 用户干净起点；dev.log 无业务错误（401 均为游客 fetchMe 正常语义）。
+
+Stage Summary:
+- ①403 根治: Sec-Fetch-Site 三级同源判定，公网链路注册/登录实测通过，跨站攻击仍被拒。②管理员概念代码级根除（schema/route/UI/词典全清），Folder/Tag/Activity/Storage/Export 全部按用户隔离，每个账号=独立工作区，越权访问一律 404。③游客模式完整落地: fetch 拦截层让 Docs/Sheets/Slides/Forms/评论/版本/活动/存储/导出全部本地运行（196 项自测+E2E），AI/分享用双语引导登录；登录即同步（import 路由重建全部内容+toast 反馈+本地清理）。
+- 质量门: bunx tsc --noEmit 0 错误；bun run lint 干净；dev :3000 200；collab :3003 200；公网预览链路注册 200。
+- 用户使用: ①直接"以游客身份继续"本地使用；②注册账号（如 uwne@qq.com）获得独立云端工作区；③游客→登录自动同步本地创作。
+- 已知限制: 游客 AI/协作/分享需登录（设计如此）；导入不迁移评论/版本历史（仅内容+标签+文件夹）；拼写修正不可撤销等前轮遗留不变。
+- 下一阶段候选: 文档协作者邀请在 Sheets/Slides/Forms 的细粒度角色、游客本地数据管理 UI（查看/清除）、限流 Redis 化、taste-skill 仓库研究（低优先遗留）。

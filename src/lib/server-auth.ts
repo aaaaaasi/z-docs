@@ -31,11 +31,10 @@ export interface SessionUser {
   email: string
   name: string
   color: string
-  role: "admin" | "member"
 }
 
-function toSessionUser(u: { id: string; email: string; name: string; color: string; role: string }): SessionUser {
-  return { id: u.id, email: u.email, name: u.name, color: u.color, role: u.role === "admin" ? "admin" : "member" }
+function toSessionUser(u: { id: string; email: string; name: string; color: string }): SessionUser {
+  return { id: u.id, email: u.email, name: u.name, color: u.color }
 }
 
 /** Creates a DB session row; returns the opaque token to set as cookie. */
@@ -148,6 +147,15 @@ export function notFound(message = "Not found."): Response {
  * Same-origin enforcement for mutating requests — blocks cross-site POST/PATCH/
  * DELETE even if a cookie leaks to another origin (defense in depth on top of
  * SameSite=Lax).
+ *
+ * The app is deployed behind layered reverse proxies that may rewrite Host and
+ * X-Forwarded-Host to internal hostnames, so the Origin↔Host comparison alone
+ * would misfire. Two trust sources, in order:
+ *  1. direct match against Host / X-Forwarded-Host (standard setups);
+ *  2. the browser-attested `Sec-Fetch-Site` Fetch Metadata header — browsers
+ *     always send it, JS cannot forge it, and proxies don't invent it. A value
+ *     of `same-origin`/`same-site` proves the request left a page served by
+ *     this very origin (a CSRF page would read `cross-site`).
  */
 export function isSameOrigin(req: NextRequest | Request): boolean {
   const origin = req.headers.get("origin")
@@ -155,7 +163,12 @@ export function isSameOrigin(req: NextRequest | Request): boolean {
   try {
     const o = new URL(origin)
     const host = req.headers.get("host") ?? ""
-    return o.host === host
+    if (o.host === host) return true
+    const xfh = req.headers.get("x-forwarded-host")
+    if (xfh && xfh.split(",").map((h) => h.trim()).includes(o.host)) return true
+    const secFetchSite = req.headers.get("sec-fetch-site")
+    if (secFetchSite === "same-origin" || secFetchSite === "same-site") return true
+    return false
   } catch {
     return false
   }
@@ -188,14 +201,14 @@ export async function guardRoute(
 
 /* ========================== entity access rules =========================== */
 
-export type AccessLevel = "none" | "viewer" | "editor" | "owner" | "admin"
+export type AccessLevel = "none" | "viewer" | "editor" | "owner"
 
 /**
  * Document access: owner → "owner"; collaborator role → viewer/editor;
- * legacy ownerless docs → members get "viewer"; admins → "admin".
+ * everyone else (including orphaned legacy docs) → "none". Every user is
+ * fully independent — nobody can read another user's private documents.
  */
 export async function docAccessLevel(user: SessionUser, docId: string): Promise<AccessLevel> {
-  if (user.role === "admin") return "admin"
   const doc = await db.document.findUnique({
     where: { id: docId },
     select: { ownerId: true },
@@ -207,17 +220,15 @@ export async function docAccessLevel(user: SessionUser, docId: string): Promise<
     select: { role: true },
   })
   if (collab) return collab.role === "editor" ? "editor" : "viewer"
-  if (doc.ownerId === null) return "viewer" // legacy shared
   return "none"
 }
 
-/** Simple owner/admin check for sheets, decks and forms. */
+/** Owner-only access for sheets, decks and forms (no sharing model there). */
 export async function ownedAccessLevel(
   user: SessionUser,
   model: "sheet" | "deck" | "form",
   id: string
 ): Promise<AccessLevel> {
-  if (user.role === "admin") return "admin"
   const table =
     model === "sheet" ? db.sheet : model === "deck" ? db.slideDeck : db.form
   const entity = await (table as typeof db.sheet).findUnique({
@@ -226,14 +237,12 @@ export async function ownedAccessLevel(
   })
   if (!entity) return "none"
   if (entity.ownerId === user.id) return "owner"
-  if (entity.ownerId === null) return "viewer" // legacy shared
   return "none"
 }
 
-const LEVEL_RANK: Record<AccessLevel, number> = { none: 0, viewer: 1, editor: 2, owner: 3, admin: 4 }
+const LEVEL_RANK: Record<AccessLevel, number> = { none: 0, viewer: 1, editor: 2, owner: 3 }
 
 export function hasAccess(level: AccessLevel, need: "viewer" | "editor" | "owner"): boolean {
-  if (need === "owner") return level === "owner" || level === "admin"
   return LEVEL_RANK[level] >= LEVEL_RANK[need]
 }
 

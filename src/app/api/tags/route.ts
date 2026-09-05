@@ -8,13 +8,14 @@ export const dynamic = "force-dynamic"
 const TAG_COLORS = ["#0b6b62", "#d93025", "#f9ab00", "#1e8e3e", "#a142f4", "#5f6368"]
 const TAG_NAME_MAX = 24
 
-// GET /api/tags — all tags with document counts (signed-in members)
+// GET /api/tags — the caller's own tags with document counts
 export async function GET(req: NextRequest) {
   try {
     const guard = await guardRoute(req)
     if (!guard.ok) return guard.response
 
     const tags = await db.tag.findMany({
+      where: { ownerId: guard.user.id },
       orderBy: { name: "asc" },
       include: { _count: { select: { documents: true } } },
     })
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     const name = typeof body.name === "string" ? body.name.trim().slice(0, TAG_NAME_MAX) : ""
     if (!name) return NextResponse.json({ error: "Tag name is required" }, { status: 400 })
 
-    const existing = await db.tag.findFirst({ where: { name }, select: { id: true } })
+    const existing = await db.tag.findFirst({ where: { name, ownerId: guard.user.id }, select: { id: true } })
     if (existing) {
       return NextResponse.json({ error: "A tag with this name already exists" }, { status: 409 })
     }
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
         ? body.color
         : TAG_COLORS[Math.floor(Math.random() * TAG_COLORS.length)]
 
-    const tag = await db.tag.create({ data: { name, color } })
+    const tag = await db.tag.create({ data: { name, color, ownerId: guard.user.id } })
     return NextResponse.json(
       {
         tag: {

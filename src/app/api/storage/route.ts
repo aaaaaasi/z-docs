@@ -11,21 +11,23 @@ function len(...vals: (string | null | undefined)[]): number {
   return vals.reduce((n, v) => n + (v ? v.length : 0), 0)
 }
 
-// GET /api/storage — real byte usage computed from the database
+// GET /api/storage — the caller's real byte usage computed from the database
+// (per-user: only their own documents, sheets, decks, forms, comments…)
 export async function GET(req: NextRequest) {
   const g = await guardRoute(req, { limit: 120, windowMs: 60_000 })
   if (!g.ok) return g.response
+  const me = g.user
 
   const [documents, versions, sheets, decks, forms, responses, comments, folders, tags] = await Promise.all([
-    db.document.findMany({ select: { title: true, content: true, stats: true } }),
-    db.documentVersion.findMany({ select: { title: true, content: true } }),
-    db.sheet.findMany({ select: { title: true, data: true } }),
-    db.slideDeck.findMany({ select: { title: true, data: true } }),
-    db.form.findMany({ select: { title: true, description: true, data: true } }),
-    db.formResponse.findMany({ select: { answers: true } }),
-    db.comment.findMany({ select: { content: true, authorName: true, quote: true } }),
-    db.folder.findMany({ select: { name: true } }),
-    db.tag.findMany({ select: { name: true } }),
+    db.document.findMany({ where: { ownerId: me.id }, select: { title: true, content: true, stats: true } }),
+    db.documentVersion.findMany({ where: { doc: { ownerId: me.id } }, select: { title: true, content: true } }),
+    db.sheet.findMany({ where: { ownerId: me.id }, select: { title: true, data: true } }),
+    db.slideDeck.findMany({ where: { ownerId: me.id }, select: { title: true, data: true } }),
+    db.form.findMany({ where: { ownerId: me.id }, select: { title: true, description: true, data: true } }),
+    db.formResponse.findMany({ where: { form: { ownerId: me.id } }, select: { answers: true } }),
+    db.comment.findMany({ where: { doc: { ownerId: me.id } }, select: { content: true, authorName: true, quote: true } }),
+    db.folder.findMany({ where: { ownerId: me.id }, select: { name: true } }),
+    db.tag.findMany({ where: { ownerId: me.id }, select: { name: true } }),
   ])
 
   const breakdown = {
