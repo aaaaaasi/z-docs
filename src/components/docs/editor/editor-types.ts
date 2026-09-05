@@ -92,9 +92,10 @@ export interface EditorApi {
   toggleStar: () => void
   saveNow: () => void
   printDoc: () => void
-  /** export the document as a real .pdf file (async, falls back to print) */
+  /** export the document as a real .pdf file (server vector → raster → print) */
   downloadPdf: () => void
-  downloadDoc: (format: "doc" | "html" | "txt") => void
+  /** export as .docx (server) / .doc / .html / structured .txt */
+  downloadDoc: (format: "docx" | "doc" | "html" | "txt") => void
   goHome: () => void
   moveToTrash: () => void
   duplicate: () => void

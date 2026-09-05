@@ -53,7 +53,7 @@ export function MenuBar({ api }: { api: EditorApi }) {
         <DropdownMenuItem onClick={() => api.openDialog("versions")}><History className="h-4 w-4" /> {t("Version history")}</DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => api.downloadPdf()}><FileDown className="h-4 w-4" /> {t("PDF document (.pdf)")}</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => api.downloadDoc("doc")}><Download className="h-4 w-4" /> {t("Download Word (.doc)")}</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => api.downloadDoc("docx")}><Download className="h-4 w-4" /> {t("Word document (.docx)")}</DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.downloadDoc("html")}><Download className="h-4 w-4" /> {t("Download HTML")}</DropdownMenuItem>
         <DropdownMenuItem onClick={() => api.downloadDoc("txt")}><Download className="h-4 w-4" /> {t("Download text (.txt)")}</DropdownMenuItem>
         <DropdownMenuSeparator />

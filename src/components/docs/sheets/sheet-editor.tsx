@@ -13,12 +13,17 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   ArrowLeft,
+  Download,
   FileSpreadsheet,
   Loader2,
   Star,
   Trash2,
 } from "lucide-react"
-import { cellRef, fmtNum, parseNumeric } from "./cells"
+import { cellRef, fmtNum, parseNumeric, parseRef } from "./cells"
+import { evaluateSheet } from "./formula"
+import { csvEscape } from "../forms/forms-utils"
+import { exportSafeName } from "@/lib/print-html"
+import { useToast } from "@/hooks/use-toast"
 import { Toolbar } from "./sheet-toolbar"
 import { useSheetStore } from "./sheet-store"
 import { SheetGrid } from "./grid"
@@ -218,6 +223,47 @@ export function SheetEditor() {
   const redo = useSheetStore((s) => s.redo)
   const gridRef = React.useRef<HTMLDivElement>(null)
   const { t } = useI18n()
+  const { toast } = useToast()
+
+  /** Export the current sheet's used range as CSV — computed formula values,
+   *  proper quote/comma/newline escaping and a BOM so Excel opens UTF-8. */
+  const downloadCsv = React.useCallback(() => {
+    const st = useSheetStore.getState()
+    const evals = evaluateSheet(st.data)
+    const cells = st.data.cells
+    let maxR = 0
+    let maxC = 0
+    for (const ref of Object.keys(cells)) {
+      const v = evals[ref] ?? cells[ref]?.v ?? ""
+      if (v === "") continue
+      const p = parseRef(ref)
+      if (!p) continue
+      if (p.r > maxR) maxR = p.r
+      if (p.c > maxC) maxC = p.c
+    }
+    const rows: string[] = []
+    // cellRef()/parseRef() are 0-based — walk the full used range inclusive
+    for (let r = 0; r <= maxR; r++) {
+      const row: string[] = []
+      for (let c = 0; c <= maxC; c++) {
+        const ref = cellRef(r, c)
+        row.push(csvEscape(evals[ref] ?? cells[ref]?.v ?? ""))
+      }
+      rows.push(row.join(","))
+    }
+    const csv = rows.length ? rows.join("\r\n") : ""
+    const name = exportSafeName(st.title || "", "spreadsheet")
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `${name}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    toast({ title: t("CSV downloaded"), description: `${name}.csv` })
+  }, [t, toast])
 
   // grid owns the keyboard as soon as the editor opens
   React.useEffect(() => {
@@ -316,6 +362,9 @@ export function SheetEditor() {
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={backToList}>
                 <FileSpreadsheet className="h-4 w-4" /> {t("Find spreadsheet in list")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={downloadCsv}>
+                <Download className="h-4 w-4" /> {t("Download CSV")}
               </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => void trashCurrent()}>
                 <Trash2 className="h-4 w-4" /> {t("Delete")}

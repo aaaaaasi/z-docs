@@ -2,7 +2,9 @@
  * Guest mode — local-only workspace.
  *
  * `installGuestApi()` wraps `window.fetch` so that every `/api/*` request
- * except `/api/auth/*` and `/api/import/*` is served from a localStorage-backed
+ * except `/api/auth/*`, `/api/import/*` and the server-rendered file exports
+ * (`/api/export/pdf`, `/api/export/docx` — one-shot transient renders) is
+ * served from a localStorage-backed
  * database (see local-mode/db.ts + local-mode/routes.ts) instead of hitting the
  * server. The wrapped calls return real `Response` objects whose shapes mirror
  * the server routes byte-for-byte, so the entire app (Z-Docs editor, Z-Sheets,
@@ -29,10 +31,19 @@ const GUEST_FETCH_MARKER = "__zdocsGuestApi"
 
 let originalFetch: FetchLike | null = null
 
-/** Only /api/* paths outside /api/auth and /api/import are handled locally. */
+/** Only /api/* paths outside /api/auth, /api/import and the server-rendered
+ *  file exports (pdf/docx — transient renders, nothing persisted) are handled
+ *  locally. */
 function shouldHandleLocally(pathname: string): boolean {
   if (!pathname.startsWith("/api/")) return false
-  if (pathname.startsWith("/api/auth/") || pathname.startsWith("/api/import/")) return false
+  if (
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/api/import/") ||
+    pathname.startsWith("/api/export/pdf") ||
+    pathname.startsWith("/api/export/docx")
+  ) {
+    return false
+  }
   return true
 }
 

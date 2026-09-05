@@ -8,6 +8,8 @@ import { useDocsStore } from "@/store/docs-store"
 import { useLocalUser } from "@/lib/identity"
 import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@/hooks/use-collab"
 import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
+import { buildPrintDocument, exportSafeName } from "@/lib/print-html"
+import { api as apiFetch } from "@/lib/api-client"
 import { useI18n, tForLang, getCurrentLang } from "@/lib/i18n"
 import {
   selectionOffsets, selectedBlocks, findQuoteRange,
@@ -49,6 +51,123 @@ import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2, TableCellsMerge
 import {
   ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
 } from "@/components/ui/context-menu"
+
+/* ---------------- structured plain-text export ---------------- */
+
+const TXT_BLOCK_TAGS = new Set(["p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "tr", "table", "figure"])
+
+/** Client-side DOM walk producing a genuinely structured .txt export:
+ *  underlined headings, real list markers with nesting, quote prefixes,
+ *  verbatim code blocks, tables as `a | b` rows, image alt placeholders. */
+function htmlToPlainText(html: string): string {
+  if (!html) return ""
+  const doc = new DOMParser().parseFromString(html, "text/html")
+  const lines: string[] = []
+  const push = (s: string) => {
+    if (s.trim()) lines.push(s.replace(/\u00a0/g, " ").trimEnd())
+  }
+
+  const inlineText = (node: Node): string => {
+    let s = ""
+    node.childNodes.forEach((ch) => {
+      if (ch.nodeType === Node.TEXT_NODE) s += (ch.textContent || "").replace(/\s+/g, " ")
+      else if (ch.nodeType === Node.ELEMENT_NODE) {
+        const el = ch as Element
+        const tag = el.tagName.toLowerCase()
+        if (tag === "br") s += "\n"
+        else if (tag === "img") {
+          const alt = el.getAttribute("alt")
+          if (alt) s += `[${alt}]`
+        } else if (TXT_BLOCK_TAGS.has(tag)) s += `\n${inlineText(el)}\n`
+        else s += inlineText(el)
+      }
+    })
+    return s
+  }
+
+  const walkList = (list: Element, depth: number) => {
+    const ordered = list.tagName.toLowerCase() === "ol"
+    const indent = "  ".repeat(depth)
+    let i = 1
+    list.childNodes.forEach((n) => {
+      if (n.nodeType !== Node.ELEMENT_NODE) return
+      const li = n as Element
+      if (li.tagName.toLowerCase() !== "li") return
+      let inline = ""
+      const nested: Element[] = []
+      li.childNodes.forEach((ch) => {
+        if (ch.nodeType === Node.TEXT_NODE) inline += (ch.textContent || "").replace(/\s+/g, " ")
+        else if (ch.nodeType === Node.ELEMENT_NODE) {
+          const cel = ch as Element
+          const ctag = cel.tagName.toLowerCase()
+          if (ctag === "ul" || ctag === "ol") nested.push(cel)
+          else if (ctag === "br") inline += "\n"
+          else inline += inlineText(cel)
+        }
+      })
+      const marker = ordered ? `${i++}. ` : "- "
+      push(indent + marker + inline.trim())
+      nested.forEach((nl) => walkList(nl, depth + 1))
+    })
+  }
+
+  const walkBlocks = (parent: Element, depth = 0) => {
+    const indent = "  ".repeat(depth)
+    parent.childNodes.forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        push(indent + (node.textContent || "").replace(/\s+/g, " ").trim())
+        return
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return
+      const el = node as Element
+      const tag = el.tagName.toLowerCase()
+      if (/^h[1-6]$/.test(tag)) {
+        const text = inlineText(el).trim()
+        if (!text) return
+        lines.push("")
+        push(indent + text)
+        if (tag === "h1") push("=".repeat(Math.min(60, Math.max(6, text.length * 2))))
+        else if (tag === "h2") push("-".repeat(Math.min(60, Math.max(6, text.length * 2))))
+        lines.push("")
+      } else if (tag === "p") {
+        const text = inlineText(el).replace(/[ \t]+\n/g, "\n").trim()
+        if (text) text.split("\n").forEach((l) => push(indent + l))
+      } else if (tag === "ul" || tag === "ol") {
+        walkList(el, depth)
+      } else if (tag === "blockquote") {
+        const inner = inlineText(el).trim()
+        if (inner) {
+          lines.push("")
+          inner.split("\n").forEach((l) => push("> " + l.trim()))
+          lines.push("")
+        }
+      } else if (tag === "pre") {
+        const text = el.textContent || ""
+        lines.push("")
+        text.split("\n").forEach((l) => lines.push(l))
+        lines.push("")
+      } else if (tag === "hr") {
+        lines.push("")
+        push("-".repeat(40))
+        lines.push("")
+      } else if (tag === "table") {
+        lines.push("")
+        Array.from(el.querySelectorAll("tr")).forEach((tr) => {
+          const cells = Array.from(tr.querySelectorAll("th,td")).map((td) => inlineText(td).replace(/\s+/g, " ").trim())
+          push(cells.join(" | "))
+        })
+        lines.push("")
+      } else if (tag === "br") {
+        lines.push("")
+      } else {
+        walkBlocks(el, depth)
+      }
+    })
+  }
+
+  walkBlocks(doc.body)
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n"
+}
 
 export function EditorView() {
   const docId = useDocsStore((s) => s.currentDocId) ?? ""
@@ -1576,29 +1695,33 @@ export function EditorView() {
   }, [voice])
 
   /* ---------------- export & print ---------------- */
-  const buildExportHtml = React.useCallback(() => {
-    const titleHtml = escapeHtml(latestTitleRef.current || tForLang(getCurrentLang(), "Untitled document"))
-    return `<!DOCTYPE html>
-<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head><meta charset="utf-8"><title>${titleHtml}</title>
-<style>
-@page { margin: 1in; }
-body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.15; color: #202124; }
-h1 { font-size: 20pt; font-weight: 400; color: #3c4043; margin: 16pt 0 6.5pt; }
-h2 { font-size: 16pt; font-weight: 400; color: #3c4043; margin: 14pt 0 5pt; }
-h3 { font-size: 14pt; font-weight: 400; color: #434343; margin: 12pt 0 4pt; }
-p { margin: 0 0 7.5pt; }
-ul { list-style: disc outside; padding-left: 40px; margin: 8pt 0; }
-ol { list-style: decimal outside; padding-left: 40px; margin: 8pt 0; }
-blockquote { border-left: 3px solid #d9d7d2; margin: 8pt 0; padding: 4pt 0 4pt 16pt; color: #6d6a64; }
-a { color: #0b6b62; }
-img { max-width: 100%; }
-</style></head>
-<body>${contentRef.current}</body></html>`
-  }, [])
+
+  /** Shared export document builder — the exact same CSS/layout the
+   *  server-side Chromium PDF renderer prints, so every format (PDF / Word
+   *  / HTML / print) is pixel-consistent. */
+  const buildExportHtml = React.useCallback(
+    (mode: "print" | "word" | "html" = "word") =>
+      buildPrintDocument({
+        title: latestTitleRef.current || tForLang(getCurrentLang(), "Untitled document"),
+        bodyHtml: contentRef.current,
+        mode,
+      }),
+    []
+  )
+
+  const saveBlobFile = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
 
   const printDoc = React.useCallback(() => {
-    const html = buildExportHtml()
+    const html = buildExportHtml("print")
     const iframe = document.createElement("iframe")
     iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;"
     document.body.appendChild(iframe)
@@ -1615,15 +1738,38 @@ img { max-width: 100%; }
   }, [buildExportHtml])
 
   /** Export the current document as a real .pdf file (Google Docs parity).
-   *  Renders the page element with html2canvas-pro (oklch-safe fork) at 2×
-   *  and lays the slices into a jsPDF Letter document, breaking pages only
-   *  between top-level blocks so text is never sliced mid-line. Falls back
-   *  to the print dialog when canvas rendering is unavailable. */
+   *
+   *  Tries the server-side Chromium vector renderer FIRST — selectable text,
+   *  correct CJK fonts, correct wrapping of very long words — then falls back
+   *  to the local html2canvas raster pipeline, and finally to the print
+   *  dialog when canvas rendering is unavailable. */
   const downloadPdf = React.useCallback(async () => {
     const el = pageRef.current
-    if (!el) return
     const lang = getCurrentLang()
+    const name = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
     toast({ title: tForLang(lang, "Preparing PDF…"), description: tForLang(lang, "Rendering the document pages") })
+
+    // 1) server-side vector PDF (Chromium print — real text layer)
+    try {
+      const res = await apiFetch("/api/export/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: latestTitleRef.current, html: contentRef.current }),
+      })
+      if (res.ok) {
+        const blob = await res.blob()
+        if (blob.size > 0) {
+          saveBlobFile(blob, `${name}.pdf`)
+          toast({ title: tForLang(lang, "Download started"), description: `${name}.pdf` })
+          return
+        }
+      }
+    } catch {
+      /* offline / renderer unavailable → client fallbacks below */
+    }
+
+    // 2) client raster fallback (html2canvas)
+    if (!el) return
     let wrap: HTMLElement | null = null
     let prevTransform = ""
     try {
@@ -1644,6 +1790,8 @@ img { max-width: 100%; }
         useCORS: true,
         logging: false,
       })
+      // long unbreakable strings must wrap during capture too
+      el.classList.add("export-wrap-all")
       // page geometry: Letter at 96dpi = 816×1056 CSS px inside the page el
       const PAGE_H = 1056
       const total = el.getBoundingClientRect().height
@@ -1684,39 +1832,56 @@ img { max-width: 100%; }
         if (i > 0) pdf.addPage()
         pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, PW, PH, undefined, "FAST")
       }
-      const name = (latestTitleRef.current || tForLang(lang, "Untitled document")).replace(/[^\w\d\-\u4e00-\u9fff ]+/g, "_").trim() || "document"
-      pdf.save(`${name}.pdf`)
-      toast({ title: tForLang(lang, "Download started"), description: `${name}.pdf` })
+      const name2 = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
+      pdf.save(`${name2}.pdf`)
+      toast({ title: tForLang(lang, "Download started"), description: `${name2}.pdf` })
     } catch {
+      // 3) final fallback — print dialog (browser "Save as PDF" is vector)
       toast({ title: tForLang(lang, "PDF export fell back to print"), description: tForLang(lang, "Choose “Save as PDF” as the destination") })
       printDoc()
     } finally {
       if (wrap) wrap.style.transform = prevTransform
-      el.classList.remove("exporting")
+      el.classList.remove("exporting", "export-wrap-all")
     }
   }, [printDoc, toast])
 
   const downloadDoc = React.useCallback(
-    (format: "doc" | "html" | "txt") => {
+    async (format: "docx" | "doc" | "html" | "txt") => {
       const lang = getCurrentLang()
-      const name = (latestTitleRef.current || tForLang(lang, "Untitled document")).replace(/[^\w\d\-\u4e00-\u9fff ]+/g, "_").trim() || "document"
+      const name = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
+      if (format === "docx") {
+        // real Word package rendered server-side; legacy .doc HTML as fallback
+        try {
+          const res = await apiFetch("/api/export/docx", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title: latestTitleRef.current, html: contentRef.current }),
+          })
+          if (res.ok) {
+            const blob = await res.blob()
+            if (blob.size > 0) {
+              saveBlobFile(blob, `${name}.docx`)
+              toast({ title: tForLang(lang, "Download started"), description: `${name}.docx` })
+              return
+            }
+          }
+        } catch {
+          /* server unavailable → legacy .doc below */
+        }
+        saveBlobFile(new Blob(["\ufeff" + buildExportHtml("word")], { type: "application/msword" }), `${name}.doc`)
+        toast({ title: tForLang(lang, "Download started"), description: `${name}.doc` })
+        return
+      }
       let blob: Blob
       if (format === "txt") {
-        blob = new Blob([htmlToText(contentRef.current)], { type: "text/plain;charset=utf-8" })
+        blob = new Blob([htmlToPlainText(contentRef.current)], { type: "text/plain;charset=utf-8" })
       } else if (format === "html") {
-        blob = new Blob([buildExportHtml()], { type: "text/html;charset=utf-8" })
+        blob = new Blob([buildExportHtml("html")], { type: "text/html;charset=utf-8" })
       } else {
-        blob = new Blob(["\ufeff" + buildExportHtml()], { type: "application/msword" })
+        blob = new Blob(["\ufeff" + buildExportHtml("word")], { type: "application/msword" })
       }
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = `${name}.${format}`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-      toast({ title: tForLang(lang, "Download started"), description: a.download })
+      saveBlobFile(blob, `${name}.${format}`)
+      toast({ title: tForLang(lang, "Download started"), description: `${name}.${format}` })
     },
     [buildExportHtml, toast]
   )

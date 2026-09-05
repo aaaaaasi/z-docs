@@ -274,6 +274,12 @@
   word-break: break-word;
   caret-color: #1f7a71;
 }
+/* applied only during html2canvas raster capture so very long unbreakable
+   strings wrap in the fallback PDF path too (matches browser layout) */
+.doc-content.export-wrap-all,
+.doc-content.export-wrap-all * {
+  word-break: break-all;
+}
 .doc-content ::selection {
   background: rgba(31, 122, 113, 0.2);
 }

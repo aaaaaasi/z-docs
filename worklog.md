@@ -711,3 +711,44 @@ Stage Summary:
 - 用户使用: ①直接"以游客身份继续"本地使用；②注册账号（如 uwne@qq.com）获得独立云端工作区；③游客→登录自动同步本地创作。
 - 已知限制: 游客 AI/协作/分享需登录（设计如此）；导入不迁移评论/版本历史（仅内容+标签+文件夹）；拼写修正不可撤销等前轮遗留不变。
 - 下一阶段候选: 文档协作者邀请在 Sheets/Slides/Forms 的细粒度角色、游客本地数据管理 UI（查看/清除）、限流 Redis 化、taste-skill 仓库研究（低优先遗留）。
+
+---
+Task ID: 19
+Agent: main (Z.ai Code)
+Task: 用户报障「PDF 效果严重不好！」——修复全部导出功能并举一反三（测试/加固每一种导出，消灭栅格 PDF 与换行溢出）
+
+Work Log:
+- 根因分析（用户截图 VLM 复核）: 导出的 PDF 中超长不可断字符串（用户输入 200+ 连续 "s"）溢出页面右边界、无文字层（html2canvas 栅格方案的固有缺陷：模糊、不可选、文件大、长词不换行）。用户要求测试全部导出功能并举一反三。
+- 侦察: 服务器有 Playwright Chromium（~/.cache/ms-playwright/chromium_headless_shell-1234，chrome-headless-shell 二进制）+ CJK 字体（Noto Serif SC / WQY Zen Hei / Sarasa / LXGW / Liberation Sans=Arial 等价）。CLI 实测 --print-to-pdf：Letter 612×792pt、矢量文字层、长词正确换行、中文正常、单页 31KB。确认方案可行。
+- 新建 src/lib/print-html.ts（同构共享构建器）: buildPrintDocument({title, bodyHtml, mode: print|word|html}) + PRINT_CSS（Google Docs 排版：@page letter 1in、11pt/1.15、**overflow-wrap:break-word + word-break:break-word 根治长词溢出**、CJK 字体栈 PingFang/雅黑/WQY、表格实线边框、pre/code/引用/hr/figcaption、page-break-inside:avoid + orphans/widows）+ exportSafeName()（文件名安全化保 CJK）+ escapeHtmlText()。所有导出格式（PDF/DOCX 前身 .doc/.html/打印）从此共用同一排版源。
+- 新建 src/lib/pdf-render.ts（服务端矢量渲染）: spawn chrome-headless-shell，flags 含 --no-sandbox --no-pdf-header-footer --virtual-time-budget=15000 --host-resolver-rules="MAP * ~NOTFOUND"（**渲染全程断网，SSRF 免疫**）；并发信号量（≤2）、30s 硬超时 SIGKILL、mkdtemp 临时目录 finally 清理、二进制候选链（env 覆盖→headless_shell 1234/1200→chrome 1234/1200→系统路径）。
+- 新建 POST /api/export/pdf: isSameOrigin（Sec-Fetch-Site 三级判定，跨源 403）+ 会话可选（登录 8/min per-user，游客 4/min per-IP 429）+ 载荷 ≤2MB（413）+ 空内容 400 + sanitizeDocHtml + stripRemoteImages（断网渲染下远程图→斜体 alt 占位，data-URL 图片正常嵌入）→ application/pdf 流回（Content-Disposition 含 RFC5987 UTF-8 filename* 中文文件名）。
+- 新建 src/lib/docx-render.ts + POST /api/export/docx（bun add docx htmlparser2）: 真实 OOXML Word 包——Heading1-6 样式（20/16/14pt Google 层级）、项目符号 bullet + 编号 numbering（instance 重启）、ZQuote（左边框+缩进+灰字）、ZCode（Courier+底纹）、表格（B7B7B7 边框+表头底纹）、ExternalHyperlink（0B6B62 下划线）、**data-URL 图片嵌入（PNG/GIF/JPEG 尺寸嗅探器 + 624px 页宽自适应）**、hr/figure/figcaption/对齐/字号/字色内联样式解析。守卫与 PDF 路由同构。
+- editor-view 重写导出链: downloadPdf 三级回退（服务端矢量 → html2canvas 栅格兜底[期间加 .export-wrap-all 类强制 break-all] → 打印对话框）；downloadDoc 升级（docx 服务端优先→.doc HTML 兜底；html 用共享构建器；**txt 全新结构化导出 htmlToPlainText**：H1/H2 下划线、无序 -/有序 1. 嵌套缩进列表、> 引用、代码块逐行、表格 a| b、hr、图片 alt 占位）；buildExportHtml/printDoc 全部切共享构建器。修掉局部 api 与导入 api 的命名冲突（apiFetch 别名）。
+- menu-bar: 「下载 Word (.doc)」→「Word 文档 (.docx)」（真 Word 格式）；dict-editor 加 "Word document (.docx)" 词条。
+- local-mode.ts（游客 shim）: passthrough 列表加 /api/export/pdf 与 /api/export/docx——游客导出直接命中真实服务端渲染（瞬时渲染、零持久化），其余 API 照旧本地。
+- 举一反三新增 Z-Sheets CSV 导出（sheet-editor.tsx 菜单项「下载 CSV」）: evaluateSheet 计算值（公式结果而非原始 =SUM 文本）、csvEscape 转义（逗号/引号/换行）、BOM、只导出使用区域。**E2E 抓到并修复 off-by-one**（cellRef/parseRef 是 0-based，初版循环 1-based 导致导出范围错位只出 B2/C2 起——改为 0..maxR 含端点遍历后精确输出全表）。
+- QA（agent-browser E2E + curl + poppler）:
+  - 游客全链路（登录屏→以游客身份继续→新建文档→注入用户原始场景：两段 200+ 连续 s 串 +「你好！」+ 标题/粗斜下划线/链接/嵌套列表/有序列表/引用/代码块/表格/hr）:
+    - **PDF**: 下载 56KB 矢量文件；pdftotext 全文可提取（=真文字层）；**长 s 串 4 行正确换行（用户报障的 bug 修复实证）**；中文/加粗/列表序号/表格全对；pdftoppm 渲染 + VLM 审查「排版正常、专业、无需调整」；pdfinfo Letter 612×792。
+    - **DOCX**: 下载 9.9KB 真 OOXML；unzip 验证 document.xml/styles.xml/numbering.xml/rels 结构完整；Heading1/2、ZQuote、ZCode、Hyperlink 样式命中；表格 <w:tbl> 存在；zip 完整性通过。
+    - **HTML**: 3933B，含 3 处 overflow-wrap:break-word，长串完整。
+    - **TXT**: 结构化输出（H1 = 下划线、H2 - 下划线、- / 1. / 嵌套两格缩进、> 引用、代码块、表格 | 行、40 连字符 hr）。
+  - 登录用户路径: 注册 pdfqa→带会话 POST /api/export/pdf 200（11099B，中文文件名 OK）→测试账号及会话清理（DB 回到 0 用户）。
+  - 图片: data-URL PNG（60×40）PDF 内嵌（pdfimages 确认 60×40 ICC 图像 + VLM 确认蓝色矩形可见）+ DOCX word/media/ 内嵌（EMU 571500×381000=60×40px 精确）；远程图→斜体 alt 占位。
+  - 安全: 跨源 403 ✓、匿名 5 连发 429 ✓、空体 400 ✓、超 2MB 413 ✓；渲染断网（host-resolver-rules）。
+  - Sheets CSV E2E: 注入 A1=10/A2=20/A3==SUM(A1:A2)/B1=名称/B2=带,逗号和"引号"/B3=中文内容/C1=0.5 → 下载 CSV = `10,名称,0.5` / `20,"带,逗号和引号",` / `30,中文内容,`（公式算出 30、逗号字段引号包裹、BOM、只到使用区第 3 行）。
+  - Forms CSV 纯函数复核: 逗号/双引号翻倍/换行嵌入转义正确（沿用既有实现，未改动）。
+  - dev.log: 全程无业务错误（PDF 渲染 220-700ms、DOCX 44-689ms）；:3000/:3003 健康。
+  - 质量门: bunx tsc --noEmit src 0 错误；bun run lint 干净。
+- 运维: 创建 15 分钟 webDevReview 巡检 cron（job 361022，旧的 360592 因执行限额已禁用）。
+
+Stage Summary:
+- **PDF 质变**: html2canvas 栅格截图 → 服务端 Chromium 矢量打印。可选中/可复制的真文字、Letter 精确分页、长词换行根治（用户报障场景实测修复）、中文完美、文件从 ~1MB/页降到 ~30KB/页。游客也可用（放行 + 4/min IP 限流 + 断网渲染 + 零持久化）。
+- **Word 质变**: .doc HTML 伪装 → 真实 .docx OOXML 包（docx 库），标题/列表/引用/代码/表格/链接/图片全保真，服务端不可用时自动回落 .doc。
+- **TXT 质变**: strip-tags 一坨文本 → 结构化纯文本（标题下划线/列表标记/缩进/引用前缀/表格竖线）。
+- **HTML/.doc/打印**: 统一切换到共享 print-html 构建器（换行修复 + CJK 字体栈 + 表格边框）。
+- **Sheets 新增 CSV 导出**（公式计算值+转义+BOM+使用区域），Forms CSV 复核通过。
+- 导出架构: 一个共享排版源（print-html.ts）+ 两个服务端渲染路由（pdf/docx，同构守卫）+ 客户端三级回退 + 游客 shim 放行。
+- 已知限制: 远程 URL 图片在服务端 PDF/DOCX 中为 alt 占位（断网渲染的安全取舍；上传的 data-URL 图正常嵌入）；html2canvas 兜底路径仍是栅格（仅服务端不可用时触发）；DOCX 不支持 webp 图片（跳过）；打印对话框路径未自动化测试（同构建器，风险低）。
+- 下一阶段候选: Slides PPTX 导出（大工程）、DOCX 远程图片客户端预转 data-URL、导出进度 toast 优化（大文档）、游客本地数据管理 UI、拼写修正 Ctrl+Z 支持。

@@ -16,6 +16,7 @@ export const dictEditor: Record<string, string> = {
   "Make a copy": "创建副本",
   "Version history": "版本历史",
   "PDF document (.pdf)": "PDF 文档 (.pdf)",
+  "Word document (.docx)": "Word 文档 (.docx)",
   "Download Word (.doc)": "下载 Word (.doc)",
   "Download HTML": "下载 HTML",
   "Download text (.txt)": "下载文本 (.txt)",
