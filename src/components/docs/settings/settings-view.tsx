@@ -584,7 +584,8 @@ function DataSection() {
       document.body.appendChild(a)
       a.click()
       a.remove()
-      URL.revokeObjectURL(url)
+      // async revoke — synchronous revoke can kill the transfer on slow browsers
+      setTimeout(() => URL.revokeObjectURL(url), 30_000)
       toast({ title: t("Download started"), description: t("Your workspace is exporting as JSON.") })
     } catch {
       toast({ title: t("Download failed"), description: t("Please try again in a moment.") })

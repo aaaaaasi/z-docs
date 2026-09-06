@@ -183,6 +183,24 @@
     0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
+/* ------------------------------------------------ page ruler */
+.doc-ruler {
+  position: relative;
+  width: 816px;
+  max-width: 816px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(128, 126, 122, 0.35);
+  background: transparent;
+  user-select: none;
+  /* ticks are absolutely positioned from the pageWidth prop — on compact
+     screens the CSS width (92vw) can lag behind, so clip any stragglers
+     instead of letting them widen the canvas scroll area. */
+  overflow: hidden;
+}
+
+/* Compact page + ruler below 900px — MUST come after the desktop rules above
+   (same specificity: later declaration wins, otherwise the mobile override
+   is silently lost and the 816px ruler forces horizontal scrolling). */
 @media (max-width: 900px) {
   .doc-page {
     width: 92vw;
@@ -194,17 +212,6 @@
     width: 92vw;
     max-width: 816px;
   }
-}
-
-/* ------------------------------------------------ page ruler */
-.doc-ruler {
-  position: relative;
-  width: 816px;
-  max-width: 816px;
-  margin-bottom: 4px;
-  border-bottom: 1px solid rgba(128, 126, 122, 0.35);
-  background: transparent;
-  user-select: none;
 }
 .doc-ruler-margin {
   align-self: stretch;

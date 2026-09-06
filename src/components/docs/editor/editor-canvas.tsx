@@ -257,7 +257,16 @@ export function EditorCanvas({
     setHighlightViews(views)
   }, [comments, activeCommentId, zoom, contentTick, remoteContent])
 
-  const padX = 40
+  // Horizontal shadow gutters around the page. Desktop keeps generous 40px
+  // margins; below 900px the page itself shrinks to 92vw so the gutters must
+  // collapse too, otherwise the canvas gets a horizontal scrollbar.
+  const [padX, setPadX] = React.useState(40)
+  React.useEffect(() => {
+    const update = () => setPadX(window.innerWidth < 900 ? 4 : 40)
+    update()
+    window.addEventListener("resize", update)
+    return () => window.removeEventListener("resize", update)
+  }, [])
   const padY = 40
   // .doc-page also contributes margin-top 40 + margin-bottom 80 inside the wrapper
   const bottomPad = 120
@@ -278,7 +287,7 @@ export function EditorCanvas({
           data-doc-zoom-wrap=""
           style={{ width: dims.w + padX * 2, transform: `scale(${zoom})`, transformOrigin: "top left" }}
         >
-          <div className="px-10 pt-10">
+          <div className="px-10 pt-10 max-[900px]:px-1 max-[900px]:pt-4">
             <DocRuler
               pageWidth={dims.w}
               margins={margins}
@@ -408,10 +417,10 @@ export function EditorCanvas({
 
           {/* Margin-drag guide lines (full page height) */}
           {marginDragSide === "left" && (
-            <div className="no-print doc-margin-guide" style={{ left: 40 + margins.left }} aria-hidden />
+            <div className="no-print doc-margin-guide" style={{ left: padX + margins.left }} aria-hidden />
           )}
           {marginDragSide === "right" && (
-            <div className="no-print doc-margin-guide" style={{ left: 40 + dims.w - margins.right }} aria-hidden />
+            <div className="no-print doc-margin-guide" style={{ left: padX + dims.w - margins.right }} aria-hidden />
           )}
 
           {/* Table column resize grabbers + active-table outline */}

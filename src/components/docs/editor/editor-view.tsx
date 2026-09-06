@@ -1717,7 +1717,9 @@ export function EditorView() {
     document.body.appendChild(a)
     a.click()
     a.remove()
-    URL.revokeObjectURL(url)
+    // Revoke asynchronously: some browsers (Safari, headless) start the download
+    // after the current task — a synchronous revoke can kill the transfer.
+    setTimeout(() => URL.revokeObjectURL(url), 30_000)
   }
 
   const printDoc = React.useCallback(() => {

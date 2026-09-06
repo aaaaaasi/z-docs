@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils"
 function Menu({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="rounded px-2.5 py-1 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground">
+      <DropdownMenuTrigger className="rounded px-2.5 py-1 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground max-sm:py-2">
         {label}
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56">{children}</DropdownMenuContent>

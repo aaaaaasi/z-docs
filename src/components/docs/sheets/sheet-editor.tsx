@@ -261,7 +261,8 @@ export function SheetEditor() {
     document.body.appendChild(a)
     a.click()
     a.remove()
-    URL.revokeObjectURL(url)
+    // async revoke — synchronous revoke can kill the transfer on slow browsers
+    setTimeout(() => URL.revokeObjectURL(url), 30_000)
     toast({ title: t("CSV downloaded"), description: `${name}.csv` })
   }, [t, toast])
 
