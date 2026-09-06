@@ -155,8 +155,10 @@ function SectionCard({
 }
 
 function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-  return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${bytes} B`
 }
 
 /* --------------------------------- General ---------------------------------- */
@@ -518,23 +520,23 @@ function WorkspaceSection() {
 
 /* ------------------------------ Data & storage ------------------------------ */
 
-interface ExportPayload {
+interface StoragePayload {
+  usedBytes?: number
+  quotaBytes?: number
   counts?: {
     documents?: number
     sheets?: number
-    decks?: number
+    slides?: number
     forms?: number
     folders?: number
     tags?: number
   }
 }
 
-const STORAGE_QUOTA_BYTES = 10 * 1024 * 1024 // 10 MB demo quota
-
-const STORAGE_STATS: { key: keyof NonNullable<ExportPayload["counts"]>; label: string; icon: LucideIcon }[] = [
+const STORAGE_STATS: { key: keyof NonNullable<StoragePayload["counts"]>; label: string; icon: LucideIcon }[] = [
   { key: "documents", label: "Documents", icon: FileText },
   { key: "sheets", label: "Spreadsheets", icon: FileSpreadsheet },
-  { key: "decks", label: "Decks", icon: Presentation },
+  { key: "slides", label: "Decks", icon: Presentation },
   { key: "forms", label: "Forms", icon: FormInput },
   { key: "folders", label: "Folders", icon: Folder },
   { key: "tags", label: "Tags", icon: Tag },
@@ -543,8 +545,9 @@ const STORAGE_STATS: { key: keyof NonNullable<ExportPayload["counts"]>; label: s
 function DataSection() {
   const { t } = useI18n()
   const { toast } = useToast()
-  const [counts, setCounts] = React.useState<NonNullable<ExportPayload["counts"]> | null>(null)
+  const [counts, setCounts] = React.useState<NonNullable<StoragePayload["counts"]> | null>(null)
   const [bytes, setBytes] = React.useState(0)
+  const [quota, setQuota] = React.useState(0)
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
@@ -552,13 +555,16 @@ function DataSection() {
     const load = async () => {
       setError(null)
       try {
-        const res = await fetch("/api/export")
+        // single source of truth — same /api/storage the sidebar reads, so the
+        // two surfaces can never disagree (they previously used different
+        // quotas: 10 MB here vs 15 GB there)
+        const res = await fetch("/api/storage")
         if (!res.ok) throw new Error("Failed to load storage stats")
-        const text = await res.text()
+        const payload = (await res.json()) as StoragePayload
         if (!live) return
-        const payload = JSON.parse(text) as ExportPayload
         setCounts(payload.counts ?? {})
-        setBytes(new TextEncoder().encode(text).length)
+        setBytes(payload.usedBytes ?? 0)
+        setQuota(payload.quotaBytes ?? 0)
       } catch (e) {
         if (!live) return
         setError(e instanceof Error ? e.message : "Something went wrong")
@@ -611,7 +617,7 @@ function DataSection() {
     window.location.reload()
   }
 
-  const usedPercent = counts ? Math.min(100, (bytes / STORAGE_QUOTA_BYTES) * 100) : 0
+  const usedPercent = counts && quota > 0 ? Math.min(100, (bytes / quota) * 100) : 0
 
   return (
     <SectionCard
@@ -629,7 +635,7 @@ function DataSection() {
               <p className="text-[13px] font-medium">{t("Workspace storage")}</p>
               <p className="text-xs text-muted-foreground">
                 <span className="tnum font-medium text-foreground">{t("{size} used", { size: formatBytes(bytes) })}</span>
-                <span className="opacity-70"> · {t("10 MB quota")}</span>
+                <span className="opacity-70"> · {quota > 0 ? t("{size} quota", { size: formatBytes(quota) }) : ""}</span>
               </p>
             </div>
             <div

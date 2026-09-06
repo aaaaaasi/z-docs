@@ -98,7 +98,7 @@ export const dictApps: Record<string, string> = {
   "Everything you create lives in your local Z workspace database.": "你创建的所有内容都保存在本地 Z 工作区数据库中。",
   "Workspace storage": "工作区存储空间",
   "{size} used": "已用 {size}",
-  "10 MB quota": "共 10 MB",
+  "{size} quota": "共 {size}",
   "Workspace storage used": "工作区存储空间已用量",
   "Documents": "文档",
   "Spreadsheets": "表格",

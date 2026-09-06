@@ -50,6 +50,8 @@ export async function GET(req: NextRequest) {
     forms: forms.length,
     responses: responses.length,
     comments: comments.length,
+    folders: folders.length,
+    tags: tags.length,
   }
 
   return Response.json({

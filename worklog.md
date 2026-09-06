@@ -784,3 +784,36 @@ Stage Summary:
 - **认证/游客/管理员三大项实测确认**: 注册→登录→me→登出 200 全通（Sec-Fetch-Site 修复生效）；游客本地全功能 + 存储真实统计；0 用户纯净起点（测试账号已清）。
 - **巡检体系就位**: cron job 362494 每 15 分钟 webDevReview（含完整待办队列上下文与 QA 方法论）。
 - 下一阶段候选（按优先级）: 摆设功能真实化（拼写检查对话修正建议应用）、多选/批量操作、Ellipsus 写作洞察完善、Z-Slides PPTX 导出、导出进度 toast（大文档）、远程图片客户端预转 data-URL。
+
+---
+Task ID: 21
+Agent: main (Z.ai Code)
+Task: 用户指令「继续审查，10轮审查」——对全应用执行 10 轮系统化 agent-browser E2E 审查（R1-R10），全链路实测每个应用与功能面
+
+Work Log:
+- **R1 首页视图**: 列表渲染（计数/相对时间/星标徽章）、中文搜索（"1 个文档 匹配"会议""徽章）、星标筛选（导航计数联动）、回收站（隔离视图+恢复实测 DB trashed 翻转）、多选（checkbox→悬浮批量操作栏"已选 N 项"+星标/重命名/移至/删除/关闭）、批量星标实测（DB starred=true×2）、批量移回收站实测（trashed=true）、存储真实统计。往返后搜索状态正确重置（早前"匹配残留"是 QA 侵入式改值破坏 React input tracker 的假象，非用户可达）。零控制台错误。
+- **R2 编辑器核心**: 加粗/斜体（精确嵌套 span 验证）、段落样式 H1 转换、撤销链逐级回退（H1→P→去斜体）、3×3 表格插入（尺寸选择器 grid）、表格内输入、项目符号列表、插入链接（#link-text/#link-url 正确 id 后成功 [示例链接](https://example.com)）、居中对齐、清除格式。零错误。
+- **R3 评论/版本/大纲**: 评论全 CRUD（选区引用"第一季度项目"/作者/时间/回复"收到，会尽快跟进"/标记解决→"0 个未解决"+"1 个已解决的会话"折叠组）、版本历史（自动快照列表/预览对话框/恢复→DB 回滚+editCount 递增）、大纲侧栏（2 标题实时联动+跳转按钮）。零错误。
+- **R4 Z-Sheets**: 网格输入（A1=10）、公式引擎（A4==SUM(A1:A2)→17 ✓）、循环引用检测（自引用 =SUM(A1:A2)→#CIRC! 正确）、持久化（reload 后 A1/A3 保留）、列选择、自动保存状态栏。**深挖后确认应用无 bug**——前期"输入不提交"全是 QA 工具假象：① agent-browser `keyboard type` 走 insertText 类分发（无 keydown），网格聚焦时不触发 React onKeyDown（`press` 才是真键事件）；② 合成 MouseEvent 默认 clientX/Y=0 被应用坐标映射（posFromEvent）解读为错误单元格（Z60 事故）。零错误。
+- **R5 Z-Slides**: 新建 deck、标题双击→TEXTAREA 编辑（Enter 提交/Escape 取消——读源码确认语义）、新增幻灯片（布局选择器"标题和正文"→slides=2 layout=titleBody）、演示模式（2/2→PageUp→1/2→Escape 退出）。零错误。
+- **R6 Z-Forms**: 表单创建、问题编辑（6 种题型下拉/必填开关）、选项 blur 提交（"非常满意"/"需要改进"）、预览模式（受访者视角/提交→"已记录你的回复"感谢页+动态通知）、回复页签（汇总统计 1 回复/1 问题/作答率）、真实答案入库（{"ead44671…":"非常满意"}）。零错误。
+- **R7 设置/文件夹/标签/动态 + 修复 1 个真实 bug**: 文件夹创建（内联输入"工作资料"）+文档移入（菜单"移至"子菜单→DB folderId SET）+文件夹筛选（1 个文档）；标签创建（"重要"）；近期动态（15 条/按应用分组 文档6·表格2·幻灯片2·表单5/相对时间线）；设置 5 页签。🔴 **修复存储数字不一致**: 侧栏用 /api/storage（15GB）而设置页用 /api/export 文本长度（10MB "demo quota"）——同一用户两处不同数字。统一：设置页 DataSection 改 fetch /api/storage（单一事实源）、服务端与本地 shim 的 counts 补 folders/tags 字段、删本地 10MB 常量、formatBytes 补 GB 换算（修"15360.0 MB"显示）、i18n "10 MB quota"→"{size} quota"。修后两处完全一致（922 B · 共 15.00 GB）。
+- **R8 深色模式/语言/无障碍**: 深色切换（html.dark+color-scheme:dark+bg-card 正确适配）、VLM 审查（主题协调；模板卡白底判定为"预览真实白页"的 Google 同款设计不修）、语言切换 zh↔en（用户数据保持原文、**html lang 正确同步 zh-CN**）、无障碍统计（7 landmarks/45 aria-labels/0 无名按钮/0 无 alt 图片）。零错误。
+- **R9 拼写检查/AI/游客门控（"摆设功能"点名项验证）**: **拼写检查证实为真功能**——游客态双语门控文案正常；注册登录后实测：注入 4 处错字段落（sentense/obviuos/mispellings/detec）→检查发现 1 处问题→列出全部 4 个修正建议→点"修正"→**文档内容真实更新**（old gone/fixed true）。**AI 帮我写证实可用**——真实生成草稿"Z-Docs 的核心优势在于其无缝协作体验与实时编辑功能…"（POST /api/ai/write 200）。测试账号 spell-qa@zdocs.test 已清理（DB 回 0 用户）。
+- **R10 最终回归**: 游客库同步后清空（正确行为）、移动端 375px 复验（hScroll=false/page=345/ruler=345——前轮修复保持）、质量门（应用 src tsc 0 错误[skills/ 目录既有错误无关]、eslint 干净、:3000/:3003 健康、dev.log 无业务错误）。
+- 全程每轮重置控制台错误收集器（window error/unhandledrejection/console.error 三通道），**10 轮全部零控制台错误**。
+
+QA 方法论沉淀（下轮巡检必读，避免误报）:
+1. agent-browser `keyboard type` = insertText 分发（无 keydown 事件）——网格/自定义键处理组件必须用 `press`（真实键事件）。
+2. 合成 MouseEvent 必须带真实 clientX/clientY（默认 0,0 会被坐标映射 UI 误读）。
+3. React 受控输入改值须用原生 setter（Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set）+ input 事件；直接 .value= 会破坏 React 值 tracker 导致状态脱钩假象。
+4. Radix 下拉/菜单需要完整 pointerdown→mousedown→pointerup→mouseup→click 事件序列。
+5. 链接对话框字段是 #link-text/#link-url（id 非 aria-label）。
+
+Stage Summary:
+- **10 轮审查全过**：Docs（首页/编辑器/评论/版本/大纲）、Sheets、Slides、Forms、设置/存储/文件夹/标签/动态、深色/语言/无障碍、拼写检查/AI/游客门控、最终回归——全部真实可用，零控制台错误。
+- **修复 1 个真实 bug**: 存储统计双源不一致（侧栏 15GB vs 设置 10MB）→ 统一 /api/storage 单一事实源 + GB 格式化 + i18n 词条。
+- **谣言澄清**: 拼写检查与 AI 写作均为真实可用功能（登录态实测检测+修正+生成全链路）；Sheets"输入失灵"为 QA 工具假象（insertText 无 keydown）。
+- 上一轮（Task 20）的 4 项修复（CSS 顺序/padX/ruler 裁剪/revokeObjectURL）在 R10 移动端复验中确认全部保持生效。
+- 测试数据状态: DB 0 用户（两测试账号已清），游客库因同步已清空——全新起点。
+- 下一阶段候选: 拼写检查 Ctrl+Z 支持、批量操作扩展（批量移标签/批量重命名）、Z-Slides PPTX 导出、长文档导出进度条、游客本地数据管理 UI、（远期）Ellipsus 写作洞察完善。

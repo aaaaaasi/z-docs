@@ -1283,6 +1283,8 @@ function storageUsage(db: GuestDb): GuestRouteResult {
     forms: db.forms.length,
     responses: db.formResponses.length,
     comments: db.comments.length,
+    folders: db.folders.length,
+    tags: db.tags.length,
   }
   return json(200, { usedBytes, quotaBytes: STORAGE_QUOTA_BYTES, breakdown, counts })
 }
