@@ -838,3 +838,21 @@ Stage Summary:
 - token 处理：仅命令行临时使用未持久化到 .git/config（remote 为干净 URL）；未写入任何提交文件。
 - 15 分钟巡检 cron job 362494 持续运行中，下一轮巡检将基于本次推送后的状态继续。
 - 注意：后续巡检如产生新代码改动，提交时沿用 git 身份 aaaaaasi，推送需用户 token（本轮未持久化）。
+
+---
+Task ID: 23
+Agent: main (Z.ai Code)
+Task: 用户指令「写 README.md 等开源仓库该做的工作 + 项目预览网址 https://z-docs.space-z.ai/ + 全部执行完后提交、提交后不再改文件」
+
+Work Log:
+- 开源文档套件全套编写：README.md（中文主文档）、README.en.md（英文版）、CHANGELOG.md（v1.0.0 完整功能史）、CONTRIBUTING.md（环境/质量门/规范/无 .gitignore 设计说明）、SECURITY.md、CODE_OF_CONDUCT.md、.github/ISSUE_TEMPLATE/（bug_report + feature_request）。
+- **README 截图制作**：agent-browser 游客模式（不污染数据库，内容存 localStorage）全程真实操作生成演示数据——文档（H1+正文，execCommand formatBlock）、首页（3 文档卡片：产品发布计划/会议记录/项目提案模板）、Z-Sheets（表头+数据+SUM 公式实测 305/475/655 计算正确）、Z-Slides（deck 重命名+标题/副标题双击 textarea 编辑）、Z-Forms（调研表单：单选 4 选项+简答必填）、深色首页、375px 移动端首页——7 张截图存 docs/screenshots/。
+- QA 方法论复用：表格批量填充用 dblclick（带真实 clientX/Y 坐标防 Z60 类坐标误判）→ 原生 setter + input 事件 → Enter keydown；Slides 标题占位符需**双击**进入 textarea。
+- 全部 7 张截图过 VLM 视觉审查（正常渲染、无空白/错位/UI 故障）；README 引用路径与内链文件校验全通过；预览网址 https://z-docs.space-z.ai/ 实测 200。
+- README 内容要点：徽章、双语切换、在线体验链接、7 截图矩阵（移动端折叠）、四大应用功能详表、平台能力（Yjs 协作/游客模式/双语/深色/无障碍）、技术栈表（自研 contentEditable 编辑内核——非 TipTap，与实际实现一致）、快速开始（bun install → db:push → collab-service :3003 → dev）、项目结构树。
+
+Stage Summary:
+- 开源仓库标配齐备：README（中/英）+ CHANGELOG + CONTRIBUTING + SECURITY + CODE_OF_CONDUCT + Issue 模板 + 7 张真实操作截图。仓库 GitHub 社区文件完整度检查全绿。
+- 演示数据均在游客 localStorage，数据库仍 0 用户，仓库 db/custom.db 无测试污染。
+- 本轮提交（docs: open-source docs suite + screenshots）完成后**不再修改任何文件**（用户明确指令）。后续巡检如需改动，本地新提交将领先远端，待用户提供 token 再推送。
+- 15 分钟巡检 cron job 368482 运行中。
