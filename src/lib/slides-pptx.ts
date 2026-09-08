@@ -80,8 +80,13 @@ interface RenderTools {
   accent: string
 }
 
-/** Build and download a .pptx for the given deck. Throws on failure. */
-export async function exportDeckToPptx(title: string, data: DeckData): Promise<string> {
+/** Build and download a .pptx for the given deck. Throws on failure.
+ *  `onProgress` receives 0–100 while slides are assembled (export card). */
+export async function exportDeckToPptx(
+  title: string,
+  data: DeckData,
+  onProgress?: (percent: number) => void
+): Promise<string> {
   const { default: PptxGenJS } = await import("pptxgenjs")
   const pptx = new PptxGenJS()
   pptx.layout = "LAYOUT_16x9"
@@ -141,13 +146,18 @@ export async function exportDeckToPptx(title: string, data: DeckData): Promise<s
     })
   }
 
-  for (const s of data.slides) {
+  const slides = data.slides
+  for (let si = 0; si < slides.length; si++) {
+    const s = slides[si]
+    onProgress?.(Math.round(((si + 1) / Math.max(1, slides.length)) * 90))
     const slide = pptx.addSlide()
     if (s.notes && s.notes.trim()) slide.addNotes(s.notes.trim())
     renderSlide(s, slide, { addText, addBullets, addAccentBar, accent })
   }
 
+  onProgress?.(95)
   const blob = (await pptx.write({ outputType: "blob" })) as Blob
+  onProgress?.(100)
 
   const safeName =
     (title.trim() || "presentation").replace(/[\\/:*?"<>|]/g, "_").slice(0, 100) || "presentation"

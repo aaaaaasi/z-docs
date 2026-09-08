@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n"
+import { trackedDownload } from "@/store/export-progress-store"
 import { LangToggle } from "@/components/docs/lang-toggle"
 import {
   ArrowLeft,
@@ -159,11 +160,24 @@ export function DeckEditor({
   const onExportPptx = React.useCallback(async () => {
     if (!data || data.slides.length === 0) return
     setExporting(true)
+    const tracker = trackedDownload({
+      kind: "pptx",
+      title,
+      fileName: `${(title.trim() || "presentation").replace(/[\\/:*?"<>|]/g, "_").slice(0, 100)}.pptx`,
+    })
     try {
       const { exportDeckToPptx } = await import("@/lib/slides-pptx")
-      const name = await exportDeckToPptx(title, data)
+      const name = await exportDeckToPptx(title, data, (percent) => {
+        tracker.tick({
+          phase: "render",
+          percent,
+          note: t("Slide {i} of {n}", { i: Math.max(1, Math.round((percent / 90) * data.slides.length)), n: data.slides.length }),
+        })
+      })
+      tracker.finish(true)
       toast({ description: t("Downloaded {name}", { name }) })
     } catch {
+      tracker.finish(false)
       toast({ description: t("Export failed — try again"), variant: "destructive" })
     } finally {
       setExporting(false)

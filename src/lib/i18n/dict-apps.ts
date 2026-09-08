@@ -114,6 +114,22 @@ export const dictApps: Record<string, string> = {
   "Reset & reload": "重置并重新加载",
   "Failed to load storage stats": "无法加载存储统计",
 
+  // settings — guest local data management
+  "Local data (this device only)": "本地数据（仅此设备）",
+  "You are in guest mode — everything lives in this browser’s local storage. Sign in to sync it to the cloud.":
+    "你正处于访客模式——所有内容都保存在此浏览器的本地存储中。登录即可同步到云端。",
+  "Local database": "本地数据库",
+  "{size} stored locally": "已在本地存储 {size}",
+  "Comments": "评论",
+  "Export backup (JSON)": "导出备份（JSON）",
+  "Backup downloaded": "备份已下载",
+  "Local backup": "本地备份",
+  "Clear local data": "清空本地数据",
+  "Clear all local data?": "清空所有本地数据？",
+  "Every document, spreadsheet, deck, form and comment stored in this browser will be deleted. Export a backup first if you want to keep them.":
+    "此浏览器中保存的所有文档、表格、演示文稿、表单和评论都将被删除。如需保留，请先导出备份。",
+  "Clear & reload": "清空并重新加载",
+
   // settings — about
   "A Google-style workspace: Docs, Sheets, Slides & Forms": "Google 风格的工作区：文档、表格、幻灯片和表单",
   "Local demo — all data lives in your browser and local database.": "本地演示——所有数据都保存在你的浏览器和本地数据库中。",

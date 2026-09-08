@@ -51,4 +51,38 @@ export const dictMulti: Record<string, string> = {
   "This can’t be undone. The selected documents will be permanently removed.":
     "此操作无法撤销。所选文档将被永久移除。",
   "Cancel": "取消",
+
+  /* bulk rename dialog */
+  "Rename selected": "重命名所选",
+  "Rename {n} documents": "重命名 {n} 篇文档",
+  "Renamed {n} documents": "已重命名 {n} 篇文档",
+  "Rename": "重命名",
+  "Find & replace": "查找并替换",
+  "Add numbering": "添加编号",
+  "Find": "查找",
+  "Text to find in the names…": "要查找的文字…",
+  "Replace with": "替换为",
+  "Replacement text…": "替换文字…",
+  "Case-sensitive. Empty replacement deletes the text.": "区分大小写。替换为空即删除该文字。",
+  "Name pattern": "命名模式",
+  "e.g. Report {n}": "例如：报告 {n}",
+  "{n} = sequence number, {title} = current name. Leave empty to use “{title} {n}”.":
+    "{n} 表示序号，{title} 表示原名称。留空则使用“{title} {n}”。",
+  "Start number": "起始编号",
+  "Preview": "预览",
+  "No change": "无变化",
+
+  /* export progress panel */
+  "Exports": "导出任务",
+  "Preparing…": "正在准备…",
+  "Rendering…": "正在渲染…",
+  "Downloading…": "正在下载…",
+  "Downloaded": "已下载",
+  "Downloaded · {size}": "已下载 · {size}",
+  "Export failed": "导出失败",
+  "Dismiss": "关闭",
+  "Export progress: {file}": "导出进度：{file}",
+  "Large document — this may take a moment": "文档较大，可能需要一点时间",
+  "Page {i} of {n}": "第 {i} 页，共 {n} 页",
+  "Slide {i} of {n}": "第 {i} 张幻灯片，共 {n} 张",
 }

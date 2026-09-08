@@ -24,6 +24,7 @@ import { evaluateSheet } from "./formula"
 import { csvEscape } from "../forms/forms-utils"
 import { exportSafeName } from "@/lib/print-html"
 import { useToast } from "@/hooks/use-toast"
+import { trackedDownload } from "@/store/export-progress-store"
 import { Toolbar } from "./sheet-toolbar"
 import { useSheetStore } from "./sheet-store"
 import { SheetGrid } from "./grid"
@@ -263,6 +264,11 @@ export function SheetEditor() {
     a.remove()
     // async revoke — synchronous revoke can kill the transfer on slow browsers
     setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    trackedDownload({
+      kind: "csv",
+      title: st.title || "spreadsheet",
+      fileName: `${name}.csv`,
+    }).finish(true)
     toast({ title: t("CSV downloaded"), description: `${name}.csv` })
   }, [t, toast])
 

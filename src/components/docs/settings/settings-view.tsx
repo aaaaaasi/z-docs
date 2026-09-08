@@ -38,6 +38,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useDocsStore } from "@/store/docs-store"
+import { trackedDownload } from "@/store/export-progress-store"
+import { guestDbStats, readGuestSnapshot, clearGuestData } from "@/lib/local-mode"
 import { useLocalUser, saveLocalUser } from "@/lib/identity"
 import { initialsOf, PRESENCE_COLORS } from "@/lib/doc-utils"
 import { useI18n, type Lang } from "@/lib/i18n"
@@ -721,6 +723,127 @@ function DataSection() {
   )
 }
 
+/* ------------------------- guest (local-only) data -------------------------- */
+
+/** Row chips shown for the local guest database (order matters for display). */
+const GUEST_COUNT_KEYS: { key: string; label: string }[] = [
+  { key: "documents", label: "Docs" },
+  { key: "sheets", label: "Sheets" },
+  { key: "decks", label: "Slides" },
+  { key: "forms", label: "Forms" },
+  { key: "comments", label: "Comments" },
+  { key: "folders", label: "Folders" },
+]
+
+/**
+ * Local data management for guest mode: the workspace is running entirely on
+ * localStorage, so this card surfaces the real byte usage + row counts, a
+ * JSON backup download, and a confirmed wipe. Hidden for signed-in users
+ * (their data lives in the server DB, managed by the cloud section above).
+ */
+function GuestDataSection() {
+  const { t } = useI18n()
+  const { toast } = useToast()
+  const guestMode = useDocsStore((s) => s.guestMode)
+  const [stats, setStats] = React.useState<{ bytes: number; counts: Record<string, number> } | null>(null)
+
+  React.useEffect(() => {
+    if (!guestMode) return
+    setStats(guestDbStats())
+  }, [guestMode])
+
+  if (!guestMode) return null
+
+  const exportBackup = () => {
+    const snapshot = readGuestSnapshot()
+    const stamp = new Date()
+    const pad = (n: number) => String(n).padStart(2, "0")
+    const name = `z-draft-backup-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}.json`
+    const blob = new Blob([JSON.stringify({ app: "Z-Docs", kind: "guest-backup", exportedAt: new Date().toISOString(), snapshot }, null, 2)], {
+      type: "application/json;charset=utf-8",
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = name
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 30_000)
+    trackedDownload({ kind: "json", title: t("Local backup"), fileName: name, byteSize: blob.size }).finish(true)
+    toast({ title: t("Backup downloaded"), description: name })
+  }
+
+  const wipeAll = () => {
+    clearGuestData()
+    window.location.reload()
+  }
+
+  const counts = stats?.counts ?? {}
+
+  return (
+    <SectionCard
+      title={t("Local data (this device only)")}
+      description={t("You are in guest mode — everything lives in this browser’s local storage. Sign in to sync it to the cloud.")}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-[13px] font-medium">{t("Local database")}</p>
+        <p className="text-xs text-muted-foreground">
+          <span className="tnum font-medium text-foreground">
+            {stats ? t("{size} stored locally", { size: formatBytes(stats.bytes) }) : "…"}
+          </span>
+        </p>
+        <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+        <div className="flex flex-wrap gap-1.5">
+          {GUEST_COUNT_KEYS.map(({ key, label }) => (
+            <span
+              key={key}
+              className="tnum rounded-full border px-2.5 py-0.5 text-[12px] text-muted-foreground"
+            >
+              {t(label)} {counts[key] ?? 0}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <Button onClick={exportBackup} className="h-10">
+          <Download className="h-4 w-4" />
+          {t("Export backup (JSON)")}
+        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="outline"
+              className="h-10 text-destructive hover:bg-destructive/5 hover:text-destructive"
+            >
+              <RotateCcw className="h-4 w-4" />
+              {t("Clear local data")}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t("Clear all local data?")}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t("Every document, spreadsheet, deck, form and comment stored in this browser will be deleted. Export a backup first if you want to keep them.")}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={wipeAll}
+                className="bg-destructive text-white hover:bg-destructive/90"
+              >
+                {t("Clear & reload")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </SectionCard>
+  )
+}
+
 /* ---------------------------------- About ----------------------------------- */
 
 const TECH_STACK = [
@@ -840,6 +963,7 @@ export function SettingsView() {
               {tab === "appearance" ? <AppearanceSection /> : null}
               {tab === "workspace" ? <WorkspaceSection /> : null}
               {tab === "data" ? <DataSection /> : null}
+              {tab === "data" ? <GuestDataSection /> : null}
               {tab === "about" ? <AboutSection /> : null}
             </div>
           </div>

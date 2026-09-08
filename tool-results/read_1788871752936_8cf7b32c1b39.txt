@@ -1,0 +1,882 @@
+     1→"use client"
+     2→
+     3→import { create } from "zustand"
+     4→import type { DocumentDTO, DocumentMeta, DocFilter, FolderDTO, TagDTO } from "@/lib/docs-types"
+     5→import type { WorkspaceView, WorkspaceApp } from "@/lib/workspace-types"
+     6→import { getSnippet, countWords, htmlToText } from "@/lib/doc-utils"
+     7→import { getTemplate, localizedTemplate } from "@/lib/templates"
+     8→import { getCurrentLang, tForLang } from "@/lib/i18n"
+     9→import { saveLocalUser } from "@/lib/identity"
+    10→import { api } from "@/lib/api-client"
+    11→import {
+    12→  installGuestApi,
+    13→  uninstallGuestApi,
+    14→  readGuestSnapshot,
+    15→  clearGuestData,
+    16→  hasGuestData,
+    17→} from "@/lib/local-mode"
+    18→
+    19→/** localStorage flag: continue in guest (local-only) mode on next visit. */
+    20→const GUEST_FLAG = "zdocs-guest"
+    21→
+    22→export interface CreateDocOptions {
+    23→  title?: string
+    24→  content?: string
+    25→  templateId?: string
+    26→  folderId?: string | null
+    27→}
+    28→
+    29→/** Bulk operations supported by docs-store.batchOp (loops the document APIs). */
+    30→export type BatchOp = "star" | "unstar" | "trash" | "restore" | "deleteForever" | "move" | "tag"
+    31→
+    32→export type AppView = WorkspaceView
+    33→export type { WorkspaceApp }
+    34→
+    35→/** Form sub-mode when opening Z-Forms via store ("edit" = builder default) */
+    36→export type FormOpenMode = "edit" | "fill" | "responses"
+    37→
+    38→export interface AppTarget {
+    39→  app: WorkspaceApp
+    40→  id: string | null
+    41→  formMode: FormOpenMode | null
+    42→}
+    43→
+    44→/** Client-side copy of the session user (plain data — no server imports). */
+    45→export interface AuthUser {
+    46→  id: string
+    47→  email: string
+    48→  name: string
+    49→  color: string
+    50→}
+    51→
+    52→/** Real storage usage from /api/storage. */
+    53→export interface StorageUsage {
+    54→  usedBytes: number
+    55→  quotaBytes: number
+    56→  breakdown: Record<string, number>
+    57→  counts: Record<string, number>
+    58→}
+    59→
+    60→interface AuthResult {
+    61→  ok: boolean
+    62→  /** items uploaded from guest-local storage to the cloud account */
+    63→  imported: number
+    64→}
+    65→
+    66→interface DocsState {
+    67→  view: WorkspaceView
+    68→  currentDocId: string | null
+    69→  /** deep-link target for a workspace app (sheet / deck / form id + form mode) */
+    70→  appTarget: AppTarget | null
+    71→  documents: DocumentMeta[]
+    72→  folders: FolderDTO[]
+    73→  tags: TagDTO[]
+    74→  loading: boolean
+    75→  error: string | null
+    76→  searchQuery: string
+    77→  filter: DocFilter
+    78→  /** active folder id when filter === "folder" */
+    79→  activeFolderId: string | null
+    80→  /** active tag filter (independent of the folder/starred/trash dimension) */
+    81→  tagFilter: string | null
+    82→  layout: "grid" | "list"
+    83→  openAiOnEditor: boolean
+    84→
+    85→  /* multi-select + bulk actions (home grid) */
+    86→  /** ids of documents currently selected in the home grid */
+    87→  selection: string[]
+    88→  toggleSelect: (id: string) => void
+    89→  selectAll: (ids: string[]) => void
+    90→  clearSelection: () => void
+    91→  /**
+    92→   * Run one bulk operation over `ids` by looping the existing document APIs
+    93→   * (PATCH starred/trashed/folderId, PUT tags, DELETE for deleteForever) via
+    94→   * api(). Refreshes the list afterwards and returns per-item statistics;
+    95→   * failures (403/404/network) are counted instead of thrown.
+    96→   * "tag" ADDS the given tagIds to each document's existing tags (union).
+    97→   */
+    98→  batchOp: (
+    99→    ids: string[],
+   100→    op: BatchOp,
+   101→    folderId?: string | null,
+   102→    tagIds?: string[]
+   103→  ) => Promise<{ ok: number; failed: number }>
+   104→
+   105→  /* auth (real account system) + guest (local-only) mode */
+   106→  authUser: AuthUser | null
+   107→  authLoaded: boolean
+   108→  authError: string | null
+   109→  authBusy: boolean
+   110→  /** true while the workspace runs fully locally (guest mode) */
+   111→  guestMode: boolean
+   112→  /** login screen explicitly opened from inside guest mode */
+   113→  authScreen: boolean
+   114→  /** real storage usage from /api/storage (null until loaded) */
+   115→  storageUsage: StorageUsage | null
+   116→
+   117→  fetchMe: () => Promise<void>
+   118→  /** shared post-auth flow: exit guest mode, sync local data up, reload */
+   119→  finishAuth: (user: AuthUser) => Promise<AuthResult>
+   120→  login: (email: string, password: string) => Promise<AuthResult>
+   121→  signup: (email: string, name: string, password: string) => Promise<AuthResult>
+   122→  logout: () => Promise<void>
+   123→  /** enter local-only guest mode (installs the local API shim) */
+   124→  continueAsGuest: () => Promise<void>
+   125→  /** show the login screen from inside guest mode */
+   126→  showAuthScreen: () => void
+   127→  /** dismiss the login screen, back to the guest workspace */
+   128→  hideAuthScreen: () => void
+   129→  fetchStorage: () => Promise<void>
+   130→  initUnauthorizedListener: () => void
+   131→
+   132→  hydrateFromUrl: () => Promise<void>
+   133→  bindPopState: () => () => void
+   134→  setFilter: (f: DocFilter) => void
+   135→  setSearchQuery: (q: string) => void
+   136→  setLayout: (l: "grid" | "list") => void
+   137→  setOpenAiOnEditor: (v: boolean) => void
+   138→
+   139→  /** open a workspace app view (optionally deep-linking an entity id) */
+   140→  openApp: (app: WorkspaceApp, opts?: { id?: string | null; formMode?: FormOpenMode }) => void
+   141→  /** open Recent activity / Settings views */
+   142→  openActivity: () => void
+   143→  openSettings: () => void
+   144→  /** one-shot: read + clear the pending app deep-link target (apps call on mount) */
+   145→  consumeAppTarget: () => AppTarget | null
+   146→
+   147→  refresh: (opts?: { silent?: boolean }) => Promise<void>
+   148→  refreshFolders: () => Promise<void>
+   149→  createDoc: (opts?: CreateDocOptions) => Promise<string | null>
+   150→  openDoc: (id: string, opts?: { ai?: boolean }) => void
+   151→  goHome: () => void
+   152→
+   153→  /* tags */
+   154→  loadTags: () => Promise<void>
+   155→  setTagFilter: (id: string | null) => void
+   156→  createTag: (name: string, color?: string) => Promise<TagDTO | null>
+   157→  deleteTag: (id: string) => Promise<void>
+   158→  setDocTags: (docId: string, tagIds: string[]) => Promise<void>
+   159→
+   160→  renameDoc: (id: string, title: string) => Promise<void>
+   161→  toggleStar: (id: string) => Promise<void>
+   162→  setTrashed: (id: string, trashed: boolean) => Promise<void>
+   163→  deleteForever: (id: string) => Promise<void>
+   164→  duplicateDoc: (id: string) => Promise<void>
+   165→  patchDocMeta: (id: string, patch: Partial<DocumentMeta>) => void
+   166→
+   167→  /* folders */
+   168→  openFolder: (id: string) => void
+   169→  createFolder: (name: string) => Promise<FolderDTO | null>
+   170→  renameFolder: (id: string, name: string) => Promise<void>
+   171→  deleteFolder: (id: string) => Promise<void>
+   172→  moveToFolder: (docId: string, folderId: string | null) => Promise<void>
+   173→}
+   174→
+   175→function viewFromUrl(): { view: WorkspaceView; docId: string | null; target: AppTarget | null } {
+   176→  if (typeof window === "undefined") return { view: "home", docId: null, target: null }
+   177→  const p = new URLSearchParams(window.location.search)
+   178→  const doc = p.get("doc")
+   179→  if (doc) return { view: "editor", docId: doc, target: null }
+   180→  const app = p.get("app")
+   181→  if (app === "sheets" || app === "slides" || app === "forms") {
+   182→    const formModeRaw = p.get("mode")
+   183→    const formMode =
+   184→      app === "forms" && (formModeRaw === "fill" || formModeRaw === "responses" || formModeRaw === "edit")
+   185→        ? (formModeRaw as FormOpenMode)
+   186→        : null
+   187→    return {
+   188→      view: app,
+   189→      docId: null,
+   190→      target: { app, id: p.get("entity"), formMode },
+   191→    }
+   192→  }
+   193→  if (app === "activity") return { view: "activity", docId: null, target: null }
+   194→  if (app === "settings") return { view: "settings", docId: null, target: null }
+   195→  return { view: "home", docId: null, target: null }
+   196→}
+   197→
+   198→export const useDocsStore = create<DocsState>((set, get) => ({
+   199→  view: "home",
+   200→  currentDocId: null,
+   201→  appTarget: null,
+   202→  documents: [],
+   203→  folders: [],
+   204→  tags: [],
+   205→  loading: false,
+   206→  error: null,
+   207→  searchQuery: "",
+   208→  filter: "all",
+   209→  activeFolderId: null,
+   210→  tagFilter: null,
+   211→  layout: "grid",
+   212→  openAiOnEditor: false,
+   213→  selection: [],
+   214→  authUser: null,
+   215→  authLoaded: false,
+   216→  authError: null,
+   217→  authBusy: false,
+   218→  guestMode: false,
+   219→  authScreen: false,
+   220→  storageUsage: null,
+   221→
+   222→  fetchMe: async () => {
+   223→    try {
+   224→      const res = await fetch("/api/auth/me", { cache: "no-store" })
+   225→      if (res.ok) {
+   226→        const data = (await res.json()) as { user: AuthUser }
+   227→        set({ authUser: data.user, authLoaded: true, authError: null })
+   228→        // keep the presence identity in sync with the real account
+   229→        try {
+   230→          saveLocalUser({ id: data.user.id, name: data.user.name, color: data.user.color })
+   231→        } catch {
+   232→          /* identity is best-effort */
+   233→        }
+   234→      } else {
+   235→        set({ authUser: null, authLoaded: true })
+   236→      }
+   237→    } catch {
+   238→      set({ authUser: null, authLoaded: true })
+   239→    }
+   240→  },
+   241→
+   242→  /** Shared post-auth flow: exit guest mode, upload local-only content to
+   243→   *  the cloud account, then reload the (now server-backed) workspace. */
+   244→  finishAuth: async (user: AuthUser): Promise<AuthResult> => {
+   245→    const wasGuest = get().guestMode
+   246→    let snapshot: ReturnType<typeof readGuestSnapshot> | null = null
+   247→    if (wasGuest && hasGuestData()) snapshot = readGuestSnapshot()
+   248→    // leave local mode BEFORE any data requests so they hit the real server
+   249→    uninstallGuestApi()
+   250→    try {
+   251→      window.localStorage.removeItem(GUEST_FLAG)
+   252→    } catch {
+   253→      /* storage unavailable */
+   254→    }
+   255→    set({ authUser: user, guestMode: false, authScreen: false, authBusy: false, authError: null, authLoaded: true })
+   256→    try {
+   257→      saveLocalUser({ id: user.id, name: user.name, color: user.color })
+   258→    } catch {
+   259→      /* best-effort */
+   260→    }
+   261→    let imported = 0
+   262→    if (snapshot) {
+   263→      try {
+   264→        const res = await fetch("/api/import/local", {
+   265→          method: "POST",
+   266→          headers: { "Content-Type": "application/json" },
+   267→          body: JSON.stringify(snapshot),
+   268→        })
+   269→        if (res.ok) {
+   270→          const data = (await res.json()) as { imported?: Record<string, number> }
+   271→          imported = Object.values(data.imported ?? {}).reduce((a, b) => a + b, 0)
+   272→          clearGuestData()
+   273→        }
+   274→      } catch {
+   275→        /* keep local data — it syncs again on the next sign-in */
+   276→      }
+   277→    }
+   278→    await get().refresh({ silent: true })
+   279→    await get().refreshFolders()
+   280→    await get().loadTags()
+   281→    void get().fetchStorage()
+   282→    // local-only entity ids (local-…) no longer resolve in cloud mode —
+   283→    // land the freshly signed-in user on a clean home view
+   284→    if (typeof window !== "undefined") {
+   285→      window.history.replaceState({}, "", "/")
+   286→    }
+   287→    set({ view: "home", currentDocId: null, appTarget: null })
+   288→    return { ok: true, imported }
+   289→  },
+   290→
+   291→  login: async (email, password) => {
+   292→    set({ authBusy: true, authError: null })
+   293→    try {
+   294→      const res = await fetch("/api/auth/login", {
+   295→        method: "POST",
+   296→        headers: { "Content-Type": "application/json" },
+   297→        body: JSON.stringify({ email, password }),
+   298→      })
+   299→      const data = (await res.json().catch(() => ({}))) as { user?: AuthUser; error?: string }
+   300→      if (!res.ok || !data.user) {
+   301→        set({ authBusy: false, authError: data.error ?? "登录失败" })
+   302→        return { ok: false, imported: 0 }
+   303→      }
+   304→      return await get().finishAuth(data.user)
+   305→    } catch {
+   306→      set({ authBusy: false, authError: "网络错误，请重试" })
+   307→      return { ok: false, imported: 0 }
+   308→    }
+   309→  },
+   310→
+   311→  signup: async (email, name, password) => {
+   312→    set({ authBusy: true, authError: null })
+   313→    try {
+   314→      const res = await fetch("/api/auth/signup", {
+   315→        method: "POST",
+   316→        headers: { "Content-Type": "application/json" },
+   317→        body: JSON.stringify({ email, name, password }),
+   318→      })
+   319→      const data = (await res.json().catch(() => ({}))) as { user?: AuthUser; error?: string }
+   320→      if (!res.ok || !data.user) {
+   321→        set({ authBusy: false, authError: data.error ?? "注册失败" })
+   322→        return { ok: false, imported: 0 }
+   323→      }
+   324→      return await get().finishAuth(data.user)
+   325→    } catch {
+   326→      set({ authBusy: false, authError: "网络错误，请重试" })
+   327→      return { ok: false, imported: 0 }
+   328→    }
+   329→  },
+   330→
+   331→  logout: async () => {
+   332→    try {
+   333→      await fetch("/api/auth/logout", { method: "POST" })
+   334→    } catch {
+   335→      /* still reset locally */
+   336→    }
+   337→    uninstallGuestApi()
+   338→    try {
+   339→      window.localStorage.removeItem(GUEST_FLAG)
+   340→    } catch {
+   341→      /* ignore */
+   342→    }
+   343→    set({
+   344→      authUser: null,
+   345→      guestMode: false,
+   346→      authScreen: false,
+   347→      storageUsage: null,
+   348→      documents: [],
+   349→      folders: [],
+   350→      tags: [],
+   351→      view: "home",
+   352→      currentDocId: null,
+   353→    })
+   354→  },
+   355→
+   356→  /* listen for 401s from any api() call → force the login screen */
+   357→  initUnauthorizedListener: () => {
+   358→    if (typeof window === "undefined") return
+   359→    window.addEventListener("zdocs-unauthorized", () => {
+   360→      const state = get()
+   361→      if (state.authUser) {
+   362→        try {
+   363→          window.localStorage.removeItem(GUEST_FLAG)
+   364→        } catch {
+   365→          /* ignore */
+   366→        }
+   367→        uninstallGuestApi()
+   368→        set({
+   369→          authUser: null,
+   370→          guestMode: false,
+   371→          authScreen: false,
+   372→          storageUsage: null,
+   373→          documents: [],
+   374→          folders: [],
+   375→          tags: [],
+   376→          view: "home",
+   377→          currentDocId: null,
+   378→        })
+   379→      }
+   380→    })
+   381→  },
+   382→
+   383→  continueAsGuest: async () => {
+   384→    try {
+   385→      window.localStorage.setItem(GUEST_FLAG, "1")
+   386→    } catch {
+   387→      /* storage unavailable — session-only guest mode */
+   388→    }
+   389→    installGuestApi()
+   390→    set({ guestMode: true, authLoaded: true, authScreen: false, authError: null })
+   391→    await get().refresh({ silent: true })
+   392→    await get().refreshFolders()
+   393→    await get().loadTags()
+   394→    void get().fetchStorage()
+   395→  },
+   396→
+   397→  showAuthScreen: () => set({ authScreen: true }),
+   398→
+   399→  hideAuthScreen: () => set({ authScreen: false }),
+   400→
+   401→  fetchStorage: async () => {
+   402→    try {
+   403→      const res = await fetch("/api/storage", { cache: "no-store" })
+   404→      if (!res.ok) return
+   405→      const data = (await res.json()) as StorageUsage
+   406→      set({ storageUsage: data })
+   407→    } catch {
+   408→      /* storage stays stale on failure */
+   409→    }
+   410→  },
+   411→
+   412→  hydrateFromUrl: async () => {
+   413→    await get().fetchMe()
+   414→    const { view, docId, target } = viewFromUrl()
+   415→    set({ view, currentDocId: docId, appTarget: target })
+   416→    if (get().authUser) {
+   417→      // a real session exists — make sure no guest shim lingers and the
+   418→      // guest flag doesn't auto-resume local mode after this session ends
+   419→      uninstallGuestApi()
+   420→      try {
+   421→        window.localStorage.removeItem(GUEST_FLAG)
+   422→      } catch {
+   423→        /* ignore */
+   424→      }
+   425→      set({ guestMode: false, authScreen: false })
+   426→    } else {
+   427→      // no session: a returning guest resumes local mode automatically
+   428→      let guestFlag = false
+   429→      try {
+   430→        guestFlag = window.localStorage.getItem(GUEST_FLAG) === "1"
+   431→      } catch {
+   432→        /* ignore */
+   433→      }
+   434→      if (guestFlag) {
+   435→        await get().continueAsGuest()
+   436→        return
+   437→      }
+   438→      set({ authLoaded: true })
+   439→      return // login screen
+   440→    }
+   441→    await get().refresh({ silent: true })
+   442→    await get().refreshFolders()
+   443→    await get().loadTags()
+   444→    void get().fetchStorage()
+   445→  },
+   446→
+   447→  bindPopState: () => {
+   448→    const onPop = () => {
+   449→      const { view, docId, target } = viewFromUrl()
+   450→      set({ view, currentDocId: docId, appTarget: target })
+   451→    }
+   452→    window.addEventListener("popstate", onPop)
+   453→    return () => window.removeEventListener("popstate", onPop)
+   454→  },
+   455→
+   456→  setFilter: (f) => {
+   457→    // leaving a view invalidates the current selection (selected docs may not
+   458→    // be visible in the next filter — Google Drive clears selection too)
+   459→    set({ filter: f, selection: [] })
+   460→    void get().refresh({ silent: true })
+   461→  },
+   462→  setSearchQuery: (q) => set({ searchQuery: q }),
+   463→  setLayout: (l) => set({ layout: l }),
+   464→  setOpenAiOnEditor: (v) => set({ openAiOnEditor: v }),
+   465→
+   466→  openApp: (app, opts) => {
+   467→    // "docs" app means the Z-Docs home (document list)
+   468→    if (app === "docs") {
+   469→      get().goHome()
+   470→      return
+   471→    }
+   472→    const target: AppTarget = { app, id: opts?.id ?? null, formMode: opts?.formMode ?? null }
+   473→    if (typeof window !== "undefined") {
+   474→      const params = new URLSearchParams({ app })
+   475→      if (target.id) params.set("entity", target.id)
+   476→      if (app === "forms" && target.formMode) params.set("mode", target.formMode)
+   477→      window.history.pushState({}, "", `/?${params.toString()}`)
+   478→    }
+   479→    set({ view: app, currentDocId: null, appTarget: target })
+   480→  },
+   481→
+   482→  openActivity: () => {
+   483→    if (typeof window !== "undefined") window.history.pushState({}, "", "/?app=activity")
+   484→    set({ view: "activity", currentDocId: null, appTarget: null })
+   485→  },
+   486→
+   487→  openSettings: () => {
+   488→    if (typeof window !== "undefined") window.history.pushState({}, "", "/?app=settings")
+   489→    set({ view: "settings", currentDocId: null, appTarget: null })
+   490→  },
+   491→
+   492→  consumeAppTarget: () => {
+   493→    const t = get().appTarget
+   494→    set({ appTarget: null })
+   495→    return t
+   496→  },
+   497→
+   498→  refresh: async (opts) => {
+   499→    if (!opts?.silent) set({ loading: true })
+   500→    set({ error: null })
+   501→    try {
+   502→      const { filter, searchQuery, activeFolderId } = get()
+   503→      const params = new URLSearchParams({ filter })
+   504→      // folder scoping only applies to the folder view (not search, which covers everything)
+   505→      if (filter === "folder" && activeFolderId && !searchQuery.trim()) {
+   506→        params.set("folder", activeFolderId)
+   507→      }
+   508→      if (searchQuery.trim()) params.set("q", searchQuery.trim())
+   509→      const res = await fetch(`/api/documents?${params.toString()}`)
+   510→      if (!res.ok) throw new Error(`Failed to load documents (${res.status})`)
+   511→      const data = (await res.json()) as { documents: DocumentMeta[] }
+   512→      set({ documents: data.documents ?? [] })
+   513→    } catch (e) {
+   514→      set({ error: e instanceof Error ? e.message : "Something went wrong" })
+   515→    } finally {
+   516→      set({ loading: false })
+   517→    }
+   518→  },
+   519→
+   520→  refreshFolders: async () => {
+   521→    try {
+   522→      const res = await fetch("/api/folders")
+   523→      if (!res.ok) return
+   524→      const data = (await res.json()) as { folders: FolderDTO[] }
+   525→      set({ folders: data.folders ?? [] })
+   526→    } catch {
+   527→      // non-fatal
+   528→    }
+   529→  },
+   530→
+   531→  createDoc: async (opts) => {
+   532→    try {
+   533→      const template = opts?.templateId ? getTemplate(opts.templateId) : undefined
+   534→      // template title/content are localized per the current UI language
+   535→      const lang = getCurrentLang()
+   536→      const tpl = template ? localizedTemplate(template, lang) : undefined
+   537→      let content = opts?.content ?? tpl?.content ?? ""
+   538→      // workspace default font (Settings → Workspace defaults) applies to fresh blank docs
+   539→      if (!opts?.content && !tpl?.content) {
+   540→        try {
+   541→          if (typeof window !== "undefined" && window.localStorage.getItem("zdocs-default-font") === "serif") {
+   542→            content = '<p style="font-family: Georgia, serif"><br></p>'
+   543→          }
+   544→        } catch {
+   545→          // storage unavailable — keep plain default
+   546→        }
+   547→      }
+   548→      const body = {
+   549→        title: opts?.title ?? tpl?.title ?? tForLang(lang, "Untitled document"),
+   550→        content,
+   551→      }
+   552→      const res = await fetch("/api/documents", {
+   553→        method: "POST",
+   554→        headers: { "Content-Type": "application/json" },
+   555→        body: JSON.stringify(body),
+   556→      })
+   557→      if (!res.ok) throw new Error("Failed to create document")
+   558→      const data = (await res.json()) as { document: DocumentDTO }
+   559→      const id = data.document.id
+   560→      // optionally file the new doc into a folder
+   561→      const folderId = opts?.folderId ?? null
+   562→      if (folderId) {
+   563→        await fetch(`/api/documents/${id}`, {
+   564→          method: "PATCH",
+   565→          headers: { "Content-Type": "application/json" },
+   566→          body: JSON.stringify({ folderId }),
+   567→        }).catch(() => {})
+   568→      }
+   569→      await get().refresh({ silent: true })
+   570→      return id
+   571→    } catch (e) {
+   572→      set({ error: e instanceof Error ? e.message : "Create failed" })
+   573→      return null
+   574→    }
+   575→  },
+   576→
+   577→  openDoc: (id, opts) => {
+   578→    if (typeof window !== "undefined") {
+   579→      window.history.pushState({}, "", `/?doc=${encodeURIComponent(id)}`)
+   580→    }
+   581→    set({ view: "editor", currentDocId: id, openAiOnEditor: !!opts?.ai })
+   582→  },
+   583→
+   584→  goHome: () => {
+   585→    if (typeof window !== "undefined") {
+   586→      window.history.pushState({}, "", "/")
+   587→    }
+   588→    set({ view: "home", currentDocId: null, openAiOnEditor: false, appTarget: null })
+   589→    void get().refresh({ silent: true })
+   590→    void get().refreshFolders()
+   591→    void get().loadTags()
+   592→  },
+   593→
+   594→  renameDoc: async (id, title) => {
+   595→    const optimistic = get().documents.map((d) => (d.id === id ? { ...d, title } : d))
+   596→    set({ documents: optimistic })
+   597→    try {
+   598→      await fetch(`/api/documents/${id}`, {
+   599→        method: "PATCH",
+   600→        headers: { "Content-Type": "application/json" },
+   601→        body: JSON.stringify({ title }),
+   602→      })
+   603→    } catch {
+   604→      void get().refresh({ silent: true })
+   605→    }
+   606→  },
+   607→
+   608→  toggleStar: async (id) => {
+   609→    const doc = get().documents.find((d) => d.id === id)
+   610→    if (!doc) return
+   611→    const next = !doc.starred
+   612→    set({ documents: get().documents.map((d) => (d.id === id ? { ...d, starred: next } : d)) })
+   613→    try {
+   614→      await fetch(`/api/documents/${id}`, {
+   615→        method: "PATCH",
+   616→        headers: { "Content-Type": "application/json" },
+   617→        body: JSON.stringify({ starred: next }),
+   618→      })
+   619→    } catch {
+   620→      void get().refresh({ silent: true })
+   621→    }
+   622→  },
+   623→
+   624→  setTrashed: async (id, trashed) => {
+   625→    set({ documents: get().documents.filter((d) => d.id !== id) })
+   626→    try {
+   627→      await fetch(`/api/documents/${id}`, {
+   628→        method: "PATCH",
+   629→        headers: { "Content-Type": "application/json" },
+   630→        body: JSON.stringify({ trashed }),
+   631→      })
+   632→      void get().refresh({ silent: true })
+   633→    } catch {
+   634→      void get().refresh({ silent: true })
+   635→    }
+   636→  },
+   637→
+   638→  deleteForever: async (id) => {
+   639→    set({ documents: get().documents.filter((d) => d.id !== id) })
+   640→    try {
+   641→      await fetch(`/api/documents/${id}`, { method: "DELETE" })
+   642→    } catch {
+   643→      void get().refresh({ silent: true })
+   644→    }
+   645→  },
+   646→
+   647→  duplicateDoc: async (id) => {
+   648→    try {
+   649→      const res = await fetch(`/api/documents/${id}/duplicate`, { method: "POST" })
+   650→      if (!res.ok) throw new Error("Duplicate failed")
+   651→      await get().refresh({ silent: true })
+   652→    } catch {
+   653→      void get().refresh({ silent: true })
+   654→    }
+   655→  },
+   656→
+   657→  patchDocMeta: (id, patch) => {
+   658→    set({ documents: get().documents.map((d) => (d.id === id ? { ...d, ...patch } : d)) })
+   659→  },
+   660→
+   661→  /* ---------------- multi-select + batch ops ---------------- */
+   662→
+   663→  toggleSelect: (id) => {
+   664→    const cur = get().selection
+   665→    set({ selection: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] })
+   666→  },
+   667→
+   668→  selectAll: (ids) => {
+   669→    set({ selection: Array.from(new Set(ids)) })
+   670→  },
+   671→
+   672→  clearSelection: () => set({ selection: [] }),
+   673→
+   674→  batchOp: async (ids, op, folderId, tagIds) => {
+   675→    let ok = 0
+   676→    let failed = 0
+   677→    for (const id of ids) {
+   678→      try {
+   679→        let res: Response
+   680→        if (op === "tag" && tagIds && tagIds.length > 0) {
+   681→          // additive semantics: union each document's existing tags with the
+   682→          // selected ones (never removes tags the docs already carry)
+   683→          const doc = get().documents.find((d) => d.id === id)
+   684→          const existing = (doc?.tags ?? []).map((tg) => tg.id)
+   685→          const merged = Array.from(new Set([...existing, ...tagIds]))
+   686→          res = await api(`/api/documents/${encodeURIComponent(id)}/tags`, {
+   687→            method: "PUT",
+   688→            headers: { "Content-Type": "application/json" },
+   689→            body: JSON.stringify({ tagIds: merged }),
+   690→          })
+   691→        } else if (op === "deleteForever") {
+   692→          res = await api(`/api/documents/${encodeURIComponent(id)}`, { method: "DELETE" })
+   693→        } else {
+   694→          const body: Record<string, unknown> =
+   695→            op === "star"
+   696→              ? { starred: true }
+   697→              : op === "unstar"
+   698→                ? { starred: false }
+   699→                : op === "trash"
+   700→                  ? { trashed: true }
+   701→                  : op === "restore"
+   702→                    ? { trashed: false }
+   703→                    : { folderId: folderId ?? null }
+   704→          res = await api(`/api/documents/${encodeURIComponent(id)}`, {
+   705→            method: "PATCH",
+   706→            headers: { "Content-Type": "application/json" },
+   707→            body: JSON.stringify(body),
+   708→          })
+   709→        }
+   710→        if (res.ok) ok++
+   711→        else failed++
+   712→      } catch {
+   713→        failed++
+   714→      }
+   715→    }
+   716→    if (ok > 0) {
+   717→      await get().refresh({ silent: true })
+   718→      if (op === "move") await get().refreshFolders()
+   719→      if (op === "tag") await get().loadTags()
+   720→    }
+   721→    return { ok, failed }
+   722→  },
+   723→
+   724→  /* ---------------- tags ---------------- */
+   725→  loadTags: async () => {
+   726→    try {
+   727→      const res = await fetch("/api/tags")
+   728→      if (!res.ok) return
+   729→      const data = (await res.json()) as { tags: TagDTO[] }
+   730→      set({ tags: data.tags ?? [] })
+   731→    } catch {
+   732→      // non-fatal
+   733→    }
+   734→  },
+   735→
+   736→  setTagFilter: (id) => set({ tagFilter: id }),
+   737→
+   738→  createTag: async (name, color) => {
+   739→    try {
+   740→      const res = await fetch("/api/tags", {
+   741→        method: "POST",
+   742→        headers: { "Content-Type": "application/json" },
+   743→        body: JSON.stringify({ name, color }),
+   744→      })
+   745→      if (!res.ok) return null
+   746→      const data = (await res.json()) as { tag: TagDTO }
+   747→      await get().loadTags()
+   748→      return data.tag
+   749→    } catch {
+   750→      return null
+   751→    }
+   752→  },
+   753→
+   754→  deleteTag: async (id) => {
+   755→    const prevDocs = get().documents
+   756→    set({
+   757→      tags: get().tags.filter((t) => t.id !== id),
+   758→      tagFilter: get().tagFilter === id ? null : get().tagFilter,
+   759→      documents: prevDocs.map((d) => ({ ...d, tags: (d.tags ?? []).filter((t) => t.id !== id) })),
+   760→    })
+   761→    try {
+   762→      await fetch(`/api/tags/${encodeURIComponent(id)}`, { method: "DELETE" })
+   763→    } catch {
+   764→      // ignore
+   765→    }
+   766→    await get().loadTags()
+   767→    void get().refresh({ silent: true })
+   768→  },
+   769→
+   770→  setDocTags: async (docId, tagIds) => {
+   771→    const prev = get().documents
+   772→    const prevDoc = prev.find((d) => d.id === docId)
+   773→    if (!prevDoc) return
+   774→    const prevIds = (prevDoc.tags ?? []).map((t) => t.id)
+   775→    if (prevIds.length === tagIds.length && prevIds.every((id, i) => id === tagIds[i])) return
+   776→    const allTags = get().tags
+   777→    const optimisticTags = tagIds
+   778→      .map((id) => allTags.find((t) => t.id === id))
+   779→      .filter((t): t is TagDTO => !!t)
+   780→    set({ documents: prev.map((d) => (d.id === docId ? { ...d, tags: optimisticTags } : d)) })
+   781→    try {
+   782→      const res = await fetch(`/api/documents/${docId}/tags`, {
+   783→        method: "PUT",
+   784→        headers: { "Content-Type": "application/json" },
+   785→        body: JSON.stringify({ tagIds }),
+   786→      })
+   787→      if (!res.ok) throw new Error("set tags failed")
+   788→      const data = (await res.json()) as { tags: TagDTO[] }
+   789→      set({
+   790→        documents: get().documents.map((d) => (d.id === docId ? { ...d, tags: data.tags ?? [] } : d)),
+   791→      })
+   792→      await get().loadTags()
+   793→    } catch {
+   794→      // rollback the optimistic chip change
+   795→      set({ documents: prev.map((d) => (d.id === docId ? { ...d, tags: prevDoc.tags ?? [] } : d)) })
+   796→    }
+   797→  },
+   798→
+   799→  /* ---------------- folders ---------------- */
+   800→  openFolder: (id) => {
+   801→    set({ filter: "folder", activeFolderId: id, selection: [] })
+   802→    void get().refresh({ silent: true })
+   803→  },
+   804→
+   805→  createFolder: async (name) => {
+   806→    try {
+   807→      const res = await fetch("/api/folders", {
+   808→        method: "POST",
+   809→        headers: { "Content-Type": "application/json" },
+   810→        body: JSON.stringify({ name }),
+   811→      })
+   812→      if (!res.ok) return null
+   813→      const data = (await res.json()) as { folder: FolderDTO }
+   814→      await get().refreshFolders()
+   815→      return data.folder
+   816→    } catch {
+   817→      return null
+   818→    }
+   819→  },
+   820→
+   821→  renameFolder: async (id, name) => {
+   822→    const optimistic = get().folders.map((f) => (f.id === id ? { ...f, name } : f))
+   823→    set({ folders: optimistic })
+   824→    try {
+   825→      const res = await fetch("/api/folders", {
+   826→        method: "PATCH",
+   827→        headers: { "Content-Type": "application/json" },
+   828→        body: JSON.stringify({ id, name }),
+   829→      })
+   830→      if (!res.ok) throw new Error("rename failed")
+   831→      await get().refreshFolders()
+   832→    } catch {
+   833→      await get().refreshFolders()
+   834→    }
+   835→  },
+   836→
+   837→  deleteFolder: async (id) => {
+   838→    set({ folders: get().folders.filter((f) => f.id !== id) })
+   839→    try {
+   840→      await fetch(`/api/folders?id=${encodeURIComponent(id)}`, { method: "DELETE" })
+   841→    } catch {
+   842→      // ignore
+   843→    }
+   844→    // if we were viewing the deleted folder, fall back to all docs
+   845→    if (get().activeFolderId === id) {
+   846→      set({ filter: "all", activeFolderId: null })
+   847→    }
+   848→    await get().refresh({ silent: true })
+   849→    await get().refreshFolders()
+   850→  },
+   851→
+   852→  moveToFolder: async (docId, folderId) => {
+   853→    set({ documents: get().documents.map((d) => (d.id === docId ? { ...d, folderId } : d)) })
+   854→    try {
+   855→      const res = await fetch(`/api/documents/${docId}`, {
+   856→        method: "PATCH",
+   857→        headers: { "Content-Type": "application/json" },
+   858→        body: JSON.stringify({ folderId }),
+   859→      })
+   860→      if (!res.ok) throw new Error("move failed")
+   861→    } catch {
+   862→      void get().refresh({ silent: true })
+   863→    }
+   864→    await get().refreshFolders()
+   865→  },
+   866→}))
+   867→
+   868→export function toMeta(doc: DocumentDTO): DocumentMeta {
+   869→  return {
+   870→    id: doc.id,
+   871→    title: doc.title,
+   872→    starred: doc.starred,
+   873→    trashed: doc.trashed,
+   874→    folderId: doc.folderId ?? null,
+   875→    tags: doc.tags ?? [],
+   876→    snippet: getSnippet(doc.content),
+   877→    wordCount: countWords(htmlToText(doc.content)),
+   878→    createdAt: doc.createdAt,
+   879→    updatedAt: doc.updatedAt,
+   880→  }
+   881→}
+   882→

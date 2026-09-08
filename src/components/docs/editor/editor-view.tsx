@@ -10,6 +10,7 @@ import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@
 import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
 import { buildPrintDocument, exportSafeName } from "@/lib/print-html"
 import { api as apiFetch } from "@/lib/api-client"
+import { trackedDownload, readBlobWithProgress } from "@/store/export-progress-store"
 import { useI18n, tForLang, getCurrentLang } from "@/lib/i18n"
 import {
   selectionOffsets, selectedBlocks, findQuoteRange,
@@ -1749,7 +1750,16 @@ export function EditorView() {
     const el = pageRef.current
     const lang = getCurrentLang()
     const name = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
-    toast({ title: tForLang(lang, "Preparing PDF…"), description: tForLang(lang, "Rendering the document pages") })
+    const title = latestTitleRef.current || tForLang(lang, "Untitled document")
+    // large docs stream real progress; small ones just show the download card
+    const estWords = countWords(htmlToText(contentRef.current ?? ""))
+    const big = estWords >= 600
+    const tracker = trackedDownload({
+      kind: "pdf",
+      title,
+      fileName: `${name}.pdf`,
+      note: big ? tForLang(lang, "Large document — this may take a moment") : undefined,
+    })
 
     // 1) server-side vector PDF (Chromium print — real text layer)
     try {
@@ -1759,9 +1769,16 @@ export function EditorView() {
         body: JSON.stringify({ title: latestTitleRef.current, html: contentRef.current }),
       })
       if (res.ok) {
-        const blob = await res.blob()
+        tracker.tick({ phase: "download", note: tForLang(lang, "Downloading…") })
+        const blob = await readBlobWithProgress(res, (loaded, total) => {
+          tracker.tick({
+            phase: "download",
+            percent: total && total > 0 ? Math.min(99, (loaded / total) * 100) : null,
+          })
+        })
         if (blob.size > 0) {
           saveBlobFile(blob, `${name}.pdf`)
+          tracker.finish(true)
           toast({ title: tForLang(lang, "Download started"), description: `${name}.pdf` })
           return
         }
@@ -1771,7 +1788,10 @@ export function EditorView() {
     }
 
     // 2) client raster fallback (html2canvas)
-    if (!el) return
+    if (!el) {
+      tracker.finish(false)
+      return
+    }
     let wrap: HTMLElement | null = null
     let prevTransform = ""
     try {
@@ -1782,6 +1802,7 @@ export function EditorView() {
         wrap.style.transform = "none"
       }
       const [{ jsPDF }, h2c] = await Promise.all([import("jspdf"), import("html2canvas-pro")])
+      tracker.tick({ phase: "render", note: tForLang(lang, "Rendering the document pages") })
       // export the "accepted" view — suggestion marks flattened (Google parity).
       // The class stays on through BOTH the capture and the block measuring so
       // the pagination slices match the rendered canvas exactly (finally removes it).
@@ -1821,6 +1842,12 @@ export function EditorView() {
       const PW = pdf.internal.pageSize.getWidth()
       const PH = pdf.internal.pageSize.getHeight()
       for (let i = 0; i < pages.length; i++) {
+        // per-page progress — the card shows “第 2 页，共 5 页” while slicing
+        tracker.tick({
+          phase: "render",
+          percent: ((i + 1) / pages.length) * 100,
+          note: tForLang(lang, "Page {i} of {n}", { i: i + 1, n: pages.length }),
+        })
         const y0 = Math.max(0, pages[i].start) * 2
         const y1 = Math.max(y0 + 1, Math.min(pages[i].end * 2, canvas.height))
         const slice = document.createElement("canvas")
@@ -1836,9 +1863,11 @@ export function EditorView() {
       }
       const name2 = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
       pdf.save(`${name2}.pdf`)
+      tracker.finish(true)
       toast({ title: tForLang(lang, "Download started"), description: `${name2}.pdf` })
     } catch {
       // 3) final fallback — print dialog (browser "Save as PDF" is vector)
+      tracker.finish(false)
       toast({ title: tForLang(lang, "PDF export fell back to print"), description: tForLang(lang, "Choose “Save as PDF” as the destination") })
       printDoc()
     } finally {
@@ -1851,7 +1880,9 @@ export function EditorView() {
     async (format: "docx" | "doc" | "html" | "txt") => {
       const lang = getCurrentLang()
       const name = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
+      const title = latestTitleRef.current || tForLang(lang, "Untitled document")
       if (format === "docx") {
+        const tracker = trackedDownload({ kind: "docx", title, fileName: `${name}.docx` })
         // real Word package rendered server-side; legacy .doc HTML as fallback
         try {
           const res = await apiFetch("/api/export/docx", {
@@ -1860,9 +1891,16 @@ export function EditorView() {
             body: JSON.stringify({ title: latestTitleRef.current, html: contentRef.current }),
           })
           if (res.ok) {
-            const blob = await res.blob()
+            tracker.tick({ phase: "download", note: tForLang(lang, "Downloading…") })
+            const blob = await readBlobWithProgress(res, (loaded, total) => {
+              tracker.tick({
+                phase: "download",
+                percent: total && total > 0 ? Math.min(99, (loaded / total) * 100) : null,
+              })
+            })
             if (blob.size > 0) {
               saveBlobFile(blob, `${name}.docx`)
+              tracker.finish(true)
               toast({ title: tForLang(lang, "Download started"), description: `${name}.docx` })
               return
             }
@@ -1871,6 +1909,7 @@ export function EditorView() {
           /* server unavailable → legacy .doc below */
         }
         saveBlobFile(new Blob(["\ufeff" + buildExportHtml("word")], { type: "application/msword" }), `${name}.doc`)
+        tracker.finish(true)
         toast({ title: tForLang(lang, "Download started"), description: `${name}.doc` })
         return
       }
@@ -1882,7 +1921,9 @@ export function EditorView() {
       } else {
         blob = new Blob(["\ufeff" + buildExportHtml("word")], { type: "application/msword" })
       }
+      const tracker = trackedDownload({ kind: format, title, fileName: `${name}.${format}` })
       saveBlobFile(blob, `${name}.${format}`)
+      tracker.finish(true)
       toast({ title: tForLang(lang, "Download started"), description: `${name}.${format}` })
     },
     [buildExportHtml, toast]

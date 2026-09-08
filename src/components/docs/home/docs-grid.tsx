@@ -18,6 +18,7 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -30,7 +31,7 @@ import { docDragId } from "./doc-dnd"
 import { DEFAULT_TAG_COLOR, TagChip, TagColorPalette, TagDot, TagFilterChip, TagOverflowChip } from "./tag-ui"
 import { useI18n } from "@/lib/i18n"
 import {
-  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder, Tag, Plus, Check, Loader2, X, Home, CheckCheck
+  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder, Tag, Plus, Check, Loader2, X, Home, CheckCheck, ArrowRight
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -83,6 +84,7 @@ export function DocsGrid() {
   const [busy, setBusy] = React.useState<BatchOp | null>(null)
   const [confirmBatchDelete, setConfirmBatchDelete] = React.useState(false)
   const [bulkTagOpen, setBulkTagOpen] = React.useState(false)
+  const [bulkRenameOpen, setBulkRenameOpen] = React.useState(false)
 
   const sorted = React.useMemo(() => {
     const list = [...documents]
@@ -153,6 +155,8 @@ export function DocsGrid() {
         return t("{n} documents moved to “{name}”", { n, name: folderName ?? t("Home") })
       case "tag":
         return t("Tags applied to {n} documents", { n })
+      case "rename":
+        return t("Renamed {n} documents", { n })
     }
   }
 
@@ -173,6 +177,25 @@ export function DocsGrid() {
     const res = await batchOp(ids, op, folderId, tagIds)
     setBusy(null)
     if (res.ok > 0) toast({ title: batchSuccess(op, res.ok, folderName) })
+    if (res.failed > 0)
+      toast({ title: t("{n} items failed", { n: res.failed }), variant: "destructive" })
+    clearSelection()
+  }
+
+  /** Bulk rename — only the documents whose name actually changes are
+   *  PATCHed, so unchanged items keep their updatedAt timestamps. */
+  const applyBulkRename = async (pairs: { id: string; title: string }[]) => {
+    if (busy || pairs.length === 0) return
+    setBusy("rename")
+    const res = await batchOp(
+      pairs.map((p) => p.id),
+      "rename",
+      undefined,
+      undefined,
+      pairs.map((p) => p.title)
+    )
+    setBusy(null)
+    if (res.ok > 0) toast({ title: t("Renamed {n} documents", { n: res.ok }) })
     if (res.failed > 0)
       toast({ title: t("{n} items failed", { n: res.failed }), variant: "destructive" })
     clearSelection()
@@ -406,6 +429,20 @@ export function DocsGrid() {
         }}
       />
 
+      {/* Bulk rename: find & replace or numbered patterns, live preview */}
+      <BulkRenameDialog
+        open={bulkRenameOpen}
+        onOpenChange={setBulkRenameOpen}
+        docs={visible
+          .filter((d) => selection.includes(d.id))
+          .map((d) => ({ id: d.id, title: d.title }))}
+        busy={busy === "rename"}
+        onApply={(pairs) => {
+          setBulkRenameOpen(false)
+          void applyBulkRename(pairs)
+        }}
+      />
+
       {/* Floating bulk-action bar (portaled to body: the animate-view-in wrapper
           keeps a persistent transform, which would break viewport-fixed children) */}
       {selectionActive &&
@@ -418,6 +455,7 @@ export function DocsGrid() {
             busy={busy}
             onRun={runBatch}
             onOpenTags={() => setBulkTagOpen(true)}
+            onOpenRename={() => setBulkRenameOpen(true)}
             onClose={clearSelection}
           />,
           document.body
@@ -1106,6 +1144,173 @@ function BulkTagDialog({
   )
 }
 
+/**
+ * Bulk rename dialog — Google-Drive-add-on parity: find & replace inside
+ * names, or numbered patterns with {n} (sequence) / {title} (current name)
+ * placeholders. A live preview lists every resulting name; only documents
+ * whose name actually changes are PATCHed on apply.
+ */
+function BulkRenameDialog({
+  open,
+  onOpenChange,
+  docs,
+  busy,
+  onApply,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  docs: { id: string; title: string }[]
+  busy: boolean
+  onApply: (pairs: { id: string; title: string }[]) => void
+}) {
+  const { t } = useI18n()
+  const [mode, setMode] = React.useState<"replace" | "number">("replace")
+  const [find, setFind] = React.useState("")
+  const [repl, setRepl] = React.useState("")
+  const [pattern, setPattern] = React.useState("")
+  const [start, setStart] = React.useState(1)
+
+  // reset the draft whenever the dialog (re)opens
+  React.useEffect(() => {
+    if (open) {
+      setMode("replace")
+      setFind("")
+      setRepl("")
+      setPattern("")
+      setStart(1)
+    }
+  }, [open])
+
+  const rows = React.useMemo(() => {
+    const n0 = Number.isFinite(start) ? Math.trunc(start) : 1
+    return docs.map((d, i) => {
+      let next = d.title
+      if (mode === "replace") {
+        if (find) next = d.title.split(find).join(repl)
+      } else {
+        const eff = pattern.trim() || "{title} {n}"
+        next = eff.replace(/\{title\}/g, d.title).replace(/\{n\}/g, String(n0 + i))
+      }
+      return { id: d.id, title: d.title, next: next.trim().slice(0, 150) }
+    })
+  }, [docs, mode, find, repl, pattern, start])
+
+  const changed = rows.filter((r) => r.next !== r.title && r.next !== "")
+  const preview = rows.slice(0, 6)
+  const more = rows.length - preview.length
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("Rename {n} documents", { n: docs.length })}</DialogTitle>
+        </DialogHeader>
+
+        <Tabs value={mode} onValueChange={(v) => setMode(v as "replace" | "number")}>
+          <TabsList className="w-full">
+            <TabsTrigger value="replace" className="flex-1">{t("Find & replace")}</TabsTrigger>
+            <TabsTrigger value="number" className="flex-1">{t("Add numbering")}</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="replace" className="space-y-3 pt-2">
+            <div className="space-y-2">
+              <label htmlFor="bulk-find" className="text-[13px] font-medium">{t("Find")}</label>
+              <Input
+                id="bulk-find"
+                value={find}
+                maxLength={100}
+                autoFocus
+                onChange={(e) => setFind(e.target.value)}
+                placeholder={t("Text to find in the names…")}
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="bulk-repl" className="text-[13px] font-medium">{t("Replace with")}</label>
+              <Input
+                id="bulk-repl"
+                value={repl}
+                maxLength={150}
+                onChange={(e) => setRepl(e.target.value)}
+                placeholder={t("Replacement text…")}
+              />
+              <p className="text-xs text-muted-foreground">{t("Case-sensitive. Empty replacement deletes the text.")}</p>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="number" className="space-y-3 pt-2">
+            <div className="space-y-2">
+              <label htmlFor="bulk-pattern" className="text-[13px] font-medium">{t("Name pattern")}</label>
+              <Input
+                id="bulk-pattern"
+                value={pattern}
+                maxLength={120}
+                onChange={(e) => setPattern(e.target.value)}
+                placeholder={t("e.g. Report {n}")}
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("{n} = sequence number, {title} = current name. Leave empty to use “{title} {n}”.")}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="bulk-start" className="text-[13px] font-medium">{t("Start number")}</label>
+              <Input
+                id="bulk-start"
+                type="number"
+                min={0}
+                step={1}
+                value={start}
+                onChange={(e) => setStart(Number(e.target.value))}
+                className="w-28"
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
+
+        {/* live preview — every resulting name before anything is applied */}
+        <div className="rounded-lg border">
+          <p className="border-b px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {t("Preview")}
+          </p>
+          <div className="max-h-44 overflow-y-auto px-3 py-2" role="list" aria-label={t("Preview")}>
+            {preview.map((r) => {
+              const same = r.next === r.title || r.next === ""
+              return (
+                <div key={r.id} className="flex items-center gap-2 py-1 text-[13px]" role="listitem">
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground" title={r.title}>
+                    {r.title}
+                  </span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+                  <span
+                    className={cn("min-w-0 flex-1 truncate", same ? "italic text-muted-foreground/70" : "font-medium")}
+                    title={r.next}
+                  >
+                    {same ? t("No change") : r.next}
+                  </span>
+                </div>
+              )
+            })}
+            {more > 0 && (
+              <p className="py-1 pl-1 text-xs text-muted-foreground">+{more}</p>
+            )}
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+            {t("Cancel")}
+          </Button>
+          <Button onClick={() => onApply(changed)} disabled={busy || changed.length === 0} className="gap-1.5">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+            {changed.length > 0
+              ? t("Rename {n} documents", { n: changed.length })
+              : t("Rename")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /** Tooltip wrapper for the icon buttons in the bulk-action bar. */
 function BarTooltip({ label, children }: { label: string; children: React.ReactElement }) {
   return (
@@ -1130,6 +1335,7 @@ function BatchActionBar({
   busy,
   onRun,
   onOpenTags,
+  onOpenRename,
   onClose,
 }: {
   count: number
@@ -1138,6 +1344,7 @@ function BatchActionBar({
   busy: BatchOp | null
   onRun: (op: BatchOp, folderId?: string | null, folderName?: string, tagIds?: string[]) => void
   onOpenTags: () => void
+  onOpenRename: () => void
   onClose: () => void
 }) {
   const { t } = useI18n()
@@ -1197,6 +1404,23 @@ function BatchActionBar({
             </Button>
           </BarTooltip>
         )}
+
+        {/* Bulk rename: find & replace / numbering with live preview */}
+        <BarTooltip label={t("Rename selected")}>
+          <Button
+            variant="ghost" disabled={disabled}
+            aria-label={t("Rename selected")}
+            onClick={onOpenRename}
+            className="h-9 shrink-0 gap-1.5 rounded-full px-2.5"
+          >
+            {busy === "rename" ? (
+              <Loader2 className="h-4.5 w-4.5 animate-spin" />
+            ) : (
+              <Pencil className="h-4.5 w-4.5" />
+            )}
+            <span className="hidden text-[13px] font-medium sm:inline">{t("Rename")}</span>
+          </Button>
+        </BarTooltip>
 
         {/* Move to folder: folders + the home root */}
         <DropdownMenu>
