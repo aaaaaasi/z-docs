@@ -3,7 +3,6 @@
 import * as React from "react"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { useDocsStore } from "@/store/docs-store"
-import { I18nProvider } from "@/lib/i18n"
 import { LoginScreen } from "./login-screen"
 import { DocsLogo } from "./home/home-header"
 import { HomeView } from "./home/home-view"
@@ -39,8 +38,7 @@ export function DocsApp() {
   const showApp = !!authUser || (guestMode && !authScreen)
 
   return (
-    <I18nProvider>
-      <TooltipProvider delayDuration={250}>
+    <TooltipProvider delayDuration={250}>
         {/* applies persisted settings (accent color) at app level */}
         <SettingsEffects />
         {!authLoaded ? (
@@ -61,6 +59,5 @@ export function DocsApp() {
           </div>
         )}
       </TooltipProvider>
-    </I18nProvider>
   )
 }

@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/hooks/use-toast"
-import { Link2 } from "lucide-react"
+import { Link2, Loader2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
+import { remoteImageToDataUrl, isRemoteImageSrc } from "@/lib/image-freeze"
 
 /* ---------------- Link dialog ---------------- */
 
@@ -105,6 +106,7 @@ export function ImageDialog({
   const [alt, setAlt] = React.useState("")
   const [fileSrc, setFileSrc] = React.useState("")
   const [fileName, setFileName] = React.useState("")
+  const [freezing, setFreezing] = React.useState(false)
   const { toast } = useToast()
   const { t } = useI18n()
 
@@ -114,6 +116,7 @@ export function ImageDialog({
       setAlt("")
       setFileSrc("")
       setFileName("")
+      setFreezing(false)
     }
   }, [open])
 
@@ -132,6 +135,38 @@ export function ImageDialog({
   }
 
   const ready = (url.trim() && /^https?:\/\//i.test(url.trim())) || fileSrc
+
+  /** Insert handler — remote URLs are first frozen to data URLs through our
+   *  image proxy so the document becomes self-contained (canvas-safe PDF
+   *  export, real DOCX embedding, no future dead-link rot). Falls back to
+   *  the raw URL with a warning toast when the host is unreachable. */
+  const onApply = async () => {
+    const rawUrl = url.trim()
+    const alt2 = alt.trim()
+    // URL path takes precedence (matches the previous insert precedence) —
+    // remote http(s) URLs are frozen to embedded data URLs first.
+    if (rawUrl && isRemoteImageSrc(rawUrl)) {
+      setFreezing(true)
+      const frozen = await remoteImageToDataUrl(rawUrl)
+      setFreezing(false)
+      onOpenChange(false)
+      setTimeout(() => {
+        if (frozen) {
+          onInsert(frozen, alt2)
+        } else {
+          onInsert(rawUrl, alt2)
+          toast({
+            title: t("Image inserted by link"),
+            description: t("The host didn’t allow an embedded copy — the image stays a live link and may not appear in exports."),
+          })
+        }
+      }, 220)
+      return
+    }
+    const src = rawUrl || fileSrc
+    onOpenChange(false)
+    setTimeout(() => onInsert(src, alt2), 220)
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -171,17 +206,19 @@ export function ImageDialog({
           <Input id="img-alt" value={alt} onChange={(e) => setAlt(e.target.value)} placeholder={t("Describe the image")} />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>{t("Cancel")}</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={freezing}>{t("Cancel")}</Button>
           <Button
-            disabled={!ready}
-            onClick={() => {
-              const src = url.trim() || fileSrc
-              const alt2 = alt.trim()
-              onOpenChange(false)
-              setTimeout(() => onInsert(src, alt2), 220)
-            }}
+            disabled={!ready || freezing}
+            onClick={() => void onApply()}
           >
-            {t("Insert")}
+            {freezing ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("Embedding image…")}
+              </>
+            ) : (
+              t("Insert")
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

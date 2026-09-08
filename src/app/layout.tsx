@@ -48,9 +48,11 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${newsreader.variable} antialiased bg-background text-foreground`}
       >
-        <Providers>{children}</Providers>
-        <Toaster />
-        <ExportProgressPanel />
+        <Providers>
+          {children}
+          <Toaster />
+          <ExportProgressPanel />
+        </Providers>
       </body>
     </html>
   );

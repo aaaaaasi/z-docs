@@ -10,6 +10,7 @@ import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@
 import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
 import { buildPrintDocument, exportSafeName } from "@/lib/print-html"
 import { api as apiFetch } from "@/lib/api-client"
+import { freezeRemoteImages } from "@/lib/image-freeze"
 import { trackedDownload, readBlobWithProgress } from "@/store/export-progress-store"
 import { useI18n, tForLang, getCurrentLang } from "@/lib/i18n"
 import {
@@ -46,6 +47,7 @@ import { FindReplacePanel } from "./find-replace"
 import { useVoiceTyping, VoicePill } from "./voice-typing"
 import { SpellCheckDialog } from "./spell-check-dialog"
 import { WritingStudioDialog } from "./writing-studio"
+import { InsightsSidebar } from "./insights-sidebar"
 import { createWritingTracker, type WritingStats, type WritingTracker } from "@/lib/writing-tracker"
 import { AiToolsDialog, type AiSource } from "./ai-tools-dialog"
 import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2, TableCellsMerge, TableCellsSplit } from "lucide-react"
@@ -196,6 +198,7 @@ export function EditorView() {
   const [activeTableEl, setActiveTableEl] = React.useState<HTMLTableElement | null>(null)
   const [menuTableInfo, setMenuTableInfo] = React.useState<TableInfo | null>(null)
   const [outlineOpen, setOutlineOpen] = React.useState(false)
+  const [insightsOpen, setInsightsOpen] = React.useState(false)
   const [outlineItems, setOutlineItems] = React.useState<OutlineItem[]>([])
   const [remoteContent, setRemoteContent] = React.useState<string | null>(null)
   const [dialog, setDialog] = React.useState<string | null>(null)
@@ -1794,12 +1797,20 @@ export function EditorView() {
     }
     let wrap: HTMLElement | null = null
     let prevTransform = ""
+    let unfreezeImages: (() => void) | null = null
     try {
       // capture at scale 1 — reset the zoom transform during the snapshot
       wrap = el.closest("[data-doc-zoom-wrap]") as HTMLElement | null
       if (wrap) {
         prevTransform = wrap.style.transform
         wrap.style.transform = "none"
+      }
+      // freeze remote images → data URLs (same-origin) so html2canvas never
+      // taints the canvas on hosts without CORS headers; srcs are restored
+      // afterwards — export must not rewrite the saved document.
+      if (el.querySelector("img")) {
+        tracker.tick({ phase: "prepare", note: tForLang(lang, "Embedding remote images…") })
+        unfreezeImages = await freezeRemoteImages(el)
       }
       const [{ jsPDF }, h2c] = await Promise.all([import("jspdf"), import("html2canvas-pro")])
       tracker.tick({ phase: "render", note: tForLang(lang, "Rendering the document pages") })
@@ -1872,6 +1883,7 @@ export function EditorView() {
       printDoc()
     } finally {
       if (wrap) wrap.style.transform = prevTransform
+      unfreezeImages?.()
       el.classList.remove("exporting", "export-wrap-all")
     }
   }, [printDoc, toast])
@@ -2094,6 +2106,15 @@ export function EditorView() {
     setOutlineOpen((prev) => open ?? !prev)
   }, [])
 
+  /** Live writing-insights rail (Ellipsus-style right sidebar). */
+  const toggleInsights = React.useCallback((open?: boolean) => {
+    setInsightsOpen((prev) => open ?? !prev)
+  }, [])
+
+  const openStudio = React.useCallback(() => {
+    setDialog("writing")
+  }, [])
+
   /** Scroll the canvas to a heading and flash it. */
   const jumpToOutline = React.useCallback(
     (item: OutlineItem) => {
@@ -2213,6 +2234,9 @@ export function EditorView() {
     /* document outline */
     outlineOpen,
     toggleOutline,
+    /* live writing insights rail */
+    insightsOpen,
+    toggleInsights,
     /* voice typing */
     voiceListening: voice.listening,
     toggleVoiceTyping,
@@ -2427,6 +2451,15 @@ export function EditorView() {
             onAcceptSuggestion={acceptSuggestion}
             onRejectSuggestion={rejectSuggestion}
             onFocusSuggestion={focusSuggestion}
+          />
+          {/* Ellipsus-style live writing insights rail */}
+          <InsightsSidebar
+            open={insightsOpen}
+            onClose={() => toggleInsights(false)}
+            html={contentRef.current ?? doc?.content ?? ""}
+            contentTick={contentTick}
+            onOpenStudio={openStudio}
+            highlightText={highlightText}
           />
         </div>
       ) : (

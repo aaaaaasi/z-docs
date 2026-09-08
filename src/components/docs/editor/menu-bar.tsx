@@ -86,6 +86,12 @@ export function MenuBar({ api }: { api: EditorApi }) {
           <ListTree className="h-4 w-4" /> {t("Show document outline")}
         </DropdownMenuCheckboxItem>
         <DropdownMenuCheckboxItem
+          checked={api.insightsOpen}
+          onCheckedChange={(v) => api.toggleInsights(!!v)}
+        >
+          <BarChart3 className="h-4 w-4" /> {t("Show writing insights")}
+        </DropdownMenuCheckboxItem>
+        <DropdownMenuCheckboxItem
           checked={dark}
           onCheckedChange={() => setTheme(dark ? "light" : "dark")}
         >

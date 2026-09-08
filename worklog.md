@@ -901,3 +901,25 @@ Stage Summary:
 - **批量打标签上线**：批量操作矩阵补齐——星标/移至/回收站/删除 + 标签。union 语义保证幂等安全（重复应用不重复关联）。
 - 游客模式实测全过（local-mode PUT /tags shim 兼容 union 语义）。
 - 待办更新：大文档导出进度 toast、拼写检查 Ctrl+Z、（远期）Ellipsus 写作洞察完善。其余主待办已完成。
+
+---
+Task ID: 26
+Agent: main (Z.ai Code)
+Task: 用户指令「全部代办事项全部完善 + 必须联网研究 + 随后提交到仓库」——修复巡检引入的整站 500 崩溃、Ellipsus 写作洞察完善（联网研究官方规格）、远程图片 data-URL 预转（联网研究 CORS 方案）、核对全部 Unreleased 待办并提交推送
+
+Work Log:
+- **【P0 崩溃修复】** 巡检 agent 提交 ac89a91 把 ExportProgressPanel 挂在根 layout（I18nProvider 之外）→ useI18n 抛错 → 整站 GET / 500。修复：I18nProvider 从 docs-app.tsx 提升至根 Providers（ThemeProvider 内全局挂载），docs-app 去除嵌套（避免双实例语言切换不同步），Toaster + ExportProgressPanel 移入 Providers 内。恢复 200。
+- **【联网研究 ①Ellipsus 官方规格】** web-search + page_reader 抓取 help.ellipsus.com 官方《Writing insights》文章：洞察位于编辑器**右侧栏**、**实时更新**（不中断写作流）、长文档短暂「Analyzing…」态、14 项指标清单（与我们的 15 项对齐）、点击定位句、对话高亮可开关。据此确定「完善」= 实时侧栏而非弹窗。
+- **【联网研究 ②CORS/Canvas】** MDN《How to use CORS-enabled images》（跨域图未授权画布即污染）+ Stack Overflow/html2canvas proxy 方案 → 定案：服务端中继代理（server fetch 无 CORS 限制）转同源字节 → 客户端 data-URL。
+- **【Ellipsus 实时洞察侧栏】** 新组件 insights-sidebar.tsx：右栏 292px（镜像 CommentsSidebar 折叠/移动端全宽覆盖模式）、~450ms 防抖实时重算（实测字词 155→177 句子 15→17）、>2400 字符显示「分析中…」徽章（先 paint 再算）、紧凑单列全部指标（总览 3 格/复杂性/词汇多样性/句长分布/节奏 sparkline 末 64 句/对话平衡/被动+首句定位/副词 chips/词频/段落密度点/三称 POV/回声+短语）、底部卡片一键打开写作工作室深潜。接线：EditorApi.insightsOpen/toggleInsights、View 菜单 checkbox、编辑器头部 BarChart3 图标按钮、dict-insights 5 词条。
+- **【远程图片冻结】** ①新 API /api/image-proxy（SSRF 防护：私有网段/非 80/443 端口/非 http(s) 协议/5MB/image-content-type 校验 + 12s 超时 + 24h 缓存头）——curl 实测正常 200（httpbin 8090B png、picsum 重定向跟随 8957B jpeg）、SSRF 127.0.0.1/192.168.1.1/localhost:3000/file:// 全拒、非图片 415。②lib/image-freeze.ts（remoteImageToDataUrl/freezeRemoteImages 返回 unfreeze 恢复器）。③ImageDialog 插入 URL 图先冻结（Embedding image… 加载态），失败降级原 URL + 警告 toast。④PDF html2canvas 兜底路径：截取前 freezeRemoteImages、finally 恢复原 src（绝不静默改写文档）。⑤**游客 fetch shim 拦截坑**：agent-browser 实测插入未冻结 → 排查出 local-mode shouldHandleLocally 把 /api/image-proxy 当本地路由 404 → 加入透传名单（AI 403 本地拦截为刻意设计，保留不动）。复测：插入 picsum 320×180 → src=data:image/jpeg len 14699 ✓。
+- **【QA 全链路（agent-browser 游客模式）】** 洞察侧栏开合/实时/分析态/工作室入口（Escape 可关）；PDF 导出（服务端路径 781ms 200 + 进度卡 100% + 已下载 + toast）；JSON 备份导出（已下载 · 15.5 KB + 进度卡）；设置-数据和存储标签（导出全部/JSON 备份/清空本地/资料重置全在）；VLM 双端审查：桌面（无重叠错位、Material 风格高度符合、质量很高）+ 375px 移动端（全宽覆盖层、无溢出错位遮挡）。
+- **质量门**：tsc src 零错误（examples/skills 为历史遗留与 src 无关）、eslint 0、dev.log 无业务错误。
+- **文档**：CHANGELOG 新增 1.1.0 版本块（洞察/图片嵌入/导出进度/批量/PPTX/设置 + 2 项修复），Unreleased 换为新的三项计划；README 中英双语功能表更新。
+
+Stage Summary:
+- **整站 500 已修复**（I18nProvider 全局挂载）；用户上报的运行时错误根因即此。
+- **Ellipsus 写作洞察完善完成**：官方规格联网研究 → 实时侧栏落地（防抖实时更新 + Analyzing 态 + 点击定位），深潜对话框保留，双端 VLM 审查通过。
+- **远程图片 data-URL 预转完成**：插入冻结 + 导出预转（恢复式）+ SSRF 加固代理 + 游客 shim 透传修复。
+- Unreleased 待办核对：PPTX 导出（Task 24）✓ 导出进度（ac89a91+本轮修复）✓ 批量标签/重命名（Task 25+ac89a91）✓ 游客数据管理（ac89a91 settings-view）✓ 远程图片（本轮）✓ —— **全部完成**。
+- 本轮提交推送后本地与远端同步；后续巡检继续用 worklog 交接（Task 27 起）。

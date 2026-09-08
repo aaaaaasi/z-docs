@@ -164,6 +164,11 @@ export const dictEditor: Record<string, string> = {
   "Image URL": "图片网址",
   "Image too large": "图片过大",
   "Please pick an image under 2.5 MB.": "请选择小于 2.5 MB 的图片。",
+  "Embedding image…": "正在嵌入图片…",
+  "Embedding remote images…": "正在嵌入远程图片…",
+  "Image inserted by link": "已以链接方式插入图片",
+  "The host didn’t allow an embedded copy — the image stays a live link and may not appear in exports.":
+    "图片源不允许嵌入副本——图片将保持为外部链接，可能不会出现在导出文件中。",
   "Choose a file (≤ 2.5 MB)": "选择文件（≤ 2.5 MB）",
   "preview": "预览",
   "Alt text (optional)": "替代文本（可选）",

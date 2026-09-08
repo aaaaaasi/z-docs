@@ -110,6 +110,9 @@ export interface EditorApi {
   /* document outline */
   outlineOpen: boolean
   toggleOutline: (open?: boolean) => void
+  /* live Ellipsus-style writing insights rail */
+  insightsOpen: boolean
+  toggleInsights: (open?: boolean) => void
   /* insert table */
   insertTable: (rows: number, cols: number) => void
   /* table structural operations (act on the caret's table) */

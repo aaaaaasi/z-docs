@@ -40,7 +40,8 @@ function shouldHandleLocally(pathname: string): boolean {
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/import/") ||
     pathname.startsWith("/api/export/pdf") ||
-    pathname.startsWith("/api/export/docx")
+    pathname.startsWith("/api/export/docx") ||
+    pathname.startsWith("/api/image-proxy")
   ) {
     return false
   }

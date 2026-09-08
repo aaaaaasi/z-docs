@@ -1,0 +1,975 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { useTheme } from "next-themes"
+     5→import type { LucideIcon } from "lucide-react"
+     6→import {
+     7→  ArrowLeft,
+     8→  Check,
+     9→  Database,
+    10→  Download,
+    11→  FileCog,
+    12→  FileSpreadsheet,
+    13→  FileText,
+    14→  Folder,
+    15→  FormInput,
+    16→  Info,
+    17→  Palette,
+    18→  Presentation,
+    19→  RotateCcw,
+    20→  Tag,
+    21→  User,
+    22→} from "lucide-react"
+    23→import {
+    24→  AlertDialog,
+    25→  AlertDialogAction,
+    26→  AlertDialogCancel,
+    27→  AlertDialogContent,
+    28→  AlertDialogDescription,
+    29→  AlertDialogFooter,
+    30→  AlertDialogHeader,
+    31→  AlertDialogTitle,
+    32→  AlertDialogTrigger,
+    33→} from "@/components/ui/alert-dialog"
+    34→import { Button } from "@/components/ui/button"
+    35→import { Input } from "@/components/ui/input"
+    36→import { Label } from "@/components/ui/label"
+    37→import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+    38→import { Skeleton } from "@/components/ui/skeleton"
+    39→import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+    40→import { useDocsStore } from "@/store/docs-store"
+    41→import { trackedDownload } from "@/store/export-progress-store"
+    42→import { guestDbStats, readGuestSnapshot, clearGuestData } from "@/lib/local-mode"
+    43→import { useLocalUser, saveLocalUser } from "@/lib/identity"
+    44→import { initialsOf, PRESENCE_COLORS } from "@/lib/doc-utils"
+    45→import { useI18n, type Lang } from "@/lib/i18n"
+    46→import { useToast } from "@/hooks/use-toast"
+    47→import { cn } from "@/lib/utils"
+    48→import {
+    49→  ACCENT_OPTIONS,
+    50→  ACCENT_STORAGE_KEY,
+    51→  DEFAULT_ACCENT_HEX,
+    52→  FONT_STORAGE_KEY,
+    53→  THEME_MODE_STORAGE_KEY,
+    54→  USER_STORAGE_KEY,
+    55→  ZOOM_STORAGE_KEY,
+    56→  applyAccent,
+    57→  readStoredAccent,
+    58→  saveAccent,
+    59→} from "./settings-lib"
+    60→
+    61→/* ------------------------------ theme mode hook ----------------------------- */
+    62→
+    63→type ThemeMode = "light" | "dark" | "system"
+    64→
+    65→function systemPreference(): "light" | "dark" {
+    66→  if (typeof window === "undefined" || !window.matchMedia) return "light"
+    67→  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
+    68→}
+    69→
+    70→/**
+    71→ * Light / Dark / System selection on top of next-themes' setTheme. The app's
+    72→ * ThemeProvider has system resolution disabled, so "System" is resolved here
+    73→ * via matchMedia and applied as an explicit light/dark theme — and followed
+    74→ * live if the OS preference changes. The chosen mode is mirrored to
+    75→ * localStorage and re-synced when the theme is toggled elsewhere (header).
+    76→ */
+    77→function useThemeMode(): { mode: ThemeMode; setMode: (mode: ThemeMode) => void } {
+    78→  const { theme, setTheme } = useTheme()
+    79→  const [mode, setModeState] = React.useState<ThemeMode>(() => {
+    80→    if (typeof window === "undefined") return "light"
+    81→    let own: string | null = null
+    82→    try {
+    83→      own = window.localStorage.getItem(THEME_MODE_STORAGE_KEY)
+    84→    } catch {
+    85→      // storage unavailable
+    86→    }
+    87→    if (own === "light" || own === "dark" || own === "system") {
+    88→      const applied = own === "system" ? systemPreference() : own
+    89→      if ((theme === "light" || theme === "dark") && theme !== applied) return theme
+    90→      return own
+    91→    }
+    92→    return theme === "dark" ? "dark" : "light"
+    93→  })
+    94→
+    95→  const setMode = React.useCallback(
+    96→    (next: ThemeMode) => {
+    97→      setModeState(next)
+    98→      try {
+    99→        window.localStorage.setItem(THEME_MODE_STORAGE_KEY, next)
+   100→      } catch {
+   101→        // storage unavailable — still apply for this session
+   102→      }
+   103→      setTheme(next === "system" ? systemPreference() : next)
+   104→    },
+   105→    [setTheme]
+   106→  )
+   107→
+   108→  // keep the card selection honest when the theme is toggled outside Settings
+   109→  React.useEffect(() => {
+   110→    if (theme !== "light" && theme !== "dark") return
+   111→    const applied = mode === "system" ? systemPreference() : mode
+   112→    if (theme !== applied) setModeState(theme)
+   113→  }, [theme, mode])
+   114→
+   115→  // follow OS preference changes while in System mode
+   116→  React.useEffect(() => {
+   117→    if (mode !== "system") return
+   118→    const mq = window.matchMedia("(prefers-color-scheme: dark)")
+   119→    const onChange = () => setTheme(mq.matches ? "dark" : "light")
+   120→    mq.addEventListener("change", onChange)
+   121→    return () => mq.removeEventListener("change", onChange)
+   122→  }, [mode, setTheme])
+   123→
+   124→  return { mode, setMode }
+   125→}
+   126→
+   127→/* ------------------------------ shared helpers ------------------------------ */
+   128→
+   129→type SettingsTab = "general" | "appearance" | "workspace" | "data" | "about"
+   130→
+   131→const TABS: { id: SettingsTab; label: string; icon: LucideIcon }[] = [
+   132→  { id: "general", label: "General", icon: User },
+   133→  { id: "appearance", label: "Appearance", icon: Palette },
+   134→  { id: "workspace", label: "Workspace defaults", icon: FileCog },
+   135→  { id: "data", label: "Data & storage", icon: Database },
+   136→  { id: "about", label: "About", icon: Info },
+   137→]
+   138→
+   139→function SectionCard({
+   140→  title,
+   141→  description,
+   142→  children,
+   143→}: {
+   144→  title: string
+   145→  description?: string
+   146→  children: React.ReactNode
+   147→}) {
+   148→  return (
+   149→    <section className="space-y-6 rounded-xl border bg-background p-6">
+   150→      <div>
+   151→        <h2 className="text-[15px] font-medium">{title}</h2>
+   152→        {description ? <p className="mt-1 text-[13px] text-muted-foreground">{description}</p> : null}
+   153→      </div>
+   154→      {children}
+   155→    </section>
+   156→  )
+   157→}
+   158→
+   159→function formatBytes(bytes: number): string {
+   160→  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
+   161→  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+   162→  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`
+   163→  return `${bytes} B`
+   164→}
+   165→
+   166→/* --------------------------------- General ---------------------------------- */
+   167→
+   168→function GeneralSection() {
+   169→  const { t } = useI18n()
+   170→  const user = useLocalUser()
+   171→  const { toast } = useToast()
+   172→  const [draftName, setDraftName] = React.useState<string | null>(null)
+   173→
+   174→  const name = draftName ?? user?.name ?? ""
+   175→
+   176→  // 400ms debounced save of the display name
+   177→  React.useEffect(() => {
+   178→    if (draftName === null || !user) return
+   179→    const timer = setTimeout(() => {
+   180→      const trimmed = draftName.trim()
+   181→      if (trimmed && trimmed !== user.name) {
+   182→        saveLocalUser({ ...user, name: trimmed })
+   183→        toast({ title: t("Name saved") })
+   184→      }
+   185→    }, 400)
+   186→    return () => clearTimeout(timer)
+   187→  }, [draftName, user, toast, t])
+   188→
+   189→  if (!user) {
+   190→    return (
+   191→      <SectionCard title={t("Profile")}>
+   192→        <div className="flex items-center gap-4">
+   193→          <Skeleton className="h-10 w-10 rounded-full" />
+   194→          <div className="flex-1 space-y-2">
+   195→            <Skeleton className="h-4 w-24" />
+   196→            <Skeleton className="h-10 w-full max-w-sm" />
+   197→          </div>
+   198→        </div>
+   199→      </SectionCard>
+   200→    )
+   201→  }
+   202→
+   203→  return (
+   204→    <SectionCard title={t("Profile")} description={t("How you appear across the Z workspace.")}>
+   205→      <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+   206→        <div
+   207→          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white ring-1 ring-black/5"
+   208→          style={{ backgroundColor: user.color }}
+   209→          aria-label={t("Avatar preview: {initials}", { initials: initialsOf(name) })}
+   210→        >
+   211→          {initialsOf(name)}
+   212→        </div>
+   213→        <div className="min-w-0 max-w-sm flex-1">
+   214→          <Label htmlFor="display-name">{t("Display name")}</Label>
+   215→          <Input
+   216→            id="display-name"
+   217→            value={name}
+   218→            onChange={(e) => setDraftName(e.target.value)}
+   219→            maxLength={40}
+   220→            placeholder={t("Your name")}
+   221→            className="mt-1.5 h-10"
+   222→          />
+   223→          <p className="mt-1.5 text-xs text-muted-foreground">{t("Saved automatically as you type.")}</p>
+   224→        </div>
+   225→      </div>
+   226→      <div>
+   227→        <Label>{t("Avatar color")}</Label>
+   228→        <div className="mt-2 flex flex-wrap gap-2">
+   229→          {PRESENCE_COLORS.slice(0, 10).map((c) => {
+   230→            const selected = user.color === c
+   231→            return (
+   232→              <button
+   233→                key={c}
+   234→                type="button"
+   235→                aria-label={t("Use color {color}", { color: c })}
+   236→                aria-pressed={selected}
+   237→                onClick={() => {
+   238→                  saveLocalUser({ ...user, color: c })
+   239→                  toast({ title: t("Avatar color updated") })
+   240→                }}
+   241→                className={cn(
+   242→                  "flex h-8 w-8 items-center justify-center rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
+   243→                  selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
+   244→                )}
+   245→                style={{ backgroundColor: c }}
+   246→              >
+   247→                {selected ? <Check className="h-4 w-4 text-white" /> : null}
+   248→              </button>
+   249→            )
+   250→          })}
+   251→        </div>
+   252→      </div>
+   253→      <p className="text-xs text-muted-foreground">
+   254→        {t("Your name and color appear in comments, presence and the activity feed.")}
+   255→      </p>
+   256→    </SectionCard>
+   257→  )
+   258→}
+   259→
+   260→/* ------------------------------- Appearance --------------------------------- */
+   261→
+   262→function WindowBody({ dark }: { dark: boolean }) {
+   263→  return (
+   264→    <div className={cn("flex-1", dark ? "bg-neutral-900" : "bg-white")}>
+   265→      <div
+   266→        className={cn(
+   267→          "flex h-4 items-center gap-1 border-b px-2",
+   268→          dark ? "border-neutral-700 bg-neutral-800" : "border-neutral-100 bg-neutral-50"
+   269→        )}
+   270→      >
+   271→        <span className="h-1 w-1 rounded-full bg-[#0b6b62]" />
+   272→        <span className={cn("h-1 w-4 rounded-full", dark ? "bg-neutral-600" : "bg-neutral-200")} />
+   273→      </div>
+   274→      <div className="space-y-1.5 p-2.5">
+   275→        <div className={cn("h-1.5 w-3/5 rounded-full", dark ? "bg-neutral-700" : "bg-neutral-200")} />
+   276→        <div className={cn("h-1.5 w-4/5 rounded-full", dark ? "bg-neutral-800" : "bg-neutral-100")} />
+   277→        <div className="h-1.5 w-1/3 rounded-full bg-[#0b6b62]" />
+   278→      </div>
+   279→    </div>
+   280→  )
+   281→}
+   282→
+   283→function WindowPreview({ variant }: { variant: "light" | "dark" | "split" }) {
+   284→  if (variant === "split") {
+   285→    return (
+   286→      <div className="flex h-[72px] overflow-hidden rounded-md border border-neutral-300">
+   287→        <WindowBody dark={false} />
+   288→        <WindowBody dark />
+   289→      </div>
+   290→    )
+   291→  }
+   292→  return (
+   293→    <div
+   294→      className={cn(
+   295→        "h-[72px] overflow-hidden rounded-md border",
+   296→        variant === "dark" ? "border-neutral-700" : "border-neutral-200"
+   297→      )}
+   298→    >
+   299→      <WindowBody dark={variant === "dark"} />
+   300→    </div>
+   301→  )
+   302→}
+   303→
+   304→const THEME_CARDS: { value: ThemeMode; label: string; hint: string; preview: "light" | "dark" | "split" }[] = [
+   305→  { value: "light", label: "Light", hint: "Bright surfaces", preview: "light" },
+   306→  { value: "dark", label: "Dark", hint: "Dimmed surfaces", preview: "dark" },
+   307→  { value: "system", label: "System", hint: "Follows your device", preview: "split" },
+   308→]
+   309→
+   310→/* Native names shown as-is in every language (same convention as lang-toggle). */
+   311→const LANG_CARDS: { value: Lang; label: string; sample: string }[] = [
+   312→  { value: "zh", label: "中文", sample: "你好，Z-Docs" },
+   313→  { value: "en", label: "English", sample: "Hello, Z-Docs" },
+   314→]
+   315→
+   316→function LanguagePreview({ text }: { text: string }) {
+   317→  return (
+   318→    <div className="flex h-[72px] items-center justify-center overflow-hidden rounded-md border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900">
+   319→      <span className="px-3 text-center text-[11px] leading-tight text-neutral-500 dark:text-neutral-400">
+   320→        {text}
+   321→      </span>
+   322→    </div>
+   323→  )
+   324→}
+   325→
+   326→function AppearanceSection() {
+   327→  const { mode, setMode } = useThemeMode()
+   328→  const { resolvedTheme } = useTheme()
+   329→  const { toast } = useToast()
+   330→  const { lang, setLang, t } = useI18n()
+   331→  const [accent, setAccent] = React.useState<string | null>(null)
+   332→  const [mounted, setMounted] = React.useState(false)
+   333→
+   334→  React.useEffect(() => {
+   335→    setAccent(readStoredAccent())
+   336→    setMounted(true)
+   337→  }, [])
+   338→
+   339→  // keep the applied accent correct when the light/dark theme flips
+   340→  React.useEffect(() => {
+   341→    const hex = readStoredAccent()
+   342→    if (hex) applyAccent(hex)
+   343→  }, [resolvedTheme])
+   344→
+   345→  const activeAccent = accent ?? DEFAULT_ACCENT_HEX
+   346→
+   347→  return (
+   348→    <div className="space-y-8">
+   349→      <SectionCard title={t("Appearance")} description={t("Choose how Z-Docs looks and feels.")}>
+   350→        <div>
+   351→          <Label>{t("Theme")}</Label>
+   352→          <div role="radiogroup" aria-label={t("Theme")} className="mt-2 grid grid-cols-3 gap-3 sm:max-w-lg">
+   353→            {THEME_CARDS.map((card) => {
+   354→              const selected = mounted && mode === card.value
+   355→              return (
+   356→                <button
+   357→                  key={card.value}
+   358→                  type="button"
+   359→                  role="radio"
+   360→                  aria-checked={selected}
+   361→                  onClick={() => setMode(card.value)}
+   362→                  className={cn(
+   363→                    "rounded-xl border p-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+   364→                    selected
+   365→                      ? "border-transparent ring-2 ring-primary"
+   366→                      : "border-border hover:bg-accent/50"
+   367→                  )}
+   368→                >
+   369→                  <WindowPreview variant={card.preview} />
+   370→                  <span className="mt-2 flex items-center justify-between">
+   371→                    <span className="text-[13px] font-medium">{t(card.label)}</span>
+   372→                    {selected ? <Check className="h-4 w-4 text-primary" /> : null}
+   373→                  </span>
+   374→                  <span className="mt-0.5 block text-[11px] text-muted-foreground">{t(card.hint)}</span>
+   375→                </button>
+   376→              )
+   377→            })}
+   378→          </div>
+   379→        </div>
+   380→        <div>
+   381→          <Label>{t("Accent color")}</Label>
+   382→          <p className="mt-0.5 text-xs text-muted-foreground">
+   383→            {t("Recolors buttons, links and highlights across the workspace.")}
+   384→          </p>
+   385→          <div className="mt-2 flex flex-wrap gap-2.5">
+   386→            {ACCENT_OPTIONS.map((option) => {
+   387→              const selected = mounted && activeAccent === option.hex
+   388→              return (
+   389→                <button
+   390→                  key={option.hex}
+   391→                  type="button"
+   392→                  aria-label={t("Accent color: {name}", { name: t(option.name) })}
+   393→                  aria-pressed={selected}
+   394→                  onClick={() => {
+   395→                    setAccent(option.hex)
+   396→                    saveAccent(option.hex)
+   397→                    toast({ title: t("Accent set to {name}", { name: t(option.name) }) })
+   398→                  }}
+   399→                  className={cn(
+   400→                    "flex h-9 w-9 items-center justify-center rounded-full outline-none transition-transform hover:scale-110 focus-visible:ring-2 focus-visible:ring-ring",
+   401→                    selected && "ring-2 ring-ring ring-offset-2 ring-offset-background"
+   402→                  )}
+   403→                  style={{ backgroundColor: option.hex }}
+   404→                >
+   405→                  {selected ? <Check className="h-4 w-4 text-white" /> : null}
+   406→                </button>
+   407→              )
+   408→            })}
+   409→          </div>
+   410→        </div>
+   411→      </SectionCard>
+   412→      <SectionCard title={t("Language")} description={t("Choose the display language for the workspace.")}>
+   413→        <div role="radiogroup" aria-label={t("Language")} className="grid grid-cols-2 gap-3 sm:max-w-md">
+   414→          {LANG_CARDS.map((card) => {
+   415→            const selected = lang === card.value
+   416→            return (
+   417→              <button
+   418→                key={card.value}
+   419→                type="button"
+   420→                role="radio"
+   421→                aria-checked={selected}
+   422→                onClick={() => setLang(card.value)}
+   423→                className={cn(
+   424→                  "rounded-xl border p-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+   425→                  selected
+   426→                    ? "border-transparent ring-2 ring-primary"
+   427→                    : "border-border hover:bg-accent/50"
+   428→                )}
+   429→              >
+   430→                <LanguagePreview text={card.sample} />
+   431→                <span className="mt-2 flex items-center justify-between">
+   432→                  <span className="text-[13px] font-medium">{card.label}</span>
+   433→                  {selected ? <Check className="h-4 w-4 text-primary" /> : null}
+   434→                </span>
+   435→              </button>
+   436→            )
+   437→          })}
+   438→        </div>
+   439→      </SectionCard>
+   440→    </div>
+   441→  )
+   442→}
+   443→
+   444→/* --------------------------- Workspace defaults ----------------------------- */
+   445→
+   446→function WorkspaceSection() {
+   447→  const { t } = useI18n()
+   448→  const { toast } = useToast()
+   449→  const [font, setFont] = React.useState<"sans" | "serif">("sans")
+   450→  const [zoom, setZoom] = React.useState<"100" | "125" | "150">("100")
+   451→
+   452→  React.useEffect(() => {
+   453→    try {
+   454→      const f = window.localStorage.getItem(FONT_STORAGE_KEY)
+   455→      if (f === "sans" || f === "serif") setFont(f)
+   456→      const z = window.localStorage.getItem(ZOOM_STORAGE_KEY)
+   457→      if (z === "100" || z === "125" || z === "150") setZoom(z)
+   458→    } catch {
+   459→      // storage unavailable — defaults are fine
+   460→    }
+   461→  }, [])
+   462→
+   463→  const saveFont = (value: string) => {
+   464→    if (value !== "sans" && value !== "serif") return
+   465→    setFont(value)
+   466→    try {
+   467→      window.localStorage.setItem(FONT_STORAGE_KEY, value)
+   468→    } catch {
+   469→      // ignore
+   470→    }
+   471→    toast({ title: value === "sans" ? t("Default font set to Sans") : t("Default font set to Serif") })
+   472→  }
+   473→
+   474→  const saveZoom = (value: string) => {
+   475→    if (value !== "100" && value !== "125" && value !== "150") return
+   476→    setZoom(value)
+   477→    try {
+   478→      window.localStorage.setItem(ZOOM_STORAGE_KEY, value)
+   479→    } catch {
+   480→      // ignore
+   481→    }
+   482→    toast({ title: t("Default zoom set to {value}%", { value }) })
+   483→  }
+   484→
+   485→  return (
+   486→    <SectionCard
+   487→      title={t("Workspace defaults")}
+   488→      description={t("Preferences used when creating new documents.")}
+   489→    >
+   490→      <div className="grid gap-4 sm:grid-cols-2">
+   491→        <div>
+   492→          <Label htmlFor="default-font">{t("Default font")}</Label>
+   493→          <Select value={font} onValueChange={saveFont}>
+   494→            <SelectTrigger id="default-font" className="mt-1.5 h-10 w-full">
+   495→              <SelectValue placeholder={t("Sans")} />
+   496→            </SelectTrigger>
+   497→            <SelectContent>
+   498→              <SelectItem value="sans">{t("Sans (Arial)")}</SelectItem>
+   499→              <SelectItem value="serif">{t("Serif (Georgia)")}</SelectItem>
+   500→            </SelectContent>
+   501→          </Select>
+   502→          <p className="mt-1.5 text-xs text-muted-foreground">{t("Used when creating new documents")}</p>
+   503→        </div>
+   504→        <div>
+   505→          <Label htmlFor="default-zoom">{t("Default editor zoom")}</Label>
+   506→          <Select value={zoom} onValueChange={saveZoom}>
+   507→            <SelectTrigger id="default-zoom" className="mt-1.5 h-10 w-full">
+   508→              <SelectValue placeholder="100%" />
+   509→            </SelectTrigger>
+   510→            <SelectContent>
+   511→              <SelectItem value="100">100%</SelectItem>
+   512→              <SelectItem value="125">125%</SelectItem>
+   513→              <SelectItem value="150">150%</SelectItem>
+   514→            </SelectContent>
+   515→          </Select>
+   516→          <p className="mt-1.5 text-xs text-muted-foreground">{t("Used when creating new documents")}</p>
+   517→        </div>
+   518→      </div>
+   519→    </SectionCard>
+   520→  )
+   521→}
+   522→
+   523→/* ------------------------------ Data & storage ------------------------------ */
+   524→
+   525→interface StoragePayload {
+   526→  usedBytes?: number
+   527→  quotaBytes?: number
+   528→  counts?: {
+   529→    documents?: number
+   530→    sheets?: number
+   531→    slides?: number
+   532→    forms?: number
+   533→    folders?: number
+   534→    tags?: number
+   535→  }
+   536→}
+   537→
+   538→const STORAGE_STATS: { key: keyof NonNullable<StoragePayload["counts"]>; label: string; icon: LucideIcon }[] = [
+   539→  { key: "documents", label: "Documents", icon: FileText },
+   540→  { key: "sheets", label: "Spreadsheets", icon: FileSpreadsheet },
+   541→  { key: "slides", label: "Decks", icon: Presentation },
+   542→  { key: "forms", label: "Forms", icon: FormInput },
+   543→  { key: "folders", label: "Folders", icon: Folder },
+   544→  { key: "tags", label: "Tags", icon: Tag },
+   545→]
+   546→
+   547→function DataSection() {
+   548→  const { t } = useI18n()
+   549→  const { toast } = useToast()
+   550→  const [counts, setCounts] = React.useState<NonNullable<StoragePayload["counts"]> | null>(null)
+   551→  const [bytes, setBytes] = React.useState(0)
+   552→  const [quota, setQuota] = React.useState(0)
+   553→  const [error, setError] = React.useState<string | null>(null)
+   554→
+   555→  React.useEffect(() => {
+   556→    let live = true
+   557→    const load = async () => {
+   558→      setError(null)
+   559→      try {
+   560→        // single source of truth — same /api/storage the sidebar reads, so the
+   561→        // two surfaces can never disagree (they previously used different
+   562→        // quotas: 10 MB here vs 15 GB there)
+   563→        const res = await fetch("/api/storage")
+   564→        if (!res.ok) throw new Error("Failed to load storage stats")
+   565→        const payload = (await res.json()) as StoragePayload
+   566→        if (!live) return
+   567→        setCounts(payload.counts ?? {})
+   568→        setBytes(payload.usedBytes ?? 0)
+   569→        setQuota(payload.quotaBytes ?? 0)
+   570→      } catch (e) {
+   571→        if (!live) return
+   572→        setError(e instanceof Error ? e.message : "Something went wrong")
+   573→      }
+   574→    }
+   575→    void load()
+   576→    return () => {
+   577→      live = false
+   578→    }
+   579→  }, [])
+   580→
+   581→  const exportAll = async () => {
+   582→    // fetch-based so guest mode is served by the local API shim (an anchor
+   583→    // navigation would bypass it and hit the server unauthenticated)
+   584→    try {
+   585→      const res = await fetch("/api/export")
+   586→      if (!res.ok) throw new Error("export failed")
+   587→      const blob = await res.blob()
+   588→      const url = URL.createObjectURL(blob)
+   589→      const a = document.createElement("a")
+   590→      a.href = url
+   591→      a.download = "z-workspace-export.json"
+   592→      document.body.appendChild(a)
+   593→      a.click()
+   594→      a.remove()
+   595→      // async revoke — synchronous revoke can kill the transfer on slow browsers
+   596→      setTimeout(() => URL.revokeObjectURL(url), 30_000)
+   597→      toast({ title: t("Download started"), description: t("Your workspace is exporting as JSON.") })
+   598→    } catch {
+   599→      toast({ title: t("Download failed"), description: t("Please try again in a moment.") })
+   600→    }
+   601→  }
+   602→
+   603→  const resetLocal = () => {
+   604→    for (const key of [
+   605→      USER_STORAGE_KEY,
+   606→      "zdocs-guest",
+   607→      "zdocs-guest-db",
+   608→      ACCENT_STORAGE_KEY,
+   609→      FONT_STORAGE_KEY,
+   610→      ZOOM_STORAGE_KEY,
+   611→      THEME_MODE_STORAGE_KEY,
+   612→    ]) {
+   613→      try {
+   614→        window.localStorage.removeItem(key)
+   615→      } catch {
+   616→        // ignore
+   617→      }
+   618→    }
+   619→    window.location.reload()
+   620→  }
+   621→
+   622→  const usedPercent = counts && quota > 0 ? Math.min(100, (bytes / quota) * 100) : 0
+   623→
+   624→  return (
+   625→    <SectionCard
+   626→      title={t("Data & storage")}
+   627→      description={t("Everything you create lives in your local Z workspace database.")}
+   628→    >
+   629→      {error ? (
+   630→        <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-[13px] text-destructive">
+   631→          {t(error)}
+   632→        </p>
+   633→      ) : counts ? (
+   634→        <>
+   635→          <div>
+   636→            <div className="flex items-baseline justify-between gap-3">
+   637→              <p className="text-[13px] font-medium">{t("Workspace storage")}</p>
+   638→              <p className="text-xs text-muted-foreground">
+   639→                <span className="tnum font-medium text-foreground">{t("{size} used", { size: formatBytes(bytes) })}</span>
+   640→                <span className="opacity-70"> · {quota > 0 ? t("{size} quota", { size: formatBytes(quota) }) : ""}</span>
+   641→              </p>
+   642→            </div>
+   643→            <div
+   644→              className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
+   645→              role="progressbar"
+   646→              aria-label={t("Workspace storage used")}
+   647→              aria-valuemin={0}
+   648→              aria-valuemax={100}
+   649→              aria-valuenow={Math.round(usedPercent)}
+   650→            >
+   651→              <div
+   652→                className="h-full rounded-full bg-primary transition-[width] duration-500"
+   653→                style={{ width: `${usedPercent}%` }}
+   654→              />
+   655→            </div>
+   656→          </div>
+   657→          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+   658→            {STORAGE_STATS.map((stat) => {
+   659→              const Icon = stat.icon
+   660→              return (
+   661→                <div key={stat.key} className="flex items-center gap-3 rounded-lg border p-3">
+   662→                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+   663→                  <div className="min-w-0">
+   664→                    <p className="tnum text-[15px] font-medium leading-tight">
+   665→                      {counts[stat.key] ?? 0}
+   666→                    </p>
+   667→                    <p className="text-[11px] text-muted-foreground">{t(stat.label)}</p>
+   668→                  </div>
+   669→                </div>
+   670→              )
+   671→            })}
+   672→          </div>
+   673→        </>
+   674→      ) : (
+   675→        <>
+   676→          <div className="flex items-baseline justify-between">
+   677→            <Skeleton className="h-4 w-32" />
+   678→            <Skeleton className="h-3.5 w-24" />
+   679→          </div>
+   680→          <Skeleton className="h-2 w-full rounded-full" />
+   681→          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+   682→            {STORAGE_STATS.map((stat) => (
+   683→              <Skeleton key={stat.key} className="h-14 rounded-lg" />
+   684→            ))}
+   685→          </div>
+   686→        </>
+   687→      )}
+   688→      <div className="flex flex-wrap gap-3">
+   689→        <Button onClick={exportAll} className="h-10">
+   690→          <Download className="h-4 w-4" />
+   691→          {t("Export all your data")}
+   692→        </Button>
+   693→        <AlertDialog>
+   694→          <AlertDialogTrigger asChild>
+   695→            <Button
+   696→              variant="outline"
+   697→              className="h-10 text-destructive hover:bg-destructive/5 hover:text-destructive"
+   698→            >
+   699→              <RotateCcw className="h-4 w-4" />
+   700→              {t("Reset local profile")}
+   701→            </Button>
+   702→          </AlertDialogTrigger>
+   703→          <AlertDialogContent>
+   704→            <AlertDialogHeader>
+   705→              <AlertDialogTitle>{t("Reset local profile?")}</AlertDialogTitle>
+   706→              <AlertDialogDescription>
+   707→                {t("This clears your saved name, avatar color, theme, accent and workspace defaults from this browser. Your documents, spreadsheets, decks and forms are kept.")}
+   708→              </AlertDialogDescription>
+   709→            </AlertDialogHeader>
+   710→            <AlertDialogFooter>
+   711→              <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+   712→              <AlertDialogAction
+   713→                onClick={resetLocal}
+   714→                className="bg-destructive text-white hover:bg-destructive/90"
+   715→              >
+   716→                {t("Reset & reload")}
+   717→              </AlertDialogAction>
+   718→            </AlertDialogFooter>
+   719→          </AlertDialogContent>
+   720→        </AlertDialog>
+   721→      </div>
+   722→    </SectionCard>
+   723→  )
+   724→}
+   725→
+   726→/* ------------------------- guest (local-only) data -------------------------- */
+   727→
+   728→/** Row chips shown for the local guest database (order matters for display). */
+   729→const GUEST_COUNT_KEYS: { key: string; label: string }[] = [
+   730→  { key: "documents", label: "Docs" },
+   731→  { key: "sheets", label: "Sheets" },
+   732→  { key: "decks", label: "Slides" },
+   733→  { key: "forms", label: "Forms" },
+   734→  { key: "comments", label: "Comments" },
+   735→  { key: "folders", label: "Folders" },
+   736→]
+   737→
+   738→/**
+   739→ * Local data management for guest mode: the workspace is running entirely on
+   740→ * localStorage, so this card surfaces the real byte usage + row counts, a
+   741→ * JSON backup download, and a confirmed wipe. Hidden for signed-in users
+   742→ * (their data lives in the server DB, managed by the cloud section above).
+   743→ */
+   744→function GuestDataSection() {
+   745→  const { t } = useI18n()
+   746→  const { toast } = useToast()
+   747→  const guestMode = useDocsStore((s) => s.guestMode)
+   748→  const [stats, setStats] = React.useState<{ bytes: number; counts: Record<string, number> } | null>(null)
+   749→
+   750→  React.useEffect(() => {
+   751→    if (!guestMode) return
+   752→    setStats(guestDbStats())
+   753→  }, [guestMode])
+   754→
+   755→  if (!guestMode) return null
+   756→
+   757→  const exportBackup = () => {
+   758→    const snapshot = readGuestSnapshot()
+   759→    const stamp = new Date()
+   760→    const pad = (n: number) => String(n).padStart(2, "0")
+   761→    const name = `z-draft-backup-${stamp.getFullYear()}${pad(stamp.getMonth() + 1)}${pad(stamp.getDate())}.json`
+   762→    const blob = new Blob([JSON.stringify({ app: "Z-Docs", kind: "guest-backup", exportedAt: new Date().toISOString(), snapshot }, null, 2)], {
+   763→      type: "application/json;charset=utf-8",
+   764→    })
+   765→    const url = URL.createObjectURL(blob)
+   766→    const a = document.createElement("a")
+   767→    a.href = url
+   768→    a.download = name
+   769→    document.body.appendChild(a)
+   770→    a.click()
+   771→    a.remove()
+   772→    setTimeout(() => URL.revokeObjectURL(url), 30_000)
+   773→    trackedDownload({ kind: "json", title: t("Local backup"), fileName: name, byteSize: blob.size }).finish(true)
+   774→    toast({ title: t("Backup downloaded"), description: name })
+   775→  }
+   776→
+   777→  const wipeAll = () => {
+   778→    clearGuestData()
+   779→    window.location.reload()
+   780→  }
+   781→
+   782→  const counts = stats?.counts ?? {}
+   783→
+   784→  return (
+   785→    <SectionCard
+   786→      title={t("Local data (this device only)")}
+   787→      description={t("You are in guest mode — everything lives in this browser’s local storage. Sign in to sync it to the cloud.")}
+   788→    >
+   789→      <div className="flex flex-wrap items-center gap-2">
+   790→        <p className="text-[13px] font-medium">{t("Local database")}</p>
+   791→        <p className="text-xs text-muted-foreground">
+   792→          <span className="tnum font-medium text-foreground">
+   793→            {stats ? t("{size} stored locally", { size: formatBytes(stats.bytes) }) : "…"}
+   794→          </span>
+   795→        </p>
+   796→        <span aria-hidden className="mx-1 h-4 w-px bg-border" />
+   797→        <div className="flex flex-wrap gap-1.5">
+   798→          {GUEST_COUNT_KEYS.map(({ key, label }) => (
+   799→            <span
+   800→              key={key}
+   801→              className="tnum rounded-full border px-2.5 py-0.5 text-[12px] text-muted-foreground"
+   802→            >
+   803→              {t(label)} {counts[key] ?? 0}
+   804→            </span>
+   805→          ))}
+   806→        </div>
+   807→      </div>
+   808→
+   809→      <div className="flex flex-wrap gap-3">
+   810→        <Button onClick={exportBackup} className="h-10">
+   811→          <Download className="h-4 w-4" />
+   812→          {t("Export backup (JSON)")}
+   813→        </Button>
+   814→        <AlertDialog>
+   815→          <AlertDialogTrigger asChild>
+   816→            <Button
+   817→              variant="outline"
+   818→              className="h-10 text-destructive hover:bg-destructive/5 hover:text-destructive"
+   819→            >
+   820→              <RotateCcw className="h-4 w-4" />
+   821→              {t("Clear local data")}
+   822→            </Button>
+   823→          </AlertDialogTrigger>
+   824→          <AlertDialogContent>
+   825→            <AlertDialogHeader>
+   826→              <AlertDialogTitle>{t("Clear all local data?")}</AlertDialogTitle>
+   827→              <AlertDialogDescription>
+   828→                {t("Every document, spreadsheet, deck, form and comment stored in this browser will be deleted. Export a backup first if you want to keep them.")}
+   829→              </AlertDialogDescription>
+   830→            </AlertDialogHeader>
+   831→            <AlertDialogFooter>
+   832→              <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+   833→              <AlertDialogAction
+   834→                onClick={wipeAll}
+   835→                className="bg-destructive text-white hover:bg-destructive/90"
+   836→              >
+   837→                {t("Clear & reload")}
+   838→              </AlertDialogAction>
+   839→            </AlertDialogFooter>
+   840→          </AlertDialogContent>
+   841→        </AlertDialog>
+   842→      </div>
+   843→    </SectionCard>
+   844→  )
+   845→}
+   846→
+   847→/* ---------------------------------- About ----------------------------------- */
+   848→
+   849→const TECH_STACK = [
+   850→  "Next.js 16",
+   851→  "React 19",
+   852→  "Tailwind 4",
+   853→  "Prisma",
+   854→  "TipTap-style canvas",
+   855→  "socket.io collab",
+   856→]
+   857→
+   858→function AboutSection() {
+   859→  const { t } = useI18n()
+   860→  return (
+   861→    <SectionCard title={t("About")}>
+   862→      <div className="flex items-center gap-4">
+   863→        <div
+   864→          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary"
+   865→          aria-hidden="true"
+   866→        >
+   867→          <span className="logo-caret h-4 w-[3px] rounded-[1px] bg-primary-foreground" />
+   868→        </div>
+   869→        <div className="min-w-0">
+   870→          <p className="font-editorial text-xl font-medium tracking-tight">Z-Docs</p>
+   871→          <p className="mt-0.5 text-[13px] text-muted-foreground">
+   872→            {t("A Google-style workspace: Docs, Sheets, Slides & Forms")}
+   873→          </p>
+   874→        </div>
+   875→      </div>
+   876→      <div className="flex flex-wrap gap-1.5">
+   877→        {TECH_STACK.map((tech) => (
+   878→          <span
+   879→            key={tech}
+   880→            className="rounded-full border px-2.5 py-0.5 text-[11px] text-muted-foreground"
+   881→          >
+   882→            {tech}
+   883→          </span>
+   884→        ))}
+   885→      </div>
+   886→      <p className="text-xs text-muted-foreground">
+   887→        {t("Local demo — all data lives in your browser and local database.")}
+   888→      </p>
+   889→    </SectionCard>
+   890→  )
+   891→}
+   892→
+   893→/* ---------------------------------- page ------------------------------------ */
+   894→
+   895→export function SettingsView() {
+   896→  const { t } = useI18n()
+   897→  const goHome = useDocsStore((s) => s.goHome)
+   898→  const [tab, setTab] = React.useState<SettingsTab>("general")
+   899→
+   900→  return (
+   901→    <div className="flex min-h-screen flex-col">
+   902→      <header className="sticky top-0 z-40 flex h-16 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 sm:px-5">
+   903→        <Tooltip>
+   904→          <TooltipTrigger asChild>
+   905→            <Button
+   906→              variant="ghost"
+   907→              size="icon"
+   908→              onClick={goHome}
+   909→              aria-label={t("Back to home")}
+   910→              className="h-10 w-10 rounded-full text-muted-foreground hover:text-foreground"
+   911→            >
+   912→              <ArrowLeft className="h-5 w-5" />
+   913→            </Button>
+   914→          </TooltipTrigger>
+   915→          <TooltipContent side="bottom" className="text-xs">
+   916→            {t("Back")}
+   917→          </TooltipContent>
+   918→        </Tooltip>
+   919→        <h1 className="text-lg font-medium">{t("Settings")}</h1>
+   920→        <span
+   921→          className="ml-auto rounded-full border bg-background px-3 py-1 text-[11px] text-muted-foreground tnum"
+   922→          aria-label={t("Version")}
+   923→        >
+   924→          Z-Docs v1.0
+   925→        </span>
+   926→      </header>
+   927→
+   928→      <main className="flex-1">
+   929→        <div className="mx-auto w-full max-w-5xl px-4 pb-16 pt-8 sm:px-6">
+   930→          <div className="flex flex-col gap-8 md:flex-row">
+   931→            <nav aria-label={t("Settings sections")} className="shrink-0 md:w-48">
+   932→              <div
+   933→                role="tablist"
+   934→                aria-label={t("Settings sections")}
+   935→                className="flex gap-1 overflow-x-auto pb-1 no-scrollbar md:flex-col md:overflow-x-visible md:pb-0 md:sticky md:top-24"
+   936→              >
+   937→                {TABS.map((tabItem) => {
+   938→                  const Icon = tabItem.icon
+   939→                  const active = tab === tabItem.id
+   940→                  return (
+   941→                    <button
+   942→                      key={tabItem.id}
+   943→                      type="button"
+   944→                      role="tab"
+   945→                      aria-selected={active}
+   946→                      onClick={() => setTab(tabItem.id)}
+   947→                      className={cn(
+   948→                        "flex min-h-11 items-center gap-2.5 whitespace-nowrap rounded-md px-3 text-[13px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
+   949→                        active
+   950→                          ? "bg-accent font-medium text-foreground"
+   951→                          : "text-muted-foreground hover:bg-accent/60 hover:text-foreground"
+   952→                      )}
+   953→                    >
+   954→                      <Icon className="h-4 w-4 shrink-0" />
+   955→                      {t(tabItem.label)}
+   956→                    </button>
+   957→                  )
+   958→                })}
+   959→              </div>
+   960→            </nav>
+   961→            <div className="min-w-0 flex-1">
+   962→              {tab === "general" ? <GeneralSection /> : null}
+   963→              {tab === "appearance" ? <AppearanceSection /> : null}
+   964→              {tab === "workspace" ? <WorkspaceSection /> : null}
+   965→              {tab === "data" ? <DataSection /> : null}
+   966→              {tab === "data" ? <GuestDataSection /> : null}
+   967→              {tab === "about" ? <AboutSection /> : null}
+   968→            </div>
+   969→          </div>
+   970→        </div>
+   971→      </main>
+   972→    </div>
+   973→  )
+   974→}
+   975→

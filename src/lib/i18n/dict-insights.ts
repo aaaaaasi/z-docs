@@ -137,4 +137,11 @@ export const dictInsights: Record<string, string> = {
   "Quotation marks": "引号",
   "Parentheses": "括号",
   "No notable punctuation habits": "暂无明显的标点习惯",
+
+  // ——— live insights sidebar (Ellipsus-style right rail) ———
+  "Analyzing…": "分析中…",
+  "Live": "实时",
+  "Close writing insights": "关闭写作洞察",
+  "Show writing insights": "显示写作洞察",
+  "Hide writing insights": "隐藏写作洞察",
 }

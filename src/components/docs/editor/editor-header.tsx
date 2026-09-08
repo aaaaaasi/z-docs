@@ -9,7 +9,7 @@ import { LangToggle } from "@/components/docs/lang-toggle"
 import { UserMenu } from "@/components/docs/user-menu"
 import { DocsLogo } from "@/components/docs/home/home-header"
 import type { EditorApi } from "./editor-types"
-import { Star, CloudCheck, CloudOff, CloudUpload, Users, ArrowLeft, Share2, MessageSquare, ListTree } from "lucide-react"
+import { Star, CloudCheck, CloudOff, CloudUpload, Users, ArrowLeft, Share2, MessageSquare, ListTree, BarChart3 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { relativeTime } from "@/lib/doc-utils"
 import { useI18n } from "@/lib/i18n"
@@ -116,6 +116,24 @@ export function EditorHeader({ api }: { api: EditorApi }) {
             </span>
           </div>
         )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => api.toggleInsights()}
+              aria-label={api.insightsOpen ? t("Hide writing insights") : t("Show writing insights")}
+              aria-pressed={api.insightsOpen}
+              className={cn(
+                "rounded-md p-2 transition-colors hover:bg-muted",
+                api.insightsOpen ? "bg-muted text-foreground" : "text-muted-foreground"
+              )}
+            >
+              <BarChart3 className="h-4.5 w-4.5" strokeWidth={1.75} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="text-xs">
+            {api.insightsOpen ? t("Hide writing insights") : t("Show writing insights")}
+          </TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <button
