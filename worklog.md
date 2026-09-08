@@ -817,3 +817,24 @@ Stage Summary:
 - 上一轮（Task 20）的 4 项修复（CSS 顺序/padX/ruler 裁剪/revokeObjectURL）在 R10 移动端复验中确认全部保持生效。
 - 测试数据状态: DB 0 用户（两测试账号已清），游客库因同步已清空——全新起点。
 - 下一阶段候选: 拼写检查 Ctrl+Z 支持、批量操作扩展（批量移标签/批量重命名）、Z-Slides PPTX 导出、长文档导出进度条、游客本地数据管理 UI、（远期）Ellipsus 写作洞察完善。
+
+---
+Task ID: 22
+Agent: main (Z.ai Code)
+Task: 用户指令「把所有代码和文件全部提交到 https://github.com/aaaaaasi/z-docs 仓库」+ 修正「node_modules 等可通过安装包恢复的东西排除」——全量推送项目到 GitHub
+
+Work Log:
+- 检查 git 状态：已有 21 个历史自动提交（353 个已跟踪文件）；token 验证有效（用户 aaaaaasi）；远端仓库 aaaaaasi/z-docs 为 public 空仓库（仅含初始化 LICENSE 提交 854ed28）。
+- 体积审计：项目总 1.6G，其中 node_modules 1.3G（含 2 个 110MB SWC 二进制，超 GitHub 100MB 单文件硬限制）、.next 220M 构建缓存——按用户修正指令排除。
+- **排除机制设计（同时满足两条指令）**：删除仓库内 .gitignore（原文件还忽略了 skills/、.env*、*.log、dev.log 等，与"全部提交"冲突）；改用 `.git/info/exclude`（git 内置本地排除，**不属仓库内容、永不推送**）只排除可再生产物：node_modules/、.next/、out/、build/、coverage/、.vercel/、.DS_Store、*.tsbuildinfo。→ 仓库内不存在任何 ignore 文件，且未来 `git add -A` 也不会误加 1.5GB 可再生产物。
+- 安全扫描（public 仓库必做）：全库正则扫描密钥模式（github_pat_/ghp_/sk-/AIza/AKIA/私钥）——仅 2 个 skills HTML 模板误报（base64 JPEG 数据流中的随机 AKIA 子串，人工核实非真实密钥）；.env 仅含本地 SQLite 路径 DATABASE_URL（无真实凭据）；用户 token 只在 bash 命令中临时使用，未写入任何被提交文件。
+- `git add -A` 暂存 1081 个文件变更（skills/ 61MB 全量、dev.log、此前被忽略的文件 + .gitignore 删除）；校验暂存区：>50MB 文件 0 个、node_modules/.next 泄漏 0 个。
+- 提交 c2a66cf（配置 git 身份 aaaaaasi <257051132+aaaaaasi@users.noreply.github.com> 使提交正确归属用户 GitHub 账号）；首次推送被拒（远端有 LICENSE 初始提交）→ merge --allow-unrelated-histories 保留用户勾选的 LICENSE（无冲突）→ merge commit 5f7671d 推送成功。
+- 远端验证：HEAD 一致（5f7671d）；根树完整（src/、skills/、db/、prisma/、public/、mini-services/、examples/、tests/、agent-ctx/、download/、upload/、tool-results/、.env、dev.log、worklog.md、LICENSE、Caddyfile、bun.lock、package.json 全部在库）；git tree API 统计 1907 条目（1433 文件，与本地 git ls-files 一致）；关键文件抽查全部 200；**仓库无 .gitignore、无 node_modules/.next**。
+
+Stage Summary:
+- **全量推送完成**：https://github.com/aaaaaasi/z-docs main = 5f7671d，1433 个文件，~110MB。除 node_modules/.next 等可再生产物外全部入库，仓库内无任何 ignore 文件（排除规则仅存于本地 .git/info/exclude）。
+- 恢复方法已在提交信息注明：`bun install`（依赖）+ 构建生成 .next；.env 为本地 SQLite 路径可直接使用；db/custom.db 含当前数据库。
+- token 处理：仅命令行临时使用未持久化到 .git/config（remote 为干净 URL）；未写入任何提交文件。
+- 15 分钟巡检 cron job 362494 持续运行中，下一轮巡检将基于本次推送后的状态继续。
+- 注意：后续巡检如产生新代码改动，提交时沿用 git 身份 aaaaaasi，推送需用户 token（本轮未持久化）。
