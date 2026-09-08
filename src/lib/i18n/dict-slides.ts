@@ -149,4 +149,10 @@ export const dictSlides: Record<string, string> = {
   /* ---------- deck store (tForLang) ---------- */
   "Untitled presentation": "无标题演示文稿",
   "Failed to load decks ({status})": "加载演示文稿失败（{status}）",
+
+  /* ---------- pptx export ---------- */
+  "Export PPTX": "导出 PPTX",
+  "Export as PowerPoint (.pptx)": "导出为 PowerPoint (.pptx) 文件",
+  "Downloaded {name}": "已下载 {name}",
+  "Export failed — try again": "导出失败，请重试",
 }

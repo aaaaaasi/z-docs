@@ -856,3 +856,29 @@ Stage Summary:
 - 演示数据均在游客 localStorage，数据库仍 0 用户，仓库 db/custom.db 无测试污染。
 - 本轮提交（docs: open-source docs suite + screenshots）完成后**不再修改任何文件**（用户明确指令）。后续巡检如需改动，本地新提交将领先远端，待用户提供 token 再推送。
 - 15 分钟巡检 cron job 368482 运行中。
+
+---
+Task ID: 24
+Agent: main (Z.ai Code)
+Task: 用户指令「继续未完成的工作和任务」——推进 worklog 待办清单首位：Z-Slides PPTX 导出
+
+Work Log:
+- 新增 `src/lib/slides-pptx.ts`：客户端 PPTX 导出模块（pptxgenjs 4.0.1 动态 import，不进首屏 bundle）。映射 6 种布局（title/titleBody/twoColumn/quote/section/blank）到 10×5.625in LAYOUT_16x9 几何——对照 slide-render.tsx 屏幕比例换算；accent 主题色下划线条（rect shape fill+line）、serif→Georgia/sans→Arial 字体映射、speaker notes → addNotes、两栏按 `---` 分割（与 splitColumns 逻辑同步重实现，避免引入 React 渲染树）。
+- `deck-editor.tsx` 顶栏 Present 按钮前新增「导出 PPTX」按钮（Download 图标、导出中 Loader2 旋转态、disabled 空 deck、Tooltip、aria-label、hidden sm:inline 文案）、toast 成功/失败反馈、exporting state。
+- `dict-slides.ts` 追加 4 词条（Export PPTX / Export as PowerPoint (.pptx) / Downloaded {name} / Export failed — try already）。
+- 下载复用异步 revoke 模式（30s setTimeout，Safari/headless 安全）；文件名 sanitize（非法字符替换 + 100 字符截断）。
+- **E2E 实测（agent-browser 游客模式）**：新建 deck「产品发布计划」→ title 幻灯片（标题+副标题）+ titleBody 幻灯片（标题+3 行要点）+ 备注 → blob 拦截（monkey-patch createObjectURL）捕获 53524 字节 application/zip → base64 分块落盘 → 验证：
+  1. unzip 结构：标准 OOXML（[Content_Types].xml、ppt/slides/、ppt/notesSlides/）
+  2. slide1/slide2 文本完整（中文无损：Z-Docs 产品发布计划/核心功能/实时协作编辑…）
+  3. notesSlide2 备注入库 ✓
+  4. accent 色 srgbClr 0B6B62（fill+line）+ bar 几何 758952×45720 EMU 与设计 0.55×0.05in 一致 ✓
+  5. bullet 悬挂缩进（marL 342900）+ 行距 135% + 段距 6pt ✓
+  6. **python-pptx 权威解析通过**（"VALID PPTX"，2 slides、shape 数正确）
+  7. toast「已下载 产品发布计划.pptx」i18n 中文词条 ✓
+- 质量门：tsc src 零错误、eslint 干净、dev.log 无业务错误（仅历史 EADDRINUSE 噪音，当前 :3000/:3003 健康）。
+
+Stage Summary:
+- **Z-Slides PPTX 导出上线**：Z-Docs 导出矩阵补齐最后一块——文档 PDF/DOCX/HTML/TXT + 表格 CSV + 幻灯片 PPTX 全覆盖。
+- pptxgenjs 4.0.1 新依赖（客户端动态加载）。核心文件：src/lib/slides-pptx.ts（导出内核）+ deck-editor.tsx（UI 入口）+ dict-slides.ts（i18n）。
+- 验证标准：blob 拦截 + unzip + python-pptx 三层校验，视觉几何与代码设计逐一核对。
+- 待办清单更新：大文档导出进度 toast、批量操作扩展（批量标签/重命名）、游客本地数据管理 UI、拼写检查 Ctrl+Z 仍排队，可由巡检或下轮继续。

@@ -20,6 +20,7 @@ import {
   ArrowLeft,
   Check,
   CloudOff,
+  Download,
   LayoutTemplate,
   Loader2,
   Play,
@@ -134,10 +135,12 @@ export function DeckEditor({
   const moveSelection = useSlidesStore((s) => s.moveSelection)
   const undo = useSlidesStore((s) => s.undo)
   const { t } = useI18n()
+  const { toast } = useToast()
 
   const [titleEditing, setTitleEditing] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState("")
   const [notesOpen, setNotesOpen] = React.useState(false)
+  const [exporting, setExporting] = React.useState(false)
 
   const slides = data?.slides ?? []
   const currentLayout =
@@ -151,6 +154,21 @@ export function DeckEditor({
     if (slides.length === 0) return
     onPresent(currentIndex)
   }, [slides.length, onPresent, currentIndex])
+
+  /** Client-side PPTX export (pptxgenjs loaded on demand). */
+  const onExportPptx = React.useCallback(async () => {
+    if (!data || data.slides.length === 0) return
+    setExporting(true)
+    try {
+      const { exportDeckToPptx } = await import("@/lib/slides-pptx")
+      const name = await exportDeckToPptx(title, data)
+      toast({ description: t("Downloaded {name}", { name }) })
+    } catch {
+      toast({ description: t("Export failed — try again"), variant: "destructive" })
+    } finally {
+      setExporting(false)
+    }
+  }, [data, title, t, toast])
 
   // keyboard shortcuts (editor level)
   React.useEffect(() => {
@@ -318,6 +336,28 @@ export function DeckEditor({
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
               {t("Speaker notes")}
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                onClick={() => void onExportPptx()}
+                disabled={exporting || slides.length === 0}
+                aria-label={t("Export PPTX")}
+                className="h-9 gap-1.5 rounded-full px-3 text-[13px]"
+              >
+                {exporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Download className="h-4 w-4" aria-hidden="true" />
+                )}
+                <span className="hidden sm:inline">{t("Export PPTX")}</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="text-xs">
+              {t("Export as PowerPoint (.pptx)")}
             </TooltipContent>
           </Tooltip>
 
