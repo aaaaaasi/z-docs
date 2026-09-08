@@ -32,6 +32,19 @@ export const dictMulti: Record<string, string> = {
   "{n} documents deleted forever": "{n} 篇文档已彻底删除",
   "{n} documents moved to “{name}”": "{n} 篇文档已移至“{name}”",
   "{n} items failed": "{n} 项操作失败",
+  "Tags applied to {n} documents": "已为 {n} 篇文档添加标签",
+
+  /* bulk tag picker dialog */
+  "Add tags": "添加标签",
+  "Add tags to {n} documents": "为 {n} 篇文档添加标签",
+  "Existing tags": "已有标签",
+  "Tag {name}": "标签 {name}",
+  "No tags yet — create one below.": "还没有标签——在下方创建一个。",
+  "New tag name…": "新标签名称…",
+  "New tag name": "新标签名称",
+  "Create tag": "创建标签",
+  "Couldn’t create the tag": "无法创建标签",
+  "Apply to {n} documents": "应用到 {n} 篇文档",
 
   /* batch delete-forever confirmation */
   "Delete {n} documents forever?": "永久删除 {n} 篇文档？",

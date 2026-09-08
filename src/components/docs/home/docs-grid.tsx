@@ -27,7 +27,7 @@ import type { DocumentMeta, FolderDTO, TagDTO } from "@/lib/docs-types"
 import { relativeTime } from "@/lib/doc-utils"
 import { DocPreview } from "@/components/docs/doc-preview"
 import { docDragId } from "./doc-dnd"
-import { DEFAULT_TAG_COLOR, TagChip, TagColorPalette, TagFilterChip, TagOverflowChip } from "./tag-ui"
+import { DEFAULT_TAG_COLOR, TagChip, TagColorPalette, TagDot, TagFilterChip, TagOverflowChip } from "./tag-ui"
 import { useI18n } from "@/lib/i18n"
 import {
   FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder, Tag, Plus, Check, Loader2, X, Home, CheckCheck
@@ -82,6 +82,7 @@ export function DocsGrid() {
   /* which bulk operation is currently in flight ("null" = idle) */
   const [busy, setBusy] = React.useState<BatchOp | null>(null)
   const [confirmBatchDelete, setConfirmBatchDelete] = React.useState(false)
+  const [bulkTagOpen, setBulkTagOpen] = React.useState(false)
 
   const sorted = React.useMemo(() => {
     const list = [...documents]
@@ -150,10 +151,17 @@ export function DocsGrid() {
         return t("{n} documents deleted forever", { n })
       case "move":
         return t("{n} documents moved to “{name}”", { n, name: folderName ?? t("Home") })
+      case "tag":
+        return t("Tags applied to {n} documents", { n })
     }
   }
 
-  const runBatch = async (op: BatchOp, folderId?: string | null, folderName?: string) => {
+  const runBatch = async (
+    op: BatchOp,
+    folderId?: string | null,
+    folderName?: string,
+    tagIds?: string[]
+  ) => {
     if (busy || selection.length === 0) return
     // permanent deletion always asks first (mirrors the single-doc flow)
     if (op === "deleteForever") {
@@ -162,7 +170,7 @@ export function DocsGrid() {
     }
     const ids = [...selection]
     setBusy(op)
-    const res = await batchOp(ids, op, folderId)
+    const res = await batchOp(ids, op, folderId, tagIds)
     setBusy(null)
     if (res.ok > 0) toast({ title: batchSuccess(op, res.ok, folderName) })
     if (res.failed > 0)
@@ -386,6 +394,18 @@ export function DocsGrid() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Bulk tag picker: pick/create tags, applied additively to the selection */}
+      <BulkTagDialog
+        open={bulkTagOpen}
+        onOpenChange={setBulkTagOpen}
+        count={selection.length}
+        busy={busy === "tag"}
+        onApply={(tagIds) => {
+          setBulkTagOpen(false)
+          void runBatch("tag", undefined, undefined, tagIds)
+        }}
+      />
+
       {/* Floating bulk-action bar (portaled to body: the animate-view-in wrapper
           keeps a persistent transform, which would break viewport-fixed children) */}
       {selectionActive &&
@@ -397,6 +417,7 @@ export function DocsGrid() {
             folders={folders}
             busy={busy}
             onRun={runBatch}
+            onOpenTags={() => setBulkTagOpen(true)}
             onClose={clearSelection}
           />,
           document.body
@@ -934,6 +955,157 @@ function SelectCheckbox({
   )
 }
 
+/**
+ * Tag picker for bulk tagging: checkbox chips of existing tags plus an
+ * inline create row (name + color palette). Selection is applied
+ * additively via runBatch("tag").
+ */
+function BulkTagDialog({
+  open,
+  onOpenChange,
+  count,
+  busy,
+  onApply,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  count: number
+  busy: boolean
+  onApply: (tagIds: string[]) => void
+}) {
+  const { t } = useI18n()
+  const { toast } = useToast()
+  const tags = useDocsStore((s) => s.tags)
+  const createTag = useDocsStore((s) => s.createTag)
+
+  const [selected, setSelected] = React.useState<string[]>([])
+  const [newName, setNewName] = React.useState("")
+  const [newColor, setNewColor] = React.useState(DEFAULT_TAG_COLOR)
+  const [creating, setCreating] = React.useState(false)
+
+  // reset the draft state whenever the dialog (re)opens
+  React.useEffect(() => {
+    if (open) {
+      setSelected([])
+      setNewName("")
+      setNewColor(DEFAULT_TAG_COLOR)
+    }
+  }, [open])
+
+  const toggle = (id: string) =>
+    setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
+
+  const createAndSelect = async () => {
+    const name = newName.trim()
+    if (!name || creating) return
+    setCreating(true)
+    const tag = await createTag(name, newColor)
+    setCreating(false)
+    if (!tag) {
+      toast({ title: t("Couldn’t create the tag"), variant: "destructive" })
+      return
+    }
+    setNewName("")
+    setNewColor(DEFAULT_TAG_COLOR)
+    setSelected((cur) => (cur.includes(tag.id) ? cur : [...cur, tag.id]))
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("Add tags to {n} documents", { n: count })}</DialogTitle>
+        </DialogHeader>
+
+        <div className="max-h-64 overflow-y-auto">
+          {tags.length > 0 ? (
+            <div className="flex flex-wrap gap-2" role="group" aria-label={t("Existing tags")}>
+              {tags.map((tag) => {
+                const on = selected.includes(tag.id)
+                return (
+                  <button
+                    key={tag.id}
+                    type="button"
+                    onClick={() => toggle(tag.id)}
+                    aria-pressed={on}
+                    aria-label={t("Tag {name}", { name: tag.name })}
+                    className={cn(
+                      "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] outline-none transition-colors",
+                      on
+                        ? "border-primary/60 bg-primary/10 font-medium text-foreground"
+                        : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+                    )}
+                  >
+                    <TagDot color={tag.color} className="h-3 w-3" />
+                    {tag.name}
+                    {on && <Check className="h-3.5 w-3.5 text-primary" />}
+                  </button>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">
+              {t("No tags yet — create one below.")}
+            </p>
+          )}
+
+          {/* inline create row */}
+          <div className="mt-4 rounded-lg border p-2">
+            <div className="flex items-center gap-2">
+              <TagDot color={newColor} className="ml-1 h-3.5 w-3.5 shrink-0" />
+              <Input
+                value={newName}
+                maxLength={40}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault()
+                    void createAndSelect()
+                  }
+                }}
+                placeholder={t("New tag name…")}
+                aria-label={t("New tag name")}
+                className="h-8 flex-1 border-0 bg-transparent text-[13px] shadow-none focus-visible:ring-0"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={!newName.trim() || creating}
+                onClick={() => void createAndSelect()}
+                aria-label={t("Create tag")}
+                className="h-8 w-8 shrink-0 rounded-full"
+              >
+                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              </Button>
+            </div>
+            <div className="mt-1.5 pl-6">
+              <TagColorPalette value={newColor} onChange={setNewColor} className="flex-wrap" />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+            {t("Cancel")}
+          </Button>
+          <Button
+            onClick={() => onApply(selected)}
+            disabled={busy || selected.length === 0}
+            className="gap-1.5"
+          >
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Tag className="h-4 w-4" />
+            )}
+            {t("Apply to {n} documents", { n: count })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 /** Tooltip wrapper for the icon buttons in the bulk-action bar. */
 function BarTooltip({ label, children }: { label: string; children: React.ReactElement }) {
   return (
@@ -957,13 +1129,15 @@ function BatchActionBar({
   folders,
   busy,
   onRun,
+  onOpenTags,
   onClose,
 }: {
   count: number
   inTrash: boolean
   folders: FolderDTO[]
   busy: BatchOp | null
-  onRun: (op: BatchOp, folderId?: string | null, folderName?: string) => void
+  onRun: (op: BatchOp, folderId?: string | null, folderName?: string, tagIds?: string[]) => void
+  onOpenTags: () => void
   onClose: () => void
 }) {
   const { t } = useI18n()
@@ -1004,6 +1178,25 @@ function BatchActionBar({
             {busy === "unstar" ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <StarOff className="h-4.5 w-4.5" />}
           </Button>
         </BarTooltip>
+
+        {/* Bulk tag: opens the tag picker dialog (additive apply) */}
+        {!inTrash && (
+          <BarTooltip label={t("Add tags")}>
+            <Button
+              variant="ghost" disabled={disabled}
+              aria-label={t("Add tags")}
+              onClick={onOpenTags}
+              className="h-9 shrink-0 gap-1.5 rounded-full px-2.5"
+            >
+              {busy === "tag" ? (
+                <Loader2 className="h-4.5 w-4.5 animate-spin" />
+              ) : (
+                <Tag className="h-4.5 w-4.5" />
+              )}
+              <span className="hidden text-[13px] font-medium sm:inline">{t("Tags")}</span>
+            </Button>
+          </BarTooltip>
+        )}
 
         {/* Move to folder: folders + the home root */}
         <DropdownMenu>

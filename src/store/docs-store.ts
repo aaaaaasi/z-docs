@@ -26,8 +26,8 @@ export interface CreateDocOptions {
   folderId?: string | null
 }
 
-/** Bulk operations supported by docs-store.batchOp (loops the PATCH/DELETE APIs). */
-export type BatchOp = "star" | "unstar" | "trash" | "restore" | "deleteForever" | "move"
+/** Bulk operations supported by docs-store.batchOp (loops the document APIs). */
+export type BatchOp = "star" | "unstar" | "trash" | "restore" | "deleteForever" | "move" | "tag"
 
 export type AppView = WorkspaceView
 export type { WorkspaceApp }
@@ -90,14 +90,16 @@ interface DocsState {
   clearSelection: () => void
   /**
    * Run one bulk operation over `ids` by looping the existing document APIs
-   * (PATCH starred/trashed/folderId, DELETE for deleteForever) via api().
-   * Refreshes the list afterwards and returns per-item statistics; failures
-   * (403/404/network) are counted instead of thrown.
+   * (PATCH starred/trashed/folderId, PUT tags, DELETE for deleteForever) via
+   * api(). Refreshes the list afterwards and returns per-item statistics;
+   * failures (403/404/network) are counted instead of thrown.
+   * "tag" ADDS the given tagIds to each document's existing tags (union).
    */
   batchOp: (
     ids: string[],
     op: BatchOp,
-    folderId?: string | null
+    folderId?: string | null,
+    tagIds?: string[]
   ) => Promise<{ ok: number; failed: number }>
 
   /* auth (real account system) + guest (local-only) mode */
@@ -669,13 +671,24 @@ export const useDocsStore = create<DocsState>((set, get) => ({
 
   clearSelection: () => set({ selection: [] }),
 
-  batchOp: async (ids, op, folderId) => {
+  batchOp: async (ids, op, folderId, tagIds) => {
     let ok = 0
     let failed = 0
     for (const id of ids) {
       try {
         let res: Response
-        if (op === "deleteForever") {
+        if (op === "tag" && tagIds && tagIds.length > 0) {
+          // additive semantics: union each document's existing tags with the
+          // selected ones (never removes tags the docs already carry)
+          const doc = get().documents.find((d) => d.id === id)
+          const existing = (doc?.tags ?? []).map((tg) => tg.id)
+          const merged = Array.from(new Set([...existing, ...tagIds]))
+          res = await api(`/api/documents/${encodeURIComponent(id)}/tags`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tagIds: merged }),
+          })
+        } else if (op === "deleteForever") {
           res = await api(`/api/documents/${encodeURIComponent(id)}`, { method: "DELETE" })
         } else {
           const body: Record<string, unknown> =
@@ -703,6 +716,7 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     if (ok > 0) {
       await get().refresh({ silent: true })
       if (op === "move") await get().refreshFolders()
+      if (op === "tag") await get().loadTags()
     }
     return { ok, failed }
   },

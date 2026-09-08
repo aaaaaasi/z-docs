@@ -882,3 +882,22 @@ Stage Summary:
 - pptxgenjs 4.0.1 新依赖（客户端动态加载）。核心文件：src/lib/slides-pptx.ts（导出内核）+ deck-editor.tsx（UI 入口）+ dict-slides.ts（i18n）。
 - 验证标准：blob 拦截 + unzip + python-pptx 三层校验，视觉几何与代码设计逐一核对。
 - 待办清单更新：大文档导出进度 toast、批量操作扩展（批量标签/重命名）、游客本地数据管理 UI、拼写检查 Ctrl+Z 仍排队，可由巡检或下轮继续。
+
+---
+Task ID: 25
+Agent: main (Z.ai Code)
+Task: 续 Task 24（同一指令「继续未完成的工作和任务」）——批量打标签（多选批量操作扩展）
+
+Work Log:
+- **store 层**（docs-store.ts）：BatchOp 加 "tag"；batchOp 签名扩第 4 参 tagIds；tag 分支循环 PUT /api/documents/{id}/tags，**union 语义**（每篇文档已有标签 ∪ 所选，绝不误删已有标签）；完成后 loadTags 刷新。
+- **UI 层**（docs-grid.tsx）：BatchActionBar 新增「标签」按钮（Tag 图标 + 移动端仅图标 + busy 旋转态，回收站视图隐藏）；新增 BulkTagDialog 组件——已有标签复选 chip（aria-pressed + 选中态高 primary）、行内新建行（名称 + TagColorPalette 色板 + Plus 按钮，Enter 快捷创建，createTag 后自动选中）、重开自动重置草稿、应用/取消底部按钮（count 动态文案）。
+- **i18n**（dict-multi.ts）：12 词条（Add tags / Add tags to {n} documents / Existing tags / Tag {name} / No tags yet… / New tag name… / Create tag / Couldn't create the tag / Apply to {n} documents / Tags applied to {n} documents 等）。
+- runBatch 扩展透传 tagIds；batchSuccess 加 tag 分支文案。
+- **E2E 实测（游客模式）**：模板创建 2 文档 → 复选（[role=checkbox] eval click——卡片覆盖层挡坐标点击，agent-browser check 报 covered）→ 批量栏「已选 2 项」+「添加标签」按钮 ✓ → 对话框渲染（标题/空态/输入/色板/按钮全中文 i18n）→ 行内新建「重要」(teal) 自动选中 → 「应用到 2 篇文档」→ toast「已为 2 篇文档添加标签」+ 侧栏「重要 2」计数 + 两张卡片 TagChip 显示 ✓ → 底层验证 localStorage guest-db：tags 表新增 + documentTags 恰好 2 行关联 ✓。
+- **Union 去重专项测试**：单独选「项目提案」（已带"重要"标签）→ 重开对话框 → 点已有「重要」chip → 应用 → toast「已为 1 篇文档添加标签」且 documentTags 仍 2 行（无重复关联）✓。
+- 质量门：tsc src 零错误、eslint 干净。
+
+Stage Summary:
+- **批量打标签上线**：批量操作矩阵补齐——星标/移至/回收站/删除 + 标签。union 语义保证幂等安全（重复应用不重复关联）。
+- 游客模式实测全过（local-mode PUT /tags shim 兼容 union 语义）。
+- 待办更新：大文档导出进度 toast、拼写检查 Ctrl+Z、（远期）Ellipsus 写作洞察完善。其余主待办已完成。
