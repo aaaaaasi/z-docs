@@ -10,4 +10,6 @@
  GET /api/auth/me 401 in 631ms (next.js: 568ms, application-code: 64ms)
  GET / 200 in 79ms (next.js: 13ms, application-code: 66ms)
  GET /api/auth/me 401 in 32ms (next.js: 5ms, application-code: 27ms)
-next.js: 5ms, application-code: 27ms)
+ GET / 200 in 37ms (next.js: 4ms, application-code: 33ms)
+ GET /api/auth/me 401 in 46ms (next.js: 26ms, application-code: 21ms)
+ext.js: 26ms, application-code: 21ms)
