@@ -156,20 +156,30 @@ export function Toolbar({ api }: { api: EditorApi }) {
         </SelectTrigger>
         <SelectContent className="max-h-72">
           {FONT_FAMILIES.map((f) => (
-            <SelectItem key={f} value={f} style={{ fontFamily: f }}>{f}</SelectItem>
+            <SelectItem key={f.label} value={f.stack}>
+              <span className="flex w-full items-center justify-between gap-3">
+                <span className="truncate">{f.label}</span>
+                <span aria-hidden className="shrink-0 text-[11px] text-muted-foreground" style={{ fontFamily: f.stack }}>
+                  {f.sample}
+                </span>
+              </span>
+            </SelectItem>
           ))}
         </SelectContent>
       </Select>
 
       {/* Font size stepper */}
+      {/* Stepping semantics: + = smallest standard size strictly greater than the
+          current computed size, − = largest strictly smaller. Handles any computed
+          value (e.g. 13pt from pasted content) instead of snapping to index -1. */}
       <div className="mx-1 flex h-9 shrink-0 items-center rounded-md bg-muted/60">
         <Button
           variant="ghost" size="icon" aria-label={t("Decrease font size")}
           className="h-9 w-7 rounded-none rounded-l-md text-muted-foreground"
+          disabled={api.fmt.fontSize <= FONT_SIZES[0]}
           onClick={() => {
-            const i = FONT_SIZES.indexOf(api.fmt.fontSize)
-            const next = FONT_SIZES[Math.max(0, i - 1)] ?? 8
-            api.applyFontSize(next)
+            const next = [...FONT_SIZES].reverse().find((s) => s < api.fmt.fontSize)
+            if (next) api.applyFontSize(next)
           }}
         >
           <span className="text-xs font-semibold">−</span>
@@ -178,10 +188,10 @@ export function Toolbar({ api }: { api: EditorApi }) {
         <Button
           variant="ghost" size="icon" aria-label={t("Increase font size")}
           className="h-9 w-7 rounded-none rounded-r-md text-muted-foreground"
+          disabled={api.fmt.fontSize >= FONT_SIZES[FONT_SIZES.length - 1]}
           onClick={() => {
-            const i = FONT_SIZES.indexOf(api.fmt.fontSize)
-            const next = FONT_SIZES[Math.min(FONT_SIZES.length - 1, i + 1)] ?? 11
-            api.applyFontSize(next)
+            const next = FONT_SIZES.find((s) => s > api.fmt.fontSize)
+            if (next) api.applyFontSize(next)
           }}
         >
           <span className="text-xs font-semibold">+</span>

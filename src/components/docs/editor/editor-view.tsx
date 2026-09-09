@@ -12,6 +12,7 @@ import { buildPrintDocument, exportSafeName } from "@/lib/print-html"
 import { api as apiFetch } from "@/lib/api-client"
 import { freezeRemoteImages } from "@/lib/image-freeze"
 import { trackedDownload, readBlobWithProgress } from "@/store/export-progress-store"
+import { cn } from "@/lib/utils"
 import { useI18n, tForLang, getCurrentLang } from "@/lib/i18n"
 import {
   selectionOffsets, selectedBlocks, findQuoteRange,
@@ -359,6 +360,32 @@ export function EditorView() {
       setOpenAiOnEditor(false)
     }
   }, [openAiOnEditor, doc, setOpenAiOnEditor])
+
+  // opened from a search result: surface WHERE the document matched — the find
+  // panel comes up pre-filled with the query and highlights every occurrence
+  // in the body, mirroring Google Docs' search-result drill-in.
+  const searchOnOpen = useDocsStore((s) => s.searchOnOpen)
+  React.useEffect(() => {
+    if (!searchOnOpen || !doc) return
+    const query = searchOnOpen
+    const t = setTimeout(() => {
+      setFindOpen(true)
+      setFindReplaceMode(false)
+      setFindQuery(query)
+      // multi-term home queries are AND-searched, but in-doc find is literal:
+      // when the full phrase doesn't occur, highlight the first term instead.
+      const res = runFind(query, false)
+      if (res.matches.length === 0) {
+        const firstTerm = query.trim().split(/\s+/)[0] ?? query
+        if (firstTerm && firstTerm !== query) {
+          setFindQuery(firstTerm)
+          runFind(firstTerm, false)
+        }
+      }
+    }, 260) // let the freshly rendered page paint before matching
+    return () => clearTimeout(t)
+     
+  }, [searchOnOpen, doc])
 
   /* ---------------- writing telemetry tracker ----------------
    * One tracker per document: observes beforeinput on the editable page,
@@ -893,17 +920,28 @@ export function EditorView() {
       const el = pageRef.current
       if (!el) return
       ensureSelection()
+      // Chrome ≥119 executes execCommand("fontSize") with CSS output:
+      //   <span style="font-size: xxx-large"> (48px = 36pt) instead of <font size="7">.
+      // The legacy font[size="7"] replacement loop missed those spans entirely, which
+      // froze every step at 36pt. Normalize BOTH legacy <font> and modern keyword
+      // spans down to the exact requested point size right after the command.
       document.execCommand("fontSize", false, "7")
-      el.querySelectorAll('font[size="7"]').forEach((f) => {
-        const span = document.createElement("span")
-        span.style.fontSize = `${pt}pt`
-        span.innerHTML = f.innerHTML
-        f.replaceWith(span)
+      el.querySelectorAll<HTMLElement>('font[size="7"], span[style*="xxx-large"]').forEach((n) => {
+        const isLegacyFont = n.tagName === "FONT"
+        if (!isLegacyFont && !/font-size\s*:\s*xxx-large/i.test(n.getAttribute("style") ?? "")) return
+        if (isLegacyFont) {
+          const span = document.createElement("span")
+          span.style.fontSize = `${pt}pt`
+          span.innerHTML = n.innerHTML
+          n.replaceWith(span)
+        } else {
+          n.style.fontSize = `${pt}pt`
+        }
       })
       handleInput()
       refreshFmt()
     },
-    [handleInput, refreshFmt]
+    [handleInput, refreshFmt, ensureSelection]
   )
 
   const applyLineSpacing = React.useCallback(
@@ -1315,13 +1353,14 @@ export function EditorView() {
 
   const toggleComments = React.useCallback(
     (open?: boolean) => {
-      setCommentsOpen((prev) => {
-        const next = open ?? !prev
-        if (!next) setPendingQuote(null)
-        return next
-      })
+      const next = open ?? !commentsOpen
+      if (!next) setPendingQuote(null)
+      // right-rail exclusivity: opening comments SWITCHES away from insights
+      // (rather than bouncing the click — see the effect below)
+      if (next) setInsightsOpen(false)
+      setCommentsOpen(next)
     },
-    [setPendingQuote]
+    [commentsOpen, setPendingQuote]
   )
 
   /** Capture the current selection as a quote and open the comment composer. */
@@ -2107,8 +2146,31 @@ export function EditorView() {
   }, [])
 
   /** Live writing-insights rail (Ellipsus-style right sidebar). */
-  const toggleInsights = React.useCallback((open?: boolean) => {
-    setInsightsOpen((prev) => open ?? !prev)
+  const toggleInsights = React.useCallback(
+    (open?: boolean) => {
+      const next = open ?? !insightsOpen
+      // switching to insights closes the other right rail (comments)
+      if (next) setCommentsOpen(false)
+      setInsightsOpen(next)
+    },
+    [insightsOpen]
+  )
+
+  // Right-rail exclusivity (safety net for programmatic opens — comment
+  // composer, suggestion auto-open): at most one of comments/insights stays.
+  // Manual toggles above implement proper SWITCH semantics so the last rail
+  // the user asked for always wins.
+  React.useEffect(() => {
+    if (commentsOpen && insightsOpen) setInsightsOpen(false)
+  }, [commentsOpen, insightsOpen])
+
+  // <lg the rails float over the page — a scrim behind them makes "tap the
+  // document to dismiss" discoverable, like Material modal drawers.
+  const anyRailOpen = outlineOpen || commentsOpen || insightsOpen
+  const closeAllRails = React.useCallback(() => {
+    setOutlineOpen(false)
+    setCommentsOpen(false)
+    setInsightsOpen(false)
   }, [])
 
   const openStudio = React.useCallback(() => {
@@ -2303,6 +2365,15 @@ export function EditorView() {
 
       {doc ? (
         <div className="relative flex min-h-0 flex-1">
+          {/* mobile/tablet scrim behind the overlay rails (lg docks them) */}
+          <div
+            aria-hidden={!anyRailOpen}
+            onClick={closeAllRails}
+            className={cn(
+              "absolute inset-0 z-20 bg-foreground/25 backdrop-blur-[1px] transition-opacity duration-300 lg:hidden",
+              anyRailOpen ? "opacity-100" : "pointer-events-none opacity-0"
+            )}
+          />
           <FindReplacePanel
             open={findOpen}
             replaceMode={findReplaceMode}
@@ -2311,6 +2382,7 @@ export function EditorView() {
             matchCount={findMatches.length}
             activeIndex={findActiveIndex}
             commentsOpen={commentsOpen}
+            insightsOpen={insightsOpen}
             onQueryChange={setFindQuery}
             onCaseToggle={() => setFindCase((c) => !c)}
             onToggleReplaceMode={() => setFindReplaceMode((r) => !r)}
@@ -2464,7 +2536,7 @@ export function EditorView() {
         </div>
       ) : (
         <div className="doc-canvas-bg flex flex-1 items-start justify-center overflow-hidden p-10">
-          <div className="w-full max-w-[816px] space-y-4 rounded-sm bg-white p-24 shadow-[0_1px_2px_rgba(35,32,28,0.08),0_12px_40px_rgba(35,32,28,0.1)]">
+          <div className="w-full max-w-[816px] space-y-4 rounded-sm bg-white p-24 max-sm:p-6 shadow-[0_1px_2px_rgba(35,32,28,0.08),0_12px_40px_rgba(35,32,28,0.1)]">
             <div className="flex items-center gap-3 text-muted-foreground">
               <Loader2 className="h-5 w-5 animate-spin" />
               <span className="text-sm">{t("Loading document…")}</span>

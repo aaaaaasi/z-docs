@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils"
 function Menu({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="rounded px-2.5 py-1 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground max-sm:py-2">
+      <DropdownMenuTrigger className="max-sm:h-11 max-sm:px-3 rounded px-2.5 py-1 text-[13px] font-medium text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground data-[state=open]:bg-muted data-[state=open]:text-foreground max-sm:py-2">
         {label}
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-56">{children}</DropdownMenuContent>
@@ -41,7 +41,7 @@ export function MenuBar({ api }: { api: EditorApi }) {
 
   return (
     <div
-      className="no-print no-scrollbar relative flex h-10 items-center gap-0.5 overflow-x-auto border-b bg-background px-2 max-sm:gap-0 max-sm:px-1"
+      className="no-print no-scrollbar relative flex h-10 max-sm:h-11 items-center gap-0.5 overflow-x-auto border-b bg-background px-2 max-sm:gap-0 max-sm:px-1"
       role="menubar"
       aria-label={t("Document menus")}
     >

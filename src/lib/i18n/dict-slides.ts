@@ -155,4 +155,8 @@ export const dictSlides: Record<string, string> = {
   "Export as PowerPoint (.pptx)": "导出为 PowerPoint (.pptx) 文件",
   "Downloaded {name}": "已下载 {name}",
   "Export failed — try again": "导出失败，请重试",
+
+  /* ---------- responsive chrome (<768 overflow panel / <1024 save dot) ---------- */
+  "More actions": "更多操作",
+  "Design": "设计",
 }

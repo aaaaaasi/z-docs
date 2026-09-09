@@ -1,0 +1,1505 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { createPortal } from "react-dom"
+     5→import { useDraggable } from "@dnd-kit/core"
+     6→import { useDocsStore, type BatchOp } from "@/store/docs-store"
+     7→import {
+     8→  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+     9→  DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuCheckboxItem,
+    10→} from "@/components/ui/dropdown-menu"
+    11→import {
+    12→  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+    13→} from "@/components/ui/dialog"
+    14→import {
+    15→  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+    16→  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+    17→} from "@/components/ui/alert-dialog"
+    18→import {
+    19→  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+    20→} from "@/components/ui/select"
+    21→import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+    22→import { Button } from "@/components/ui/button"
+    23→import { Input } from "@/components/ui/input"
+    24→import { Skeleton } from "@/components/ui/skeleton"
+    25→import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+    26→import { useToast } from "@/hooks/use-toast"
+    27→import type { DocumentMeta, FolderDTO, TagDTO } from "@/lib/docs-types"
+    28→import { relativeTime } from "@/lib/doc-utils"
+    29→import { DocPreview } from "@/components/docs/doc-preview"
+    30→import { docDragId } from "./doc-dnd"
+    31→import { DEFAULT_TAG_COLOR, TagChip, TagColorPalette, TagDot, TagFilterChip, TagOverflowChip } from "./tag-ui"
+    32→import { useI18n } from "@/lib/i18n"
+    33→import {
+    34→  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder, Tag, Plus, Check, Loader2, X, Home, CheckCheck, ArrowRight
+    35→} from "lucide-react"
+    36→import { cn } from "@/lib/utils"
+    37→
+    38→type SortKey = "updated" | "created" | "title"
+    39→
+    40→function titleFor(filter: string, folders: FolderDTO[], activeFolderId: string | null) {
+    41→  if (filter === "trash") return "Trash"
+    42→  if (filter === "starred") return "Starred"
+    43→  if (filter === "folder") {
+    44→    const f = folders.find((x) => x.id === activeFolderId)
+    45→    return f ? f.name : "Folder"
+    46→  }
+    47→  return "Recent documents"
+    48→}
+    49→
+    50→export function DocsGrid() {
+    51→  const { t, lang } = useI18n()
+    52→  const documents = useDocsStore((s) => s.documents)
+    53→  const loading = useDocsStore((s) => s.loading)
+    54→  const error = useDocsStore((s) => s.error)
+    55→  const filter = useDocsStore((s) => s.filter)
+    56→  const layout = useDocsStore((s) => s.layout)
+    57→  const setLayout = useDocsStore((s) => s.setLayout)
+    58→  const searchQuery = useDocsStore((s) => s.searchQuery)
+    59→  const openDoc = useDocsStore((s) => s.openDoc)
+    60→  const toggleStar = useDocsStore((s) => s.toggleStar)
+    61→  const renameDoc = useDocsStore((s) => s.renameDoc)
+    62→  const setTrashed = useDocsStore((s) => s.setTrashed)
+    63→  const deleteForever = useDocsStore((s) => s.deleteForever)
+    64→  const duplicateDoc = useDocsStore((s) => s.duplicateDoc)
+    65→  const folders = useDocsStore((s) => s.folders)
+    66→  const activeFolderId = useDocsStore((s) => s.activeFolderId)
+    67→  const moveToFolder = useDocsStore((s) => s.moveToFolder)
+    68→  const tags = useDocsStore((s) => s.tags)
+    69→  const tagFilter = useDocsStore((s) => s.tagFilter)
+    70→  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+    71→  /* multi-select + bulk actions */
+    72→  const selection = useDocsStore((s) => s.selection)
+    73→  const toggleSelect = useDocsStore((s) => s.toggleSelect)
+    74→  const selectAll = useDocsStore((s) => s.selectAll)
+    75→  const clearSelection = useDocsStore((s) => s.clearSelection)
+    76→  const batchOp = useDocsStore((s) => s.batchOp)
+    77→  const { toast } = useToast()
+    78→
+    79→  const [sort, setSort] = React.useState<SortKey>("updated")
+    80→  const [renaming, setRenaming] = React.useState<DocumentMeta | null>(null)
+    81→  const [renameValue, setRenameValue] = React.useState("")
+    82→  const [deleting, setDeleting] = React.useState<DocumentMeta | null>(null)
+    83→  /* which bulk operation is currently in flight ("null" = idle) */
+    84→  const [busy, setBusy] = React.useState<BatchOp | null>(null)
+    85→  const [confirmBatchDelete, setConfirmBatchDelete] = React.useState(false)
+    86→  const [bulkTagOpen, setBulkTagOpen] = React.useState(false)
+    87→  const [bulkRenameOpen, setBulkRenameOpen] = React.useState(false)
+    88→
+    89→  const sorted = React.useMemo(() => {
+    90→    const list = [...documents]
+    91→    if (sort === "title") list.sort((a, b) => a.title.localeCompare(b.title))
+    92→    else if (sort === "created") list.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    93→    else list.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    94→    return list
+    95→  }, [documents, sort])
+    96→
+    97→  // tag filter narrows the current view (folder / starred / search all compose with it)
+    98→  const visible = React.useMemo(
+    99→    () => (tagFilter ? sorted.filter((d) => (d.tags ?? []).some((t) => t.id === tagFilter)) : sorted),
+   100→    [sorted, tagFilter]
+   101→  )
+   102→  const activeTag = tagFilter ? tags.find((tg) => tg.id === tagFilter) ?? null : null
+   103→
+   104→  const selectionActive = selection.length > 0
+   105→  const allVisibleSelected =
+   106→    visible.length > 0 && visible.every((d) => selection.includes(d.id))
+   107→
+   108→  /* Escape clears the selection (unless a menu/dialog/input consumed it first) */
+   109→  React.useEffect(() => {
+   110→    const onKey = (e: KeyboardEvent) => {
+   111→      if (e.key !== "Escape") return
+   112→      if (useDocsStore.getState().selection.length === 0) return
+   113→      const el = e.target as HTMLElement | null
+   114→      if (
+   115→        el?.closest(
+   116→          '[role="menu"], [role="dialog"], [role="alertdialog"], [role="listbox"], input, textarea, [contenteditable="true"]'
+   117→        )
+   118→      )
+   119→        return
+   120→      useDocsStore.getState().clearSelection()
+   121→    }
+   122→    window.addEventListener("keydown", onKey)
+   123→    return () => window.removeEventListener("keydown", onKey)
+   124→  }, [])
+   125→
+   126→  const confirmRename = async () => {
+   127→    if (!renaming) return
+   128→    const name = renameValue.trim()
+   129→    if (!name) return
+   130→    await renameDoc(renaming.id, name)
+   131→    toast({ title: t("Renamed"), description: `“${name}”` })
+   132→    setRenaming(null)
+   133→  }
+   134→
+   135→  const confirmDelete = async () => {
+   136→    if (!deleting) return
+   137→    await deleteForever(deleting.id)
+   138→    toast({ title: t("Deleted permanently"), variant: "destructive" })
+   139→    setDeleting(null)
+   140→  }
+   141→
+   142→  const batchSuccess = (op: BatchOp, n: number, folderName?: string) => {
+   143→    switch (op) {
+   144→      case "star":
+   145→        return t("{n} documents starred", { n })
+   146→      case "unstar":
+   147→        return t("{n} documents unstarred", { n })
+   148→      case "trash":
+   149→        return t("{n} documents moved to trash", { n })
+   150→      case "restore":
+   151→        return t("{n} documents restored", { n })
+   152→      case "deleteForever":
+   153→        return t("{n} documents deleted forever", { n })
+   154→      case "move":
+   155→        return t("{n} documents moved to “{name}”", { n, name: folderName ?? t("Home") })
+   156→      case "tag":
+   157→        return t("Tags applied to {n} documents", { n })
+   158→      case "rename":
+   159→        return t("Renamed {n} documents", { n })
+   160→    }
+   161→  }
+   162→
+   163→  const runBatch = async (
+   164→    op: BatchOp,
+   165→    folderId?: string | null,
+   166→    folderName?: string,
+   167→    tagIds?: string[]
+   168→  ) => {
+   169→    if (busy || selection.length === 0) return
+   170→    // permanent deletion always asks first (mirrors the single-doc flow)
+   171→    if (op === "deleteForever") {
+   172→      setConfirmBatchDelete(true)
+   173→      return
+   174→    }
+   175→    const ids = [...selection]
+   176→    setBusy(op)
+   177→    const res = await batchOp(ids, op, folderId, tagIds)
+   178→    setBusy(null)
+   179→    if (res.ok > 0) toast({ title: batchSuccess(op, res.ok, folderName) })
+   180→    if (res.failed > 0)
+   181→      toast({ title: t("{n} items failed", { n: res.failed }), variant: "destructive" })
+   182→    clearSelection()
+   183→  }
+   184→
+   185→  /** Bulk rename — only the documents whose name actually changes are
+   186→   *  PATCHed, so unchanged items keep their updatedAt timestamps. */
+   187→  const applyBulkRename = async (pairs: { id: string; title: string }[]) => {
+   188→    if (busy || pairs.length === 0) return
+   189→    setBusy("rename")
+   190→    const res = await batchOp(
+   191→      pairs.map((p) => p.id),
+   192→      "rename",
+   193→      undefined,
+   194→      undefined,
+   195→      pairs.map((p) => p.title)
+   196→    )
+   197→    setBusy(null)
+   198→    if (res.ok > 0) toast({ title: t("Renamed {n} documents", { n: res.ok }) })
+   199→    if (res.failed > 0)
+   200→      toast({ title: t("{n} items failed", { n: res.failed }), variant: "destructive" })
+   201→    clearSelection()
+   202→  }
+   203→
+   204→  return (
+   205→    <section aria-label={t("Document list")} className="flex-1 px-4 py-6 sm:px-8">
+   206→      <div className="mx-auto max-w-6xl">
+   207→        <div className="mb-4 flex flex-wrap items-center gap-3">
+   208→          <h2 className="text-base font-semibold">{t(titleFor(filter, folders, activeFolderId))}</h2>
+   209→          {!loading && (
+   210→            <span className="tnum text-[13px] text-muted-foreground">
+   211→              {t(visible.length === 1 ? "{n} document" : "{n} documents", { n: visible.length })}
+   212→              {searchQuery ? t(" matching “{query}”", { query: searchQuery }) : ""}
+   213→            </span>
+   214→          )}
+   215→          <div className="ml-auto flex items-center gap-2">
+   216→            <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+   217→              <SelectTrigger className="h-8 w-[128px] rounded-md text-[13px] text-muted-foreground" aria-label={t("Sort documents")}>
+   218→                <SelectValue />
+   219→              </SelectTrigger>
+   220→              <SelectContent>
+   221→                <SelectItem value="updated">{t("Last edited")}</SelectItem>
+   222→                <SelectItem value="created">{t("Date created")}</SelectItem>
+   223→                <SelectItem value="title">{t("Title A–Z")}</SelectItem>
+   224→              </SelectContent>
+   225→            </Select>
+   226→            <div className="flex items-center rounded-md border p-0.5">
+   227→              <Button
+   228→                variant="ghost" size="icon"
+   229→                aria-label={t("Grid view")}
+   230→                onClick={() => setLayout("grid")}
+   231→                className={cn("h-7 w-7 rounded-[5px]", layout === "grid" ? "bg-accent text-accent-foreground" : "text-muted-foreground")}
+   232→              >
+   233→                <LayoutGrid className="h-4 w-4" />
+   234→              </Button>
+   235→              <Button
+   236→                variant="ghost" size="icon"
+   237→                aria-label={t("List view")}
+   238→                onClick={() => setLayout("list")}
+   239→                className={cn("h-7 w-7 rounded-[5px]", layout === "list" ? "bg-accent text-accent-foreground" : "text-muted-foreground")}
+   240→              >
+   241→                <List className="h-4 w-4" />
+   242→              </Button>
+   243→            </div>
+   244→          </div>
+   245→        </div>
+   246→
+   247→        {/* selection status row: count + select-all / clear (Google Drive style) */}
+   248→        {selectionActive && !loading && (
+   249→          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-1.5">
+   250→            <CheckCheck className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+   251→            <span className="tnum text-[13px] font-medium">{t("{n} selected", { n: selection.length })}</span>
+   252→            <div className="ml-auto flex items-center gap-1.5">
+   253→              <Button
+   254→                variant="outline" size="sm"
+   255→                disabled={busy !== null || allVisibleSelected}
+   256→                onClick={() => selectAll(visible.map((d) => d.id))}
+   257→                className="h-7 rounded-full px-3 text-[12.5px]"
+   258→              >
+   259→                {t("Select all")}
+   260→              </Button>
+   261→              <Button
+   262→                variant="ghost" size="sm"
+   263→                disabled={busy !== null}
+   264→                onClick={clearSelection}
+   265→                className="h-7 rounded-full px-3 text-[12.5px]"
+   266→              >
+   267→                {t("Clear selection")}
+   268→              </Button>
+   269→            </div>
+   270→          </div>
+   271→        )}
+   272→
+   273→        {/* Google Drive style filter chip while a tag filter is active */}
+   274→        {activeTag && !loading && (
+   275→          <div className="mb-4 flex flex-wrap items-center gap-2">
+   276→            <TagFilterChip tag={activeTag} onClear={() => setTagFilter(null)} />
+   277→          </div>
+   278→        )}
+   279→
+   280→        {error && (
+   281→          <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
+   282→            {error}. <button className="font-medium underline underline-offset-2" onClick={() => useDocsStore.getState().refresh()}>{t("Retry")}</button>
+   283→          </div>
+   284→        )}
+   285→
+   286→        {loading ? (
+   287→          <div className="flex flex-wrap gap-5">
+   288→            {Array.from({ length: 8 }).map((_, i) => (
+   289→              <div key={i} className="w-[168px] space-y-2">
+   290→                <Skeleton className="h-[220px] w-[168px] rounded-sm" />
+   291→                <Skeleton className="h-4 w-3/4" />
+   292→                <Skeleton className="h-3 w-1/2" />
+   293→              </div>
+   294→            ))}
+   295→          </div>
+   296→        ) : sorted.length === 0 || visible.length === 0 ? (
+   297→          <EmptyState filter={filter} search={!!searchQuery} tag={activeTag} />
+   298→        ) : layout === "grid" ? (
+   299→          <div className="flex flex-wrap gap-5">
+   300→            {visible.map((doc, i) => (
+   301→              <DocCard
+   302→                key={doc.id}
+   303→                doc={doc}
+   304→                index={i}
+   305→                inTrash={filter === "trash"}
+   306→                folders={folders}
+   307→                selected={selection.includes(doc.id)}
+   308→                selectionActive={selectionActive}
+   309→                onToggleSelect={() => toggleSelect(doc.id)}
+   310→                onOpen={() => openDoc(doc.id)}
+   311→                onStar={() => toggleStar(doc.id)}
+   312→                onRename={() => { setRenaming(doc); setRenameValue(doc.title) }}
+   313→                onTrash={() => { void setTrashed(doc.id, true); toast({ title: t("Moved to trash"), description: doc.title }) }}
+   314→                onRestore={() => { void setTrashed(doc.id, false); toast({ title: t("Restored"), description: doc.title }) }}
+   315→                onDelete={() => setDeleting(doc)}
+   316→                onDuplicate={() => { void duplicateDoc(doc.id); toast({ title: t("Copy created") }) }}
+   317→                onMoveToFolder={(folderId) => {
+   318→                  void moveToFolder(doc.id, folderId)
+   319→                  const f = folders.find((x) => x.id === folderId)
+   320→                  toast({ title: f ? t("Moved to “{name}”", { name: f.name }) : t("Removed from folder") })
+   321→                }}
+   322→              />
+   323→            ))}
+   324→          </div>
+   325→        ) : (
+   326→          <div className="overflow-hidden rounded-lg border">
+   327→            {visible.map((doc, i) => (
+   328→              <DocRow
+   329→                key={doc.id}
+   330→                doc={doc}
+   331→                index={i}
+   332→                inTrash={filter === "trash"}
+   333→                folders={folders}
+   334→                selected={selection.includes(doc.id)}
+   335→                selectionActive={selectionActive}
+   336→                onToggleSelect={() => toggleSelect(doc.id)}
+   337→                onOpen={() => openDoc(doc.id)}
+   338→                onStar={() => toggleStar(doc.id)}
+   339→                onRename={() => { setRenaming(doc); setRenameValue(doc.title) }}
+   340→                onTrash={() => { void setTrashed(doc.id, true); toast({ title: t("Moved to trash"), description: doc.title }) }}
+   341→                onRestore={() => { void setTrashed(doc.id, false); toast({ title: t("Restored"), description: doc.title }) }}
+   342→                onDelete={() => setDeleting(doc)}
+   343→                onDuplicate={() => { void duplicateDoc(doc.id); toast({ title: t("Copy created") }) }}
+   344→                onMoveToFolder={(folderId) => {
+   345→                  void moveToFolder(doc.id, folderId)
+   346→                  const f = folders.find((x) => x.id === folderId)
+   347→                  toast({ title: f ? t("Moved to “{name}”", { name: f.name }) : t("Removed from folder") })
+   348→                }}
+   349→              />
+   350→            ))}
+   351→          </div>
+   352→        )}
+   353→      </div>
+   354→
+   355→      {/* Rename dialog */}
+   356→      <Dialog open={!!renaming} onOpenChange={(o) => !o && setRenaming(null)}>
+   357→        <DialogContent className="sm:max-w-md">
+   358→          <DialogHeader>
+   359→            <DialogTitle>{t("Rename document")}</DialogTitle>
+   360→          </DialogHeader>
+   361→          <Input
+   362→            autoFocus
+   363→            value={renameValue}
+   364→            onChange={(e) => setRenameValue(e.target.value)}
+   365→            onKeyDown={(e) => e.key === "Enter" && confirmRename()}
+   366→            maxLength={120}
+   367→            className="h-10"
+   368→          />
+   369→          <DialogFooter>
+   370→            <Button variant="outline" onClick={() => setRenaming(null)}>{t("Cancel")}</Button>
+   371→            <Button onClick={confirmRename} disabled={!renameValue.trim()}>{t("Rename")}</Button>
+   372→          </DialogFooter>
+   373→        </DialogContent>
+   374→      </Dialog>
+   375→
+   376→      {/* Delete forever confirm */}
+   377→      <AlertDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+   378→        <AlertDialogContent>
+   379→          <AlertDialogHeader>
+   380→            <AlertDialogTitle>{t("Delete “{title}” forever?", { title: deleting?.title ?? "" })}</AlertDialogTitle>
+   381→            <AlertDialogDescription>
+   382→              {t("This can’t be undone. The document will be permanently removed.")}
+   383→            </AlertDialogDescription>
+   384→          </AlertDialogHeader>
+   385→          <AlertDialogFooter>
+   386→            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+   387→            <AlertDialogAction
+   388→              className="bg-destructive text-white hover:bg-destructive/90"
+   389→              onClick={confirmDelete}
+   390→            >
+   391→              {t("Delete forever")}
+   392→            </AlertDialogAction>
+   393→          </AlertDialogFooter>
+   394→        </AlertDialogContent>
+   395→      </AlertDialog>
+   396→      {/* Batch delete-forever confirm (mirrors the single-doc flow) */}
+   397→      <AlertDialog open={confirmBatchDelete} onOpenChange={setConfirmBatchDelete}>
+   398→        <AlertDialogContent>
+   399→          <AlertDialogHeader>
+   400→            <AlertDialogTitle>{t("Delete {n} documents forever?", { n: selection.length })}</AlertDialogTitle>
+   401→            <AlertDialogDescription>
+   402→              {t("This can’t be undone. The selected documents will be permanently removed.")}
+   403→            </AlertDialogDescription>
+   404→          </AlertDialogHeader>
+   405→          <AlertDialogFooter>
+   406→            <AlertDialogCancel>{t("Cancel")}</AlertDialogCancel>
+   407→            <AlertDialogAction
+   408→              className="bg-destructive text-white hover:bg-destructive/90"
+   409→              onClick={() => {
+   410→                setConfirmBatchDelete(false)
+   411→                void runBatch("deleteForever")
+   412→              }}
+   413→            >
+   414→              {t("Delete forever")}
+   415→            </AlertDialogAction>
+   416→          </AlertDialogFooter>
+   417→        </AlertDialogContent>
+   418→      </AlertDialog>
+   419→
+   420→      {/* Bulk tag picker: pick/create tags, applied additively to the selection */}
+   421→      <BulkTagDialog
+   422→        open={bulkTagOpen}
+   423→        onOpenChange={setBulkTagOpen}
+   424→        count={selection.length}
+   425→        busy={busy === "tag"}
+   426→        onApply={(tagIds) => {
+   427→          setBulkTagOpen(false)
+   428→          void runBatch("tag", undefined, undefined, tagIds)
+   429→        }}
+   430→      />
+   431→
+   432→      {/* Bulk rename: find & replace or numbered patterns, live preview */}
+   433→      <BulkRenameDialog
+   434→        open={bulkRenameOpen}
+   435→        onOpenChange={setBulkRenameOpen}
+   436→        docs={visible
+   437→          .filter((d) => selection.includes(d.id))
+   438→          .map((d) => ({ id: d.id, title: d.title }))}
+   439→        busy={busy === "rename"}
+   440→        onApply={(pairs) => {
+   441→          setBulkRenameOpen(false)
+   442→          void applyBulkRename(pairs)
+   443→        }}
+   444→      />
+   445→
+   446→      {/* Floating bulk-action bar (portaled to body: the animate-view-in wrapper
+   447→          keeps a persistent transform, which would break viewport-fixed children) */}
+   448→      {selectionActive &&
+   449→        !loading &&
+   450→        createPortal(
+   451→          <BatchActionBar
+   452→            count={selection.length}
+   453→            inTrash={filter === "trash"}
+   454→            folders={folders}
+   455→            busy={busy}
+   456→            onRun={runBatch}
+   457→            onOpenTags={() => setBulkTagOpen(true)}
+   458→            onOpenRename={() => setBulkRenameOpen(true)}
+   459→            onClose={clearSelection}
+   460→          />,
+   461→          document.body
+   462→        )}
+   463→    </section>
+   464→  )
+   465→}
+   466→
+   467→interface DocActions {
+   468→  onOpen: () => void
+   469→  onStar: () => void
+   470→  onRename: () => void
+   471→  onTrash: () => void
+   472→  onRestore: () => void
+   473→  onDelete: () => void
+   474→  onDuplicate: () => void
+   475→  onMoveToFolder: (folderId: string | null) => void
+   476→}
+   477→
+   478→function MoveToSubmenu({
+   479→  folders,
+   480→  docFolderId,
+   481→  onPick,
+   482→}: {
+   483→  folders: FolderDTO[]
+   484→  docFolderId: string | null | undefined
+   485→  onPick: (folderId: string | null) => void
+   486→}) {
+   487→  const { t } = useI18n()
+   488→  return (
+   489→    <DropdownMenuSub>
+   490→      <DropdownMenuSubTrigger className="gap-2">
+   491→        <FolderInput className="h-4 w-4" /> {t("Move to")}
+   492→      </DropdownMenuSubTrigger>
+   493→      <DropdownMenuSubContent className="w-48">
+   494→        <DropdownMenuItem onClick={() => onPick(null)}>
+   495→          <Folder className="h-4 w-4" /> {t("No folder")}
+   496→          {!docFolderId && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+   497→        </DropdownMenuItem>
+   498→        {folders.length > 0 && <DropdownMenuSeparator />}
+   499→        {folders.map((f) => (
+   500→          <DropdownMenuItem key={f.id} onClick={() => onPick(f.id)}>
+   501→            <Folder className="h-4 w-4" style={{ color: f.color }} /> {f.name}
+   502→            {docFolderId === f.id && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+   503→          </DropdownMenuItem>
+   504→        ))}
+   505→      </DropdownMenuSubContent>
+   506→    </DropdownMenuSub>
+   507→  )
+   508→}
+   509→
+   510→/** "Add tags" submenu: checkbox per tag + inline "New tag…" creation (applied to this doc) */
+   511→function AddTagsSubmenu({ doc }: { doc: DocumentMeta }) {
+   512→  const tags = useDocsStore((s) => s.tags)
+   513→  const setDocTags = useDocsStore((s) => s.setDocTags)
+   514→  const createTag = useDocsStore((s) => s.createTag)
+   515→  const { toast } = useToast()
+   516→  const { t } = useI18n()
+   517→  const [creating, setCreating] = React.useState(false)
+   518→  const [name, setName] = React.useState("")
+   519→  const [color, setColor] = React.useState<string>(DEFAULT_TAG_COLOR)
+   520→  const docTagIds = new Set((doc.tags ?? []).map((tg) => tg.id))
+   521→
+   522→  const toggleTag = (tagId: string) => {
+   523→    const ids = (doc.tags ?? []).map((tg) => tg.id)
+   524→    void setDocTags(doc.id, ids.includes(tagId) ? ids.filter((i) => i !== tagId) : [...ids, tagId])
+   525→  }
+   526→
+   527→  const confirmCreate = async () => {
+   528→    const trimmed = name.trim()
+   529→    if (!trimmed) return
+   530→    const tag = await createTag(trimmed, color)
+   531→    if (tag) {
+   532→      const ids = (doc.tags ?? []).map((tg) => tg.id)
+   533→      if (!ids.includes(tag.id)) void setDocTags(doc.id, [...ids, tag.id])
+   534→      toast({ title: t("Tag created"), description: t("“{name}” added to this document.", { name: tag.name }) })
+   535→      setCreating(false)
+   536→      setName("")
+   537→    } else {
+   538→      toast({ title: t("Couldn’t create tag"), description: t("Names must be unique."), variant: "destructive" })
+   539→    }
+   540→  }
+   541→
+   542→  return (
+   543→    <DropdownMenuSub>
+   544→      <DropdownMenuSubTrigger className="gap-2">
+   545→        <Tag className="h-4 w-4" /> {t("Add tags")}
+   546→      </DropdownMenuSubTrigger>
+   547→      <DropdownMenuSubContent className="w-52">
+   548→        {tags.map((tag) => (
+   549→          <DropdownMenuCheckboxItem
+   550→            key={tag.id}
+   551→            checked={docTagIds.has(tag.id)}
+   552→            onCheckedChange={() => toggleTag(tag.id)}
+   553→            onSelect={(e) => e.preventDefault()}
+   554→          >
+   555→            <span
+   556→              aria-hidden="true"
+   557→              className="h-2 w-2 shrink-0 rounded-full"
+   558→              style={{ backgroundColor: tag.color }}
+   559→            />
+   560→            <span className="truncate">{tag.name}</span>
+   561→          </DropdownMenuCheckboxItem>
+   562→        ))}
+   563→        {tags.length > 0 && <DropdownMenuSeparator />}
+   564→        {creating ? (
+   565→          <div
+   566→            className="flex flex-col gap-1.5 px-2 py-1.5"
+   567→            onBlur={(e) => {
+   568→              // cancel only when focus leaves the whole creation form (palette clicks stay inside)
+   569→              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCreating(false)
+   570→            }}
+   571→          >
+   572→            <div className="flex items-center gap-2">
+   573→              <span
+   574→                aria-hidden="true"
+   575→                className="h-2 w-2 shrink-0 rounded-full"
+   576→                style={{ backgroundColor: color }}
+   577→              />
+   578→              <Input
+   579→                autoFocus
+   580→                value={name}
+   581→                onChange={(e) => setName(e.target.value)}
+   582→                onKeyDown={(e) => {
+   583→                  // stop the Radix menu typeahead from stealing printable keys / arrows
+   584→                  e.stopPropagation()
+   585→                  if (e.key === "Enter") void confirmCreate()
+   586→                  if (e.key === "Escape") setCreating(false)
+   587→                }}
+   588→                placeholder={t("Tag name")}
+   589→                aria-label={t("New tag name")}
+   590→                className="h-8 rounded-md text-[13px]"
+   591→                maxLength={24}
+   592→              />
+   593→            </div>
+   594→            <div className="pl-6">
+   595→              <TagColorPalette value={color} onChange={setColor} />
+   596→            </div>
+   597→          </div>
+   598→        ) : (
+   599→          <DropdownMenuItem
+   600→            onSelect={(e) => {
+   601→              e.preventDefault()
+   602→              setCreating(true)
+   603→              setName("")
+   604→            }}
+   605→          >
+   606→            <Plus className="h-4 w-4" /> {t("New tag…")}
+   607→          </DropdownMenuItem>
+   608→        )}
+   609→        {tags.length === 0 && !creating && (
+   610→          <p className="px-2 py-1.5 text-[11.5px] leading-relaxed text-muted-foreground/80">
+   611→            {t("No tags yet. Create one to label documents.")}
+   612→          </p>
+   613→        )}
+   614→      </DropdownMenuSubContent>
+   615→    </DropdownMenuSub>
+   616→  )
+   617→}
+   618→
+   619→function CardMenu({
+   620→  doc,
+   621→  inTrash,
+   622→  folders,
+   623→  ...a
+   624→}: DocActions & { doc: DocumentMeta; inTrash: boolean; folders: FolderDTO[] }) {
+   625→  const { t } = useI18n()
+   626→  return (
+   627→    <DropdownMenu>
+   628→      <DropdownMenuTrigger asChild>
+   629→        <Button
+   630→          variant="ghost" size="icon"
+   631→          aria-label={t("Actions for {title}", { title: doc.title })}
+   632→          className="h-8 w-8 rounded-md text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+   633→          onClick={(e) => e.stopPropagation()}
+   634→        >
+   635→          <MoreVertical className="h-4 w-4" />
+   636→        </Button>
+   637→      </DropdownMenuTrigger>
+   638→      <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
+   639→        <DropdownMenuItem onClick={a.onOpen}><FolderOpen className="h-4 w-4" /> {t("Open")}</DropdownMenuItem>
+   640→        {!inTrash && (
+   641→          <>
+   642→            <DropdownMenuItem onClick={a.onStar}>
+   643→              {doc.starred ? <StarOff className="h-4 w-4" /> : <Star className="h-4 w-4" />}
+   644→              {doc.starred ? t("Remove star") : t("Add star")}
+   645→            </DropdownMenuItem>
+   646→            <DropdownMenuItem onClick={a.onRename}><Pencil className="h-4 w-4" /> {t("Rename")}</DropdownMenuItem>
+   647→            <DropdownMenuItem onClick={a.onDuplicate}><Copy className="h-4 w-4" /> {t("Make a copy")}</DropdownMenuItem>
+   648→            <AddTagsSubmenu doc={doc} />
+   649→            <MoveToSubmenu folders={folders} docFolderId={doc.folderId} onPick={a.onMoveToFolder} />
+   650→            <DropdownMenuSeparator />
+   651→            <DropdownMenuItem onClick={a.onTrash} className="text-destructive focus:text-destructive">
+   652→              <Trash2 className="h-4 w-4" /> {t("Move to trash")}
+   653→            </DropdownMenuItem>
+   654→          </>
+   655→        )}
+   656→        {inTrash && (
+   657→          <>
+   658→            <DropdownMenuItem onClick={a.onRestore}><RotateCcw className="h-4 w-4" /> {t("Restore")}</DropdownMenuItem>
+   659→            <DropdownMenuSeparator />
+   660→            <DropdownMenuItem onClick={a.onDelete} className="text-destructive focus:text-destructive">
+   661→              <Trash2 className="h-4 w-4" /> {t("Delete forever")}
+   662→            </DropdownMenuItem>
+   663→          </>
+   664→        )}
+   665→      </DropdownMenuContent>
+   666→    </DropdownMenu>
+   667→  )
+   668→}
+   669→
+   670→function DocCard({
+   671→  doc,
+   672→  index,
+   673→  inTrash,
+   674→  folders,
+   675→  selected,
+   676→  selectionActive,
+   677→  onToggleSelect,
+   678→  ...actions
+   679→}: DocActions & {
+   680→  doc: DocumentMeta
+   681→  index: number
+   682→  inTrash: boolean
+   683→  folders: FolderDTO[]
+   684→  selected: boolean
+   685→  selectionActive: boolean
+   686→  onToggleSelect: () => void
+   687→}) {
+   688→  const { t, lang } = useI18n()
+   689→  const folder = folders.find((f) => f.id === doc.folderId)
+   690→  const tagFilter = useDocsStore((s) => s.tagFilter)
+   691→  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+   692→  const docTags = doc.tags ?? []
+   693→  const { attributes: dragAttrs, listeners: dragListeners, setNodeRef: dragRef, isDragging } = useDraggable({
+   694→    id: docDragId(doc.id),
+   695→    disabled: inTrash,
+   696→  })
+   697→  return (
+   698→    <div
+   699→      ref={dragRef}
+   700→      {...dragAttrs}
+   701→      {...dragListeners}
+   702→      role="button"
+   703→      tabIndex={0}
+   704→      onClick={() => {
+   705→        // selection mode: clicking the body toggles selection instead of opening
+   706→        if (selectionActive) onToggleSelect()
+   707→        else actions.onOpen()
+   708→      }}
+   709→      onKeyDown={(e) => {
+   710→        if (e.key === "Enter" || e.key === " ") {
+   711→          if (selectionActive) onToggleSelect()
+   712→          else actions.onOpen()
+   713→        }
+   714→      }}
+   715→      className={cn(
+   716→        "animate-card-in group flex w-[168px] cursor-pointer flex-col rounded-lg p-2 transition-colors outline-none hover:bg-muted/60 focus-visible:bg-muted/60",
+   717→        isDragging && "opacity-40",
+   718→        selected && "bg-primary/5 ring-1 ring-primary/40"
+   719→      )}
+   720→      style={{ animationDelay: `${Math.min(index * 40, 320)}ms` }}
+   721→      aria-label={selectionActive ? t("Select {title}", { title: doc.title }) : t("Open {title}", { title: doc.title })}
+   722→      aria-pressed={selectionActive ? selected : undefined}
+   723→    >
+   724→      <div className="relative overflow-hidden rounded-sm border elev-1 transition-[border-color,box-shadow] duration-200 group-hover:border-foreground/25 group-hover:elev-2 group-focus-visible:border-foreground/25 group-focus-visible:elev-2">
+   725→        <DocPreview html={doc.content ?? doc.snippet} width={152} className="mx-auto" />
+   726→        {/* multi-select checkbox (48px hit area incl. padding) */}
+   727→        <div
+   728→          className={cn(
+   729→            "absolute left-0 top-0 z-10 transition-opacity",
+   730→            selectionActive || selected
+   731→              ? "opacity-100"
+   732→              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
+   733→          )}
+   734→        >
+   735→          <SelectCheckbox checked={selected} onChange={onToggleSelect} title={doc.title} />
+   736→        </div>
+   737→        {doc.starred && !inTrash && (
+   738→          <Star className="absolute right-1.5 top-1.5 h-4 w-4 fill-amber-400 text-amber-400 drop-shadow transition-transform duration-200 group-hover:scale-110" aria-label={t("Starred")} />
+   739→        )}
+   740→        {inTrash && (
+   741→          <div
+   742→            className={cn(
+   743→              "absolute left-1.5 top-1.5 rounded-[4px] bg-black/55 px-2 py-0.5 text-[10px] font-medium text-white transition-opacity",
+   744→              selectionActive || selected ? "opacity-0" : "opacity-100 group-hover:opacity-0"
+   745→            )}
+   746→          >
+   747→            {t("In trash")}
+   748→          </div>
+   749→        )}
+   750→      </div>
+   751→      <div className="mt-2 flex items-start gap-1">
+   752→        <div className="min-w-0 flex-1">
+   753→          <p className="truncate text-sm font-medium leading-tight" title={doc.title}>{doc.title}</p>
+   754→          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+   755→            {folder && (
+   756→              <span className="mr-1 inline-flex items-center gap-0.5 align-baseline text-[11px]" style={{ color: folder.color }}>
+   757→                <Folder className="inline h-3 w-3" /> {folder.name}
+   758→              </span>
+   759→            )}
+   760→            {relativeTime(doc.updatedAt, lang)}
+   761→          </p>
+   762→          {docTags.length > 0 && !inTrash && (
+   763→            <div className="mt-1.5 flex flex-wrap gap-1">
+   764→              {docTags.slice(0, 3).map((tg) => (
+   765→                <TagChip
+   766→                  key={tg.id}
+   767→                  tag={tg}
+   768→                  active={tagFilter === tg.id}
+   769→                  onFilter={() => setTagFilter(tagFilter === tg.id ? null : tg.id)}
+   770→                />
+   771→              ))}
+   772→              {docTags.length > 3 && (
+   773→                <TagOverflowChip count={docTags.length - 3} names={docTags.slice(3).map((tg) => tg.name).join(", ")} />
+   774→              )}
+   775→            </div>
+   776→          )}
+   777→        </div>
+   778→        <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
+   779→      </div>
+   780→    </div>
+   781→  )
+   782→}
+   783→
+   784→function DocRow({
+   785→  doc,
+   786→  index,
+   787→  inTrash,
+   788→  folders,
+   789→  selected,
+   790→  selectionActive,
+   791→  onToggleSelect,
+   792→  ...actions
+   793→}: DocActions & {
+   794→  doc: DocumentMeta
+   795→  index: number
+   796→  inTrash: boolean
+   797→  folders: FolderDTO[]
+   798→  selected: boolean
+   799→  selectionActive: boolean
+   800→  onToggleSelect: () => void
+   801→}) {
+   802→  const { t, lang } = useI18n()
+   803→  const folder = folders.find((f) => f.id === doc.folderId)
+   804→  const tagFilter = useDocsStore((s) => s.tagFilter)
+   805→  const setTagFilter = useDocsStore((s) => s.setTagFilter)
+   806→  const docTags = doc.tags ?? []
+   807→  const { attributes: dragAttrs, listeners: dragListeners, setNodeRef: dragRef, isDragging } = useDraggable({
+   808→    id: docDragId(doc.id),
+   809→    disabled: inTrash,
+   810→  })
+   811→  return (
+   812→    <div
+   813→      ref={dragRef}
+   814→      {...dragAttrs}
+   815→      {...dragListeners}
+   816→      role="button"
+   817→      tabIndex={0}
+   818→      onClick={() => {
+   819→        // selection mode: clicking the body toggles selection instead of opening
+   820→        if (selectionActive) onToggleSelect()
+   821→        else actions.onOpen()
+   822→      }}
+   823→      onKeyDown={(e) => {
+   824→        if (e.key === "Enter" || e.key === " ") {
+   825→          if (selectionActive) onToggleSelect()
+   826→          else actions.onOpen()
+   827→        }
+   828→      }}
+   829→      className={cn(
+   830→        "animate-card-in group flex cursor-pointer items-center gap-3 border-b px-4 py-3 outline-none last:border-b-0 hover:bg-muted/50 focus-visible:bg-muted/50",
+   831→        index === 0 && "rounded-t-lg", index % 2 === 1 && "bg-muted/30",
+   832→        isDragging && "opacity-40",
+   833→        selected && "bg-primary/5 ring-1 ring-primary/35 ring-inset"
+   834→      )}
+   835→      aria-label={selectionActive ? t("Select {title}", { title: doc.title }) : t("Open {title}", { title: doc.title })}
+   836→      aria-pressed={selectionActive ? selected : undefined}
+   837→    >
+   838→      {/* leading slot: file icon swaps for the 48px multi-select checkbox */}
+   839→      <div className="relative flex h-12 w-12 shrink-0 items-center justify-center">
+   840→        <FileText
+   841→          className={cn(
+   842→            "h-5 w-5 text-muted-foreground transition-opacity",
+   843→            selectionActive || selected ? "opacity-0" : "opacity-100 group-hover:opacity-0"
+   844→          )}
+   845→          aria-hidden
+   846→        />
+   847→        <div
+   848→          className={cn(
+   849→            "absolute inset-0 transition-opacity",
+   850→            selectionActive || selected
+   851→              ? "opacity-100"
+   852→              : "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100"
+   853→          )}
+   854→        >
+   855→          <SelectCheckbox checked={selected} onChange={onToggleSelect} title={doc.title} />
+   856→        </div>
+   857→      </div>
+   858→      <div className="min-w-0 flex-1">
+   859→        <p className="truncate text-sm font-medium" title={doc.title}>
+   860→          {doc.title}
+   861→          {doc.starred && !inTrash && <Star className="ml-1.5 inline h-3.5 w-3.5 fill-amber-400 text-amber-400" />}
+   862→        </p>
+   863→        <p className="truncate text-xs text-muted-foreground">
+   864→          {folder && (
+   865→            <span className="mr-1 inline-flex items-center gap-0.5 align-baseline text-[11px]" style={{ color: folder.color }}>
+   866→              <Folder className="inline h-3 w-3" /> {folder.name}
+   867→            </span>
+   868→          )}
+   869→          {doc.snippet || t("Empty document")}
+   870→        </p>
+   871→        {docTags.length > 0 && !inTrash && (
+   872→          <div className="mt-1 flex flex-wrap gap-1">
+   873→            {docTags.slice(0, 3).map((tg) => (
+   874→              <TagChip
+   875→                key={tg.id}
+   876→                tag={tg}
+   877→                active={tagFilter === tg.id}
+   878→                onFilter={() => setTagFilter(tagFilter === tg.id ? null : tg.id)}
+   879→              />
+   880→            ))}
+   881→            {docTags.length > 3 && (
+   882→              <TagOverflowChip count={docTags.length - 3} names={docTags.slice(3).map((tg) => tg.name).join(", ")} />
+   883→            )}
+   884→          </div>
+   885→        )}
+   886→      </div>
+   887→      <span className="tnum hidden w-20 shrink-0 text-right text-xs text-muted-foreground sm:block">{t("{n} words", { n: doc.wordCount })}</span>
+   888→      <span className="tnum hidden w-32 shrink-0 text-right text-xs text-muted-foreground md:block">{relativeTime(doc.updatedAt, lang)}</span>
+   889→      <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
+   890→    </div>
+   891→  )
+   892→}
+   893→
+   894→function EmptyState({ filter, search, tag }: { filter: string; search: boolean; tag?: TagDTO | null }) {
+   895→  const createDoc = useDocsStore((s) => s.createDoc)
+   896→  const openDoc = useDocsStore((s) => s.openDoc)
+   897→  const { t } = useI18n()
+   898→  return (
+   899→    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
+   900→      {search ? (
+   901→        <SearchX className="h-10 w-10 text-muted-foreground/40" />
+   902→      ) : tag ? (
+   903→        <Tag className="h-10 w-10 text-muted-foreground/40" strokeWidth={1.5} />
+   904→      ) : filter === "trash" ? (
+   905→        <Trash className="h-10 w-10 text-muted-foreground/40" />
+   906→      ) : (
+   907→        <FileText className="h-10 w-10 text-muted-foreground/40" />
+   908→      )}
+   909→      <p className="font-editorial mt-4 text-[15.5px] font-medium italic tracking-tight text-foreground/80">
+   910→        {search
+   911→          ? t("No documents match your search")
+   912→          : tag
+   913→            ? t("No documents with this tag")
+   914→            : filter === "trash"
+   915→              ? t("Trash is empty")
+   916→              : filter === "starred"
+   917→                ? t("No starred documents yet")
+   918→                : t("No documents yet")}
+   919→      </p>
+   920→      <p className="mt-1.5 max-w-sm text-xs leading-relaxed text-muted-foreground">
+   921→        {search
+   922→          ? t("Try a different keyword or clear the search field.")
+   923→          : tag
+   924→            ? t("No documents in this view carry the “{name}” label.", { name: tag.name })
+   925→            : filter === "trash"
+   926→              ? t("Deleted documents will appear here before being removed forever.")
+   927→              : t("Pick a template above or start from a blank page to create your first document.")}
+   928→      </p>
+   929→      {!search && !tag && filter === "all" && (
+   930→        <Button
+   931→          className="mt-4"
+   932→          onClick={async () => {
+   933→            const id = await createDoc({ templateId: "blank" })
+   934→            if (id) openDoc(id)
+   935→          }}
+   936→        >
+   937→          {t("Create a document")}
+   938→        </Button>
+   939→      )}
+   940→    </div>
+   941→  )
+   942→}
+   943→
+   944→/* ------------------------------------------------------------------ */
+   945→/* Multi-select primitives                                             */
+   946→/* ------------------------------------------------------------------ */
+   947→
+   948→/**
+   949→ * Circular Google-Drive-style checkbox. The button itself is a 48px hit
+   950→ * target (padding included); the visible circle is 20px inside it.
+   951→ * stopPropagation keeps the parent card click (open/toggle) and the dnd-kit
+   952→ * drag sensor from reacting to checkbox interaction.
+   953→ */
+   954→function SelectCheckbox({
+   955→  checked,
+   956→  onChange,
+   957→  title,
+   958→}: {
+   959→  checked: boolean
+   960→  onChange: () => void
+   961→  title: string
+   962→}) {
+   963→  const { t } = useI18n()
+   964→  return (
+   965→    <button
+   966→      type="button"
+   967→      role="checkbox"
+   968→      aria-checked={checked}
+   969→      aria-label={t("Select {title}", { title })}
+   970→      onClick={(e) => {
+   971→        e.stopPropagation()
+   972→        onChange()
+   973→      }}
+   974→      onPointerDown={(e) => e.stopPropagation()}
+   975→      onKeyDown={(e) => {
+   976→        // let the native button click fire without bubbling to the card
+   977→        if (e.key === "Enter" || e.key === " ") e.stopPropagation()
+   978→      }}
+   979→      className="flex h-12 w-12 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+   980→    >
+   981→      <span
+   982→        aria-hidden
+   983→        className={cn(
+   984→          "flex h-5 w-5 items-center justify-center rounded-full border transition-colors",
+   985→          checked
+   986→            ? "border-primary bg-primary text-primary-foreground"
+   987→            : "border-muted-foreground/50 bg-white/95 text-transparent shadow-sm dark:border-muted-foreground/60 dark:bg-popover/95"
+   988→        )}
+   989→      >
+   990→        <Check className="h-3.5 w-3.5" strokeWidth={3} />
+   991→      </span>
+   992→    </button>
+   993→  )
+   994→}
+   995→
+   996→/**
+   997→ * Tag picker for bulk tagging: checkbox chips of existing tags plus an
+   998→ * inline create row (name + color palette). Selection is applied
+   999→ * additively via runBatch("tag").
+  1000→ */
+  1001→function BulkTagDialog({
+  1002→  open,
+  1003→  onOpenChange,
+  1004→  count,
+  1005→  busy,
+  1006→  onApply,
+  1007→}: {
+  1008→  open: boolean
+  1009→  onOpenChange: (open: boolean) => void
+  1010→  count: number
+  1011→  busy: boolean
+  1012→  onApply: (tagIds: string[]) => void
+  1013→}) {
+  1014→  const { t } = useI18n()
+  1015→  const { toast } = useToast()
+  1016→  const tags = useDocsStore((s) => s.tags)
+  1017→  const createTag = useDocsStore((s) => s.createTag)
+  1018→
+  1019→  const [selected, setSelected] = React.useState<string[]>([])
+  1020→  const [newName, setNewName] = React.useState("")
+  1021→  const [newColor, setNewColor] = React.useState(DEFAULT_TAG_COLOR)
+  1022→  const [creating, setCreating] = React.useState(false)
+  1023→
+  1024→  // reset the draft state whenever the dialog (re)opens
+  1025→  React.useEffect(() => {
+  1026→    if (open) {
+  1027→      setSelected([])
+  1028→      setNewName("")
+  1029→      setNewColor(DEFAULT_TAG_COLOR)
+  1030→    }
+  1031→  }, [open])
+  1032→
+  1033→  const toggle = (id: string) =>
+  1034→    setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
+  1035→
+  1036→  const createAndSelect = async () => {
+  1037→    const name = newName.trim()
+  1038→    if (!name || creating) return
+  1039→    setCreating(true)
+  1040→    const tag = await createTag(name, newColor)
+  1041→    setCreating(false)
+  1042→    if (!tag) {
+  1043→      toast({ title: t("Couldn’t create the tag"), variant: "destructive" })
+  1044→      return
+  1045→    }
+  1046→    setNewName("")
+  1047→    setNewColor(DEFAULT_TAG_COLOR)
+  1048→    setSelected((cur) => (cur.includes(tag.id) ? cur : [...cur, tag.id]))
+  1049→  }
+  1050→
+  1051→  return (
+  1052→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1053→      <DialogContent className="sm:max-w-md">
+  1054→        <DialogHeader>
+  1055→          <DialogTitle>{t("Add tags to {n} documents", { n: count })}</DialogTitle>
+  1056→        </DialogHeader>
+  1057→
+  1058→        <div className="max-h-64 overflow-y-auto">
+  1059→          {tags.length > 0 ? (
+  1060→            <div className="flex flex-wrap gap-2" role="group" aria-label={t("Existing tags")}>
+  1061→              {tags.map((tag) => {
+  1062→                const on = selected.includes(tag.id)
+  1063→                return (
+  1064→                  <button
+  1065→                    key={tag.id}
+  1066→                    type="button"
+  1067→                    onClick={() => toggle(tag.id)}
+  1068→                    aria-pressed={on}
+  1069→                    aria-label={t("Tag {name}", { name: tag.name })}
+  1070→                    className={cn(
+  1071→                      "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[13px] outline-none transition-colors",
+  1072→                      on
+  1073→                        ? "border-primary/60 bg-primary/10 font-medium text-foreground"
+  1074→                        : "border-border text-muted-foreground hover:bg-accent hover:text-foreground"
+  1075→                    )}
+  1076→                  >
+  1077→                    <TagDot color={tag.color} className="h-3 w-3" />
+  1078→                    {tag.name}
+  1079→                    {on && <Check className="h-3.5 w-3.5 text-primary" />}
+  1080→                  </button>
+  1081→                )
+  1082→              })}
+  1083→            </div>
+  1084→          ) : (
+  1085→            <p className="text-[13px] text-muted-foreground">
+  1086→              {t("No tags yet — create one below.")}
+  1087→            </p>
+  1088→          )}
+  1089→
+  1090→          {/* inline create row */}
+  1091→          <div className="mt-4 rounded-lg border p-2">
+  1092→            <div className="flex items-center gap-2">
+  1093→              <TagDot color={newColor} className="ml-1 h-3.5 w-3.5 shrink-0" />
+  1094→              <Input
+  1095→                value={newName}
+  1096→                maxLength={40}
+  1097→                onChange={(e) => setNewName(e.target.value)}
+  1098→                onKeyDown={(e) => {
+  1099→                  if (e.key === "Enter") {
+  1100→                    e.preventDefault()
+  1101→                    void createAndSelect()
+  1102→                  }
+  1103→                }}
+  1104→                placeholder={t("New tag name…")}
+  1105→                aria-label={t("New tag name")}
+  1106→                className="h-8 flex-1 border-0 bg-transparent text-[13px] shadow-none focus-visible:ring-0"
+  1107→              />
+  1108→              <Button
+  1109→                variant="ghost"
+  1110→                size="icon"
+  1111→                disabled={!newName.trim() || creating}
+  1112→                onClick={() => void createAndSelect()}
+  1113→                aria-label={t("Create tag")}
+  1114→                className="h-8 w-8 shrink-0 rounded-full"
+  1115→              >
+  1116→                {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+  1117→              </Button>
+  1118→            </div>
+  1119→            <div className="mt-1.5 pl-6">
+  1120→              <TagColorPalette value={newColor} onChange={setNewColor} className="flex-wrap" />
+  1121→            </div>
+  1122→          </div>
+  1123→        </div>
+  1124→
+  1125→        <DialogFooter className="gap-2 sm:gap-0">
+  1126→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+  1127→            {t("Cancel")}
+  1128→          </Button>
+  1129→          <Button
+  1130→            onClick={() => onApply(selected)}
+  1131→            disabled={busy || selected.length === 0}
+  1132→            className="gap-1.5"
+  1133→          >
+  1134→            {busy ? (
+  1135→              <Loader2 className="h-4 w-4 animate-spin" />
+  1136→            ) : (
+  1137→              <Tag className="h-4 w-4" />
+  1138→            )}
+  1139→            {t("Apply to {n} documents", { n: count })}
+  1140→          </Button>
+  1141→        </DialogFooter>
+  1142→      </DialogContent>
+  1143→    </Dialog>
+  1144→  )
+  1145→}
+  1146→
+  1147→/**
+  1148→ * Bulk rename dialog — Google-Drive-add-on parity: find & replace inside
+  1149→ * names, or numbered patterns with {n} (sequence) / {title} (current name)
+  1150→ * placeholders. A live preview lists every resulting name; only documents
+  1151→ * whose name actually changes are PATCHed on apply.
+  1152→ */
+  1153→function BulkRenameDialog({
+  1154→  open,
+  1155→  onOpenChange,
+  1156→  docs,
+  1157→  busy,
+  1158→  onApply,
+  1159→}: {
+  1160→  open: boolean
+  1161→  onOpenChange: (open: boolean) => void
+  1162→  docs: { id: string; title: string }[]
+  1163→  busy: boolean
+  1164→  onApply: (pairs: { id: string; title: string }[]) => void
+  1165→}) {
+  1166→  const { t } = useI18n()
+  1167→  const [mode, setMode] = React.useState<"replace" | "number">("replace")
+  1168→  const [find, setFind] = React.useState("")
+  1169→  const [repl, setRepl] = React.useState("")
+  1170→  const [pattern, setPattern] = React.useState("")
+  1171→  const [start, setStart] = React.useState(1)
+  1172→
+  1173→  // reset the draft whenever the dialog (re)opens
+  1174→  React.useEffect(() => {
+  1175→    if (open) {
+  1176→      setMode("replace")
+  1177→      setFind("")
+  1178→      setRepl("")
+  1179→      setPattern("")
+  1180→      setStart(1)
+  1181→    }
+  1182→  }, [open])
+  1183→
+  1184→  const rows = React.useMemo(() => {
+  1185→    const n0 = Number.isFinite(start) ? Math.trunc(start) : 1
+  1186→    return docs.map((d, i) => {
+  1187→      let next = d.title
+  1188→      if (mode === "replace") {
+  1189→        if (find) next = d.title.split(find).join(repl)
+  1190→      } else {
+  1191→        const eff = pattern.trim() || "{title} {n}"
+  1192→        next = eff.replace(/\{title\}/g, d.title).replace(/\{n\}/g, String(n0 + i))
+  1193→      }
+  1194→      return { id: d.id, title: d.title, next: next.trim().slice(0, 150) }
+  1195→    })
+  1196→  }, [docs, mode, find, repl, pattern, start])
+  1197→
+  1198→  const changed = rows.filter((r) => r.next !== r.title && r.next !== "")
+  1199→  const preview = rows.slice(0, 6)
+  1200→  const more = rows.length - preview.length
+  1201→
+  1202→  return (
+  1203→    <Dialog open={open} onOpenChange={onOpenChange}>
+  1204→      <DialogContent className="sm:max-w-md">
+  1205→        <DialogHeader>
+  1206→          <DialogTitle>{t("Rename {n} documents", { n: docs.length })}</DialogTitle>
+  1207→        </DialogHeader>
+  1208→
+  1209→        <Tabs value={mode} onValueChange={(v) => setMode(v as "replace" | "number")}>
+  1210→          <TabsList className="w-full">
+  1211→            <TabsTrigger value="replace" className="flex-1">{t("Find & replace")}</TabsTrigger>
+  1212→            <TabsTrigger value="number" className="flex-1">{t("Add numbering")}</TabsTrigger>
+  1213→          </TabsList>
+  1214→
+  1215→          <TabsContent value="replace" className="space-y-3 pt-2">
+  1216→            <div className="space-y-2">
+  1217→              <label htmlFor="bulk-find" className="text-[13px] font-medium">{t("Find")}</label>
+  1218→              <Input
+  1219→                id="bulk-find"
+  1220→                value={find}
+  1221→                maxLength={100}
+  1222→                autoFocus
+  1223→                onChange={(e) => setFind(e.target.value)}
+  1224→                placeholder={t("Text to find in the names…")}
+  1225→              />
+  1226→            </div>
+  1227→            <div className="space-y-2">
+  1228→              <label htmlFor="bulk-repl" className="text-[13px] font-medium">{t("Replace with")}</label>
+  1229→              <Input
+  1230→                id="bulk-repl"
+  1231→                value={repl}
+  1232→                maxLength={150}
+  1233→                onChange={(e) => setRepl(e.target.value)}
+  1234→                placeholder={t("Replacement text…")}
+  1235→              />
+  1236→              <p className="text-xs text-muted-foreground">{t("Case-sensitive. Empty replacement deletes the text.")}</p>
+  1237→            </div>
+  1238→          </TabsContent>
+  1239→
+  1240→          <TabsContent value="number" className="space-y-3 pt-2">
+  1241→            <div className="space-y-2">
+  1242→              <label htmlFor="bulk-pattern" className="text-[13px] font-medium">{t("Name pattern")}</label>
+  1243→              <Input
+  1244→                id="bulk-pattern"
+  1245→                value={pattern}
+  1246→                maxLength={120}
+  1247→                onChange={(e) => setPattern(e.target.value)}
+  1248→                placeholder={t("e.g. Report {n}")}
+  1249→              />
+  1250→              <p className="text-xs text-muted-foreground">
+  1251→                {t("{n} = sequence number, {title} = current name. Leave empty to use “{title} {n}”.")}
+  1252→              </p>
+  1253→            </div>
+  1254→            <div className="space-y-2">
+  1255→              <label htmlFor="bulk-start" className="text-[13px] font-medium">{t("Start number")}</label>
+  1256→              <Input
+  1257→                id="bulk-start"
+  1258→                type="number"
+  1259→                min={0}
+  1260→                step={1}
+  1261→                value={start}
+  1262→                onChange={(e) => setStart(Number(e.target.value))}
+  1263→                className="w-28"
+  1264→              />
+  1265→            </div>
+  1266→          </TabsContent>
+  1267→        </Tabs>
+  1268→
+  1269→        {/* live preview — every resulting name before anything is applied */}
+  1270→        <div className="rounded-lg border">
+  1271→          <p className="border-b px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+  1272→            {t("Preview")}
+  1273→          </p>
+  1274→          <div className="max-h-44 overflow-y-auto px-3 py-2" role="list" aria-label={t("Preview")}>
+  1275→            {preview.map((r) => {
+  1276→              const same = r.next === r.title || r.next === ""
+  1277→              return (
+  1278→                <div key={r.id} className="flex items-center gap-2 py-1 text-[13px]" role="listitem">
+  1279→                  <span className="min-w-0 flex-1 truncate text-muted-foreground" title={r.title}>
+  1280→                    {r.title}
+  1281→                  </span>
+  1282→                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+  1283→                  <span
+  1284→                    className={cn("min-w-0 flex-1 truncate", same ? "italic text-muted-foreground/70" : "font-medium")}
+  1285→                    title={r.next}
+  1286→                  >
+  1287→                    {same ? t("No change") : r.next}
+  1288→                  </span>
+  1289→                </div>
+  1290→              )
+  1291→            })}
+  1292→            {more > 0 && (
+  1293→              <p className="py-1 pl-1 text-xs text-muted-foreground">+{more}</p>
+  1294→            )}
+  1295→          </div>
+  1296→        </div>
+  1297→
+  1298→        <DialogFooter className="gap-2 sm:gap-0">
+  1299→          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+  1300→            {t("Cancel")}
+  1301→          </Button>
+  1302→          <Button onClick={() => onApply(changed)} disabled={busy || changed.length === 0} className="gap-1.5">
+  1303→            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+  1304→            {changed.length > 0
+  1305→              ? t("Rename {n} documents", { n: changed.length })
+  1306→              : t("Rename")}
+  1307→          </Button>
+  1308→        </DialogFooter>
+  1309→      </DialogContent>
+  1310→    </Dialog>
+  1311→  )
+  1312→}
+  1313→
+  1314→/** Tooltip wrapper for the icon buttons in the bulk-action bar. */
+  1315→function BarTooltip({ label, children }: { label: string; children: React.ReactElement }) {
+  1316→  return (
+  1317→    <Tooltip>
+  1318→      <TooltipTrigger asChild>{children}</TooltipTrigger>
+  1319→      <TooltipContent side="top" className="text-xs">
+  1320→        {label}
+  1321→      </TooltipContent>
+  1322→    </Tooltip>
+  1323→  )
+  1324→}
+  1325→
+  1326→/**
+  1327→ * Floating bulk-action bar, Google-Drive style: pinned to the viewport bottom
+  1328→ * center, elevated pill (theme-adaptive), horizontally scrollable at 375px.
+  1329→ * Rendered via createPortal by DocsGrid.
+  1330→ */
+  1331→function BatchActionBar({
+  1332→  count,
+  1333→  inTrash,
+  1334→  folders,
+  1335→  busy,
+  1336→  onRun,
+  1337→  onOpenTags,
+  1338→  onOpenRename,
+  1339→  onClose,
+  1340→}: {
+  1341→  count: number
+  1342→  inTrash: boolean
+  1343→  folders: FolderDTO[]
+  1344→  busy: BatchOp | null
+  1345→  onRun: (op: BatchOp, folderId?: string | null, folderName?: string, tagIds?: string[]) => void
+  1346→  onOpenTags: () => void
+  1347→  onOpenRename: () => void
+  1348→  onClose: () => void
+  1349→}) {
+  1350→  const { t } = useI18n()
+  1351→  const disabled = busy !== null
+  1352→
+  1353→  return (
+  1354→    <div className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2" role="toolbar" aria-label={t("Bulk actions")}>
+  1355→      <div
+  1356→        className={cn(
+  1357→          "no-scrollbar flex max-w-[calc(100vw-2rem)] items-center gap-0.5 overflow-x-auto rounded-full border bg-popover/95 p-1 text-popover-foreground backdrop-blur",
+  1358→          "shadow-[0_2px_6px_rgba(35,32,28,0.10),0_12px_32px_rgba(35,32,28,0.18)]",
+  1359→          "dark:shadow-[0_2px_6px_rgba(0,0,0,0.4),0_12px_32px_rgba(0,0,0,0.55)]"
+  1360→        )}
+  1361→      >
+  1362→        <span className="tnum shrink-0 whitespace-nowrap px-2.5 text-[13px] font-medium">
+  1363→          {t("{n} selected", { n: count })}
+  1364→        </span>
+  1365→        <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+  1366→
+  1367→        <BarTooltip label={t("Star selected")}>
+  1368→          <Button
+  1369→            variant="ghost" size="icon" disabled={disabled}
+  1370→            aria-label={t("Star selected")}
+  1371→            onClick={() => onRun("star")}
+  1372→            className="h-9 w-9 shrink-0 rounded-full"
+  1373→          >
+  1374→            {busy === "star" ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Star className="h-4.5 w-4.5" />}
+  1375→          </Button>
+  1376→        </BarTooltip>
+  1377→
+  1378→        <BarTooltip label={t("Unstar selected")}>
+  1379→          <Button
+  1380→            variant="ghost" size="icon" disabled={disabled}
+  1381→            aria-label={t("Unstar selected")}
+  1382→            onClick={() => onRun("unstar")}
+  1383→            className="h-9 w-9 shrink-0 rounded-full"
+  1384→          >
+  1385→            {busy === "unstar" ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <StarOff className="h-4.5 w-4.5" />}
+  1386→          </Button>
+  1387→        </BarTooltip>
+  1388→
+  1389→        {/* Bulk tag: opens the tag picker dialog (additive apply) */}
+  1390→        {!inTrash && (
+  1391→          <BarTooltip label={t("Add tags")}>
+  1392→            <Button
+  1393→              variant="ghost" disabled={disabled}
+  1394→              aria-label={t("Add tags")}
+  1395→              onClick={onOpenTags}
+  1396→              className="h-9 shrink-0 gap-1.5 rounded-full px-2.5"
+  1397→            >
+  1398→              {busy === "tag" ? (
+  1399→                <Loader2 className="h-4.5 w-4.5 animate-spin" />
+  1400→              ) : (
+  1401→                <Tag className="h-4.5 w-4.5" />
+  1402→              )}
+  1403→              <span className="hidden text-[13px] font-medium sm:inline">{t("Tags")}</span>
+  1404→            </Button>
+  1405→          </BarTooltip>
+  1406→        )}
+  1407→
+  1408→        {/* Bulk rename: find & replace / numbering with live preview */}
+  1409→        <BarTooltip label={t("Rename selected")}>
+  1410→          <Button
+  1411→            variant="ghost" disabled={disabled}
+  1412→            aria-label={t("Rename selected")}
+  1413→            onClick={onOpenRename}
+  1414→            className="h-9 shrink-0 gap-1.5 rounded-full px-2.5"
+  1415→          >
+  1416→            {busy === "rename" ? (
+  1417→              <Loader2 className="h-4.5 w-4.5 animate-spin" />
+  1418→            ) : (
+  1419→              <Pencil className="h-4.5 w-4.5" />
+  1420→            )}
+  1421→            <span className="hidden text-[13px] font-medium sm:inline">{t("Rename")}</span>
+  1422→          </Button>
+  1423→        </BarTooltip>
+  1424→
+  1425→        {/* Move to folder: folders + the home root */}
+  1426→        <DropdownMenu>
+  1427→          <DropdownMenuTrigger asChild>
+  1428→            <Button
+  1429→              variant="ghost" disabled={disabled}
+  1430→              aria-label={t("Move to")}
+  1431→              className="h-9 shrink-0 gap-1.5 rounded-full px-2.5"
+  1432→            >
+  1433→              {busy === "move" ? (
+  1434→                <Loader2 className="h-4.5 w-4.5 animate-spin" />
+  1435→              ) : (
+  1436→                <FolderInput className="h-4.5 w-4.5" />
+  1437→              )}
+  1438→              <span className="hidden text-[13px] font-medium sm:inline">{t("Move to")}</span>
+  1439→            </Button>
+  1440→          </DropdownMenuTrigger>
+  1441→          <DropdownMenuContent align="start" side="top" className="w-52 max-h-64 overflow-y-auto">
+  1442→            <DropdownMenuItem onClick={() => onRun("move", null, undefined)}>
+  1443→              <Home className="h-4 w-4" /> {t("Home")}
+  1444→            </DropdownMenuItem>
+  1445→            {folders.length > 0 && <DropdownMenuSeparator />}
+  1446→            {folders.map((f) => (
+  1447→              <DropdownMenuItem key={f.id} onClick={() => onRun("move", f.id, f.name)}>
+  1448→                <Folder className="h-4 w-4" style={{ color: f.color }} /> {f.name}
+  1449→              </DropdownMenuItem>
+  1450→            ))}
+  1451→          </DropdownMenuContent>
+  1452→        </DropdownMenu>
+  1453→
+  1454→        {!inTrash ? (
+  1455→          <BarTooltip label={t("Move to trash")}>
+  1456→            <Button
+  1457→              variant="ghost" size="icon" disabled={disabled}
+  1458→              aria-label={t("Move to trash")}
+  1459→              onClick={() => onRun("trash")}
+  1460→              className="h-9 w-9 shrink-0 rounded-full"
+  1461→            >
+  1462→              {busy === "trash" ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Trash2 className="h-4.5 w-4.5" />}
+  1463→            </Button>
+  1464→          </BarTooltip>
+  1465→        ) : (
+  1466→          <>
+  1467→            <BarTooltip label={t("Restore")}>
+  1468→              <Button
+  1469→                variant="ghost" size="icon" disabled={disabled}
+  1470→                aria-label={t("Restore")}
+  1471→                onClick={() => onRun("restore")}
+  1472→                className="h-9 w-9 shrink-0 rounded-full"
+  1473→              >
+  1474→                {busy === "restore" ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <RotateCcw className="h-4.5 w-4.5" />}
+  1475→              </Button>
+  1476→            </BarTooltip>
+  1477→            <BarTooltip label={t("Delete forever")}>
+  1478→              <Button
+  1479→                variant="ghost" size="icon" disabled={disabled}
+  1480→                aria-label={t("Delete forever")}
+  1481→                onClick={() => onRun("deleteForever")}
+  1482→                className="h-9 w-9 shrink-0 rounded-full text-destructive hover:text-destructive"
+  1483→              >
+  1484→                {busy === "deleteForever" ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Trash2 className="h-4.5 w-4.5" />}
+  1485→              </Button>
+  1486→            </BarTooltip>
+  1487→          </>
+  1488→        )}
+  1489→
+  1490→        <span aria-hidden className="mx-0.5 h-5 w-px shrink-0 bg-border" />
+  1491→        <BarTooltip label={t("Clear selection")}>
+  1492→          <Button
+  1493→            variant="ghost" size="icon" disabled={disabled}
+  1494→            aria-label={t("Clear selection")}
+  1495→            onClick={onClose}
+  1496→            className="h-9 w-9 shrink-0 rounded-full"
+  1497→          >
+  1498→            <X className="h-4.5 w-4.5" />
+  1499→          </Button>
+  1500→        </BarTooltip>
+  1501→      </div>
+  1502→    </div>
+  1503→  )
+  1504→}
+  1505→

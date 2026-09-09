@@ -1,0 +1,870 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { Button } from "@/components/ui/button"
+     5→import { Textarea } from "@/components/ui/textarea"
+     6→import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+     7→import type { CommentDTO, CommentReactionDTO } from "@/lib/docs-types"
+     8→import type { SuggestionInfo } from "@/lib/suggest-dom"
+     9→import { relativeTime } from "@/lib/doc-utils"
+    10→import {
+    11→  MessageSquarePlus, X, Check, RotateCcw, Trash2, CornerDownRight, MessageCircle, Loader2, CheckCircle2, Quote, Pencil, SmilePlus, PencilLine
+    12→} from "lucide-react"
+    13→import { cn } from "@/lib/utils"
+    14→import { useI18n } from "@/lib/i18n"
+    15→
+    16→/* ---------------------------------------------------------------- helpers */
+    17→
+    18→function initials(name: string): string {
+    19→  const parts = name.trim().split(/\s+/).slice(0, 2)
+    20→  return parts.map((p) => p[0]?.toUpperCase() ?? "").join("") || "?"
+    21→}
+    22→
+    23→function CommentAvatar({ name, color, size = "md" }: { name: string; color: string; size?: "sm" | "md" }) {
+    24→  return (
+    25→    <span
+    26→      aria-hidden
+    27→      className={cn(
+    28→        "flex shrink-0 select-none items-center justify-center rounded-full font-semibold text-white shadow-sm",
+    29→        size === "sm" ? "h-6 w-6 text-[10px]" : "h-8 w-8 text-xs"
+    30→      )}
+    31→      style={{ backgroundColor: color }}
+    32→    >
+    33→      {initials(name)}
+    34→    </span>
+    35→  )
+    36→}
+    37→
+    38→/* ---------------------------------------------------------- new-comment composer */
+    39→
+    40→export interface PendingQuote {
+    41→  quote: string
+    42→  offset: number
+    43→}
+    44→
+    45→function Composer({
+    46→  quote,
+    47→  submitting,
+    48→  onSubmit,
+    49→  onCancel,
+    50→}: {
+    51→  quote: string | null
+    52→  submitting: boolean
+    53→  onSubmit: (text: string) => void
+    54→  onCancel: () => void
+    55→}) {
+    56→  const [text, setText] = React.useState("")
+    57→  const ref = React.useRef<HTMLTextAreaElement | null>(null)
+    58→  const { t } = useI18n()
+    59→
+    60→  React.useEffect(() => {
+    61→    setText("")
+    62→    if (quote != null) {
+    63→      // focus the textarea when a new quote is captured
+    64→      const t2 = setTimeout(() => ref.current?.focus(), 60)
+    65→      return () => clearTimeout(t2)
+    66→    }
+    67→  }, [quote])
+    68→
+    69→  if (quote == null) return null
+    70→
+    71→  return (
+    72→    <div className="animate-fade-in rounded-lg border bg-card p-3" data-testid="comment-composer">
+    73→      <div className="mb-2 flex items-start gap-2 rounded-lg bg-muted/70 p-2">
+    74→        <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+    75→        <p className="line-clamp-3 text-xs italic leading-snug text-muted-foreground">{quote}</p>
+    76→      </div>
+    77→      <Textarea
+    78→        ref={ref}
+    79→        value={text}
+    80→        onChange={(e) => setText(e.target.value)}
+    81→        onKeyDown={(e) => {
+    82→          if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim()) {
+    83→            e.preventDefault()
+    84→            onSubmit(text.trim())
+    85→          }
+    86→          if (e.key === "Escape") onCancel()
+    87→        }}
+    88→        placeholder={t("Write a comment… (Ctrl+Enter to post)")}
+    89→        className="min-h-[72px] max-h-56 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+    90→        maxLength={2000}
+    91→        aria-label={t("Comment text")}
+    92→      />
+    93→      <div className="mt-2 flex items-center justify-end gap-2">
+    94→        <Button variant="ghost" size="sm" className="h-8 rounded-md text-muted-foreground" onClick={onCancel}>
+    95→          {t("Cancel")}
+    96→        </Button>
+    97→        <Button
+    98→          size="sm"
+    99→          className="h-8 gap-1.5 rounded-md px-4"
+   100→          disabled={!text.trim() || submitting}
+   101→          onClick={() => onSubmit(text.trim())}
+   102→        >
+   103→          {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquarePlus className="h-3.5 w-3.5" />}
+   104→          {t("Comment")}
+   105→        </Button>
+   106→      </div>
+   107→    </div>
+   108→  )
+   109→}
+   110→
+   111→/* ---------------------------------------------------------------- reply form */
+   112→
+   113→function ReplyForm({
+   114→  onSubmit,
+   115→  onCancel,
+   116→}: {
+   117→  onSubmit: (text: string) => void
+   118→  onCancel: () => void
+   119→}) {
+   120→  const [text, setText] = React.useState("")
+   121→  const ref = React.useRef<HTMLTextAreaElement | null>(null)
+   122→  const { t } = useI18n()
+   123→  React.useEffect(() => {
+   124→    const t2 = setTimeout(() => ref.current?.focus(), 40)
+   125→    return () => clearTimeout(t2)
+   126→  }, [])
+   127→
+   128→  return (
+   129→    <div className="mt-2 rounded-lg bg-muted/60 p-2">
+   130→      <Textarea
+   131→        ref={ref}
+   132→        value={text}
+   133→        onChange={(e) => setText(e.target.value)}
+   134→        onKeyDown={(e) => {
+   135→          if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim()) {
+   136→            e.preventDefault()
+   137→            onSubmit(text.trim())
+   138→          }
+   139→          if (e.key === "Escape") onCancel()
+   140→        }}
+   141→        placeholder={t("Reply…")}
+   142→        className="min-h-[52px] max-h-48 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+   143→        maxLength={2000}
+   144→        aria-label={t("Reply text")}
+   145→      />
+   146→      <div className="mt-1 flex justify-end gap-2">
+   147→        <Button variant="ghost" size="sm" className="h-7 rounded-md text-muted-foreground" onClick={onCancel}>
+   148→          {t("Cancel")}
+   149→        </Button>
+   150→        <Button size="sm" className="h-7 rounded-md px-3 text-xs" disabled={!text.trim()} onClick={() => onSubmit(text.trim())}>
+   151→          {t("Reply")}
+   152→        </Button>
+   153→      </div>
+   154→    </div>
+   155→  )
+   156→}
+   157→
+   158→/* --------------------------------------------------------------- edit form */
+   159→
+   160→function EditForm({
+   161→  initial,
+   162→  busy,
+   163→  onSubmit,
+   164→  onCancel,
+   165→}: {
+   166→  initial: string
+   167→  busy: boolean
+   168→  onSubmit: (text: string) => void
+   169→  onCancel: () => void
+   170→}) {
+   171→  const [text, setText] = React.useState(initial)
+   172→  const ref = React.useRef<HTMLTextAreaElement | null>(null)
+   173→  const { t } = useI18n()
+   174→  React.useEffect(() => {
+   175→    const t2 = setTimeout(() => ref.current?.focus(), 40)
+   176→    return () => clearTimeout(t2)
+   177→  }, [])
+   178→
+   179→  return (
+   180→    <div className="mt-1.5 rounded-lg border bg-muted/60 p-2">
+   181→      <Textarea
+   182→        ref={ref}
+   183→        value={text}
+   184→        onChange={(e) => setText(e.target.value)}
+   185→        onKeyDown={(e) => {
+   186→          if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && text.trim()) {
+   187→            e.preventDefault()
+   188→            onSubmit(text.trim())
+   189→          }
+   190→          if (e.key === "Escape") onCancel()
+   191→        }}
+   192→        placeholder={t("Edit comment…")}
+   193→        className="min-h-[52px] max-h-48 resize-none overflow-y-auto border-none bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+   194→        maxLength={2000}
+   195→        aria-label={t("Edit comment text")}
+   196→      />
+   197→      <div className="mt-1 flex justify-end gap-2">
+   198→        <Button variant="ghost" size="sm" className="h-7 rounded-md text-muted-foreground" onClick={onCancel}>
+   199→          {t("Cancel")}
+   200→        </Button>
+   201→        <Button
+   202→          size="sm"
+   203→          className="h-7 rounded-md px-3 text-xs"
+   204→          disabled={!text.trim() || text.trim() === initial || busy}
+   205→          onClick={() => onSubmit(text.trim())}
+   206→        >
+   207→          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : t("Save")}
+   208→        </Button>
+   209→      </div>
+   210→    </div>
+   211→  )
+   212→}
+   213→
+   214→/* ---------------------------------------------------------------- reactions */
+   215→
+   216→export const REACTION_EMOJI = ["👍", "❤️", "😂", "🎉", "✅", "👀"] as const
+   217→
+   218→function groupReactions(reactions: CommentReactionDTO[]) {
+   219→  const groups = new Map<string, { emoji: string; count: number; names: string[]; mine: boolean }>()
+   220→  for (const r of reactions) {
+   221→    const g = groups.get(r.emoji) ?? { emoji: r.emoji, count: 0, names: [], mine: false }
+   222→    g.count += 1
+   223→    g.names.push(r.userName)
+   224→    groups.set(r.emoji, g)
+   225→  }
+   226→  return [...groups.values()]
+   227→}
+   228→
+   229→function ReactionRow({
+   230→  reactions,
+   231→  meId,
+   232→  busy,
+   233→  onToggle,
+   234→}: {
+   235→  reactions: CommentReactionDTO[]
+   236→  meId: string | null
+   237→  busy: boolean
+   238→  onToggle: (emoji: string) => void
+   239→}) {
+   240→  const [picking, setPicking] = React.useState(false)
+   241→  const { t } = useI18n()
+   242→  const groups = React.useMemo(() => {
+   243→    const g = groupReactions(reactions)
+   244→    for (const item of g) item.mine = meId != null && reactions.some((r) => r.emoji === item.emoji && r.userId === meId)
+   245→    return g
+   246→  }, [reactions, meId])
+   247→
+   248→  React.useEffect(() => {
+   249→    if (!picking) return
+   250→    const close = (e: MouseEvent) => {
+   251→      if (!(e.target as HTMLElement).closest?.("[data-reaction-picker]")) setPicking(false)
+   252→    }
+   253→    const onKey = (e: KeyboardEvent) => {
+   254→      if (e.key === "Escape") setPicking(false)
+   255→    }
+   256→    window.addEventListener("mousedown", close)
+   257→    window.addEventListener("keydown", onKey)
+   258→    return () => {
+   259→      window.removeEventListener("mousedown", close)
+   260→      window.removeEventListener("keydown", onKey)
+   261→    }
+   262→  }, [picking])
+   263→
+   264→  return (
+   265→    <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-1" data-reactions>
+   266→      {groups.map((g) => (
+   267→        <Tooltip key={g.emoji}>
+   268→          <TooltipTrigger asChild>
+   269→            <button
+   270→              type="button"
+   271→              aria-label={g.mine
+   272→                ? t("{emoji} reaction, {count}. Click to remove yours", { emoji: g.emoji, count: g.count })
+   273→                : t("{emoji} reaction, {count}. Click to react", { emoji: g.emoji, count: g.count })}
+   274→              aria-pressed={g.mine}
+   275→              disabled={busy}
+   276→              onClick={() => onToggle(g.emoji)}
+   277→              className={cn(
+   278→                "animate-in zoom-in-75 flex h-6 items-center gap-1 rounded-md border px-1.5 text-xs shadow-sm transition-all duration-150 active:scale-90 disabled:opacity-50",
+   279→                g.mine
+   280→                  ? "border-primary/40 bg-primary/10 text-foreground"
+   281→                  : "border-border bg-background text-muted-foreground hover:border-border/80 hover:bg-accent hover:text-foreground"
+   282→              )}
+   283→            >
+   284→              <span aria-hidden>{g.emoji}</span>
+   285→              {g.count > 1 && <span className="tnum text-[10px] leading-none">{g.count}</span>}
+   286→            </button>
+   287→          </TooltipTrigger>
+   288→          <TooltipContent side="bottom" className="text-xs">
+   289→            {t("{names} reacted with {emoji}", { names: g.names.join(", "), emoji: g.emoji })}
+   290→          </TooltipContent>
+   291→        </Tooltip>
+   292→      ))}
+   293→
+   294→      <div className="relative" data-reaction-picker>
+   295→        <button
+   296→          type="button"
+   297→          aria-label={t("Add reaction")}
+   298→          aria-expanded={picking}
+   299→          disabled={busy}
+   300→          onClick={() => setPicking((p) => !p)}
+   301→          className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground/50 transition-all hover:bg-accent hover:text-foreground active:scale-90 disabled:opacity-50"
+   302→        >
+   303→          <SmilePlus className={cn("h-3.5 w-3.5 transition-colors", picking && "text-primary")} strokeWidth={1.75} />
+   304→        </button>
+   305→        {picking && (
+   306→          <div
+   307→            role="menu"
+   308→            aria-label={t("Pick a reaction")}
+   309→            className="elev-2 animate-in fade-in-0 zoom-in-95 absolute bottom-8 left-0 z-10 flex origin-bottom-left items-center gap-0.5 rounded-lg border bg-background/95 p-1 backdrop-blur-md duration-150"
+   310→          >
+   311→            {REACTION_EMOJI.map((emoji) => (
+   312→              <button
+   313→                key={emoji}
+   314→                type="button"
+   315→                role="menuitem"
+   316→                aria-label={t("React with {emoji}", { emoji })}
+   317→                onClick={() => {
+   318→                  onToggle(emoji)
+   319→                  setPicking(false)
+   320→                }}
+   321→                className="flex h-7 w-7 items-center justify-center rounded-md text-sm transition-all hover:scale-125 hover:bg-accent active:scale-90"
+   322→              >
+   323→                {emoji}
+   324→              </button>
+   325→            ))}
+   326→          </div>
+   327→        )}
+   328→      </div>
+   329→    </div>
+   330→  )
+   331→}
+   332→
+   333→/* -------------------------------------------------------------- thread card */
+   334→
+   335→function MessageBody({
+   336→  authorName,
+   337→  authorColor,
+   338→  time,
+   339→  children,
+   340→  resolved,
+   341→}: {
+   342→  authorName: string
+   343→  authorColor: string
+   344→  time: string
+   345→  children: React.ReactNode
+   346→  resolved: boolean
+   347→}) {
+   348→  const { t, lang } = useI18n()
+   349→  return (
+   350→    <div className="min-w-0 flex-1">
+   351→      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+   352→        <span className="text-sm font-medium leading-tight">{authorName}</span>
+   353→        <span className="tnum text-[11px] text-muted-foreground">{relativeTime(time, lang)}</span>
+   354→        {resolved && <CheckCircle2 className="h-3.5 w-3.5 text-primary" aria-label={t("Resolved")} />}
+   355→      </div>
+   356→      <div
+   357→        className="mt-1 whitespace-pre-wrap break-words text-sm leading-relaxed"
+   358→        style={{ borderLeft: `2px solid ${authorColor}33`, paddingLeft: 8, marginLeft: 2 }}
+   359→      >
+   360→        {children}
+   361→      </div>
+   362→    </div>
+   363→  )
+   364→}
+   365→
+   366→interface ThreadCardProps {
+   367→  comment: CommentDTO
+   368→  active: boolean
+   369→  busy: boolean
+   370→  meId: string | null
+   371→  onReply: (text: string) => void
+   372→  onToggleResolve: () => void
+   373→  onDelete: () => void
+   374→  onFocusClick?: () => void
+   375→  onEdit?: (id: string, content: string) => void
+   376→  onToggleReaction?: (commentId: string, emoji: string) => void
+   377→}
+   378→
+   379→function ThreadCard({ comment, active, busy, meId, onReply, onToggleResolve, onDelete, onFocusClick, onEdit, onToggleReaction }: ThreadCardProps) {
+   380→  const { t } = useI18n()
+   381→  const [replying, setReplying] = React.useState(false)
+   382→  const [editing, setEditing] = React.useState<string | null>(null)
+   383→  const ref = React.useRef<HTMLDivElement | null>(null)
+   384→
+   385→  React.useEffect(() => {
+   386→    if (active) ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+   387→  }, [active])
+   388→
+   389→  const replies = comment.replies ?? []
+   390→  const lastActivity = replies.length > 0 ? replies[replies.length - 1].createdAt : comment.createdAt
+   391→
+   392→  return (
+   393→    <div
+   394→      ref={ref}
+   395→      data-comment-id={comment.id}
+   396→      className={cn(
+   397→        "animate-fade-in scroll-mt-4 rounded-lg border bg-card p-3 transition-[border-color,box-shadow,opacity] group/thread",
+   398→        active && "border-primary/60 ring-2 ring-primary/20",
+   399→        comment.resolved && "opacity-75"
+   400→      )}
+   401→    >
+   402→      <div className="flex gap-2.5">
+   403→        <CommentAvatar name={comment.authorName} color={comment.authorColor} />
+   404→        {editing === comment.id ? (
+   405→          <div className="min-w-0 flex-1">
+   406→            <EditForm
+   407→              initial={comment.content}
+   408→              busy={busy}
+   409→              onSubmit={(text) => {
+   410→                onEdit?.(comment.id, text)
+   411→                setEditing(null)
+   412→              }}
+   413→              onCancel={() => setEditing(null)}
+   414→            />
+   415→          </div>
+   416→        ) : (
+   417→          <MessageBody authorName={comment.authorName} authorColor={comment.authorColor} time={lastActivity} resolved={comment.resolved}>
+   418→            {comment.content}
+   419→          </MessageBody>
+   420→        )}
+   421→      </div>
+   422→
+   423→      {comment.quote && (
+   424→        <button
+   425→          onClick={onFocusClick}
+   426→          className="mt-2 flex w-full items-start gap-2 rounded-lg bg-muted/70 p-2 text-left transition-colors hover:bg-muted"
+   427→          aria-label={t("Show quoted text in document")}
+   428→        >
+   429→          <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+   430→          <p className="line-clamp-2 text-xs italic leading-snug text-muted-foreground">{comment.quote}</p>
+   431→        </button>
+   432→      )}
+   433→
+   434→      {onToggleReaction && (
+   435→        <ReactionRow
+   436→          reactions={comment.reactions ?? []}
+   437→          meId={meId}
+   438→          busy={busy}
+   439→          onToggle={(emoji) => onToggleReaction(comment.id, emoji)}
+   440→        />
+   441→      )}
+   442→
+   443→      {replies.length > 0 && (
+   444→        <div className="mt-2 space-y-2 border-l border-border pl-3 ml-4">
+   445→          {replies.map((r) => (
+   446→            <div key={r.id} className="space-y-0.5">
+   447→              <div className="flex gap-2.5">
+   448→                <CornerDownRight className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+   449→                <div className="flex gap-2">
+   450→                  <CommentAvatar name={r.authorName} color={r.authorColor} size="sm" />
+   451→                  {editing === r.id ? (
+   452→                    <div className="min-w-0 flex-1">
+   453→                      <EditForm
+   454→                        initial={r.content}
+   455→                        busy={busy}
+   456→                        onSubmit={(text) => {
+   457→                          onEdit?.(r.id, text)
+   458→                          setEditing(null)
+   459→                        }}
+   460→                        onCancel={() => setEditing(null)}
+   461→                      />
+   462→                    </div>
+   463→                  ) : (
+   464→                    <MessageBody authorName={r.authorName} authorColor={r.authorColor} time={r.createdAt} resolved={r.resolved}>
+   465→                      {r.content}
+   466→                    </MessageBody>
+   467→                  )}
+   468→                </div>
+   469→                {editing !== r.id && (meId === r.authorId || meId === null) && onEdit && (
+   470→                  <Button
+   471→                    variant="ghost"
+   472→                    size="icon"
+   473→                    aria-label={t("Edit reply")}
+   474→                    className="h-6 w-6 shrink-0 rounded-md text-muted-foreground/60 opacity-0 transition-opacity hover:text-foreground group-hover/thread:opacity-100 focus-visible:opacity-100"
+   475→                    onClick={() => setEditing(r.id)}
+   476→                    disabled={busy}
+   477→                  >
+   478→                    <Pencil className="h-3 w-3" />
+   479→                  </Button>
+   480→                )}
+   481→              </div>
+   482→              {onToggleReaction && (
+   483→                <div
+   484→                  className={cn(
+   485→                    "ml-6 transition-opacity",
+   486→                    (r.reactions?.length ?? 0) === 0 &&
+   487→                      "opacity-0 focus-within:opacity-100 group-hover/thread:opacity-100"
+   488→                  )}
+   489→                >
+   490→                  <ReactionRow
+   491→                    reactions={r.reactions ?? []}
+   492→                    meId={meId}
+   493→                    busy={busy}
+   494→                    onToggle={(emoji) => onToggleReaction(r.id, emoji)}
+   495→                  />
+   496→                </div>
+   497→              )}
+   498→            </div>
+   499→          ))}
+   500→        </div>
+   501→      )}
+   502→
+   503→      {replying ? (
+   504→        <ReplyForm
+   505→          onSubmit={(text) => {
+   506→            onReply(text)
+   507→            setReplying(false)
+   508→          }}
+   509→          onCancel={() => setReplying(false)}
+   510→        />
+   511→      ) : (
+   512→        <div className="mt-2 flex items-center gap-1 pl-1">
+   513→          <Button
+   514→            variant="ghost"
+   515→            size="sm"
+   516→            className="h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
+   517→            onClick={() => setReplying(true)}
+   518→            disabled={busy}
+   519→          >
+   520→            <CornerDownRight className="h-3.5 w-3.5" /> {t("Reply")}
+   521→          </Button>
+   522→          {(meId === comment.authorId || meId === null) && onEdit && editing !== comment.id && (
+   523→            <Button
+   524→              variant="ghost"
+   525→              size="sm"
+   526→              className="h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
+   527→              onClick={() => setEditing(comment.id)}
+   528→              disabled={busy}
+   529→            >
+   530→              <Pencil className="h-3.5 w-3.5" /> {t("Edit")}
+   531→            </Button>
+   532→          )}
+   533→          <Tooltip>
+   534→            <TooltipTrigger asChild>
+   535→              <Button
+   536→                variant="ghost"
+   537→                size="sm"
+   538→                className="h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
+   539→                onClick={onToggleResolve}
+   540→                disabled={busy}
+   541→              >
+   542→                {comment.resolved ? <RotateCcw className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+   543→                {comment.resolved ? t("Reopen") : t("Resolve")}
+   544→              </Button>
+   545→            </TooltipTrigger>
+   546→            <TooltipContent side="bottom" className="text-xs">
+   547→              {comment.resolved ? t("Reopen this thread") : t("Mark as resolved")}
+   548→            </TooltipContent>
+   549→          </Tooltip>
+   550→          {(meId === comment.authorId || meId === null) && (
+   551→            <Tooltip>
+   552→              <TooltipTrigger asChild>
+   553→                <Button
+   554→                  variant="ghost"
+   555→                  size="sm"
+   556→                  aria-label={t("Delete comment thread")}
+   557→                  className="ml-auto h-7 gap-1 rounded-md px-2.5 text-xs text-muted-foreground hover:text-destructive"
+   558→                  onClick={onDelete}
+   559→                  disabled={busy}
+   560→                >
+   561→                  {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+   562→                </Button>
+   563→              </TooltipTrigger>
+   564→              <TooltipContent side="bottom" className="text-xs">{t("Delete thread")}</TooltipContent>
+   565→            </Tooltip>
+   566→          )}
+   567→        </div>
+   568→      )}
+   569→    </div>
+   570→  )
+   571→}
+   572→
+   573→/* ------------------------------------------------------------- suggestion cards */
+   574→
+   575→function SuggestionCard({
+   576→  s,
+   577→  active,
+   578→  onAccept,
+   579→  onReject,
+   580→  onFocus,
+   581→}: {
+   582→  s: SuggestionInfo
+   583→  active: boolean
+   584→  onAccept: (sid: string) => void
+   585→  onReject: (sid: string) => void
+   586→  onFocus: (sid: string) => void
+   587→}) {
+   588→  const { t, lang } = useI18n()
+   589→  const verb =
+   590→    s.kind === "del" ? t("deleted") : s.kind === "para" ? t("suggested a paragraph break") : t("inserted")
+   591→  const preview =
+   592→    s.kind === "para" ? "¶" : s.text.length > 120 ? s.text.slice(0, 120).trimEnd() + "…" : s.text
+   593→
+   594→  return (
+   595→    <div
+   596→      data-sug-card={s.sid}
+   597→      className={cn(
+   598→        "animate-fade-in rounded-lg border bg-card p-3 transition-[border-color,box-shadow] group/sug",
+   599→        active ? "border-primary/60 ring-2 ring-primary/20" : "hover:border-border/80"
+   600→      )}
+   601→    >
+   602→      <div className="flex gap-2.5">
+   603→        <CommentAvatar name={s.authorName} color={s.authorColor} size="sm" />
+   604→        <div className="min-w-0 flex-1">
+   605→          <p className="text-xs leading-snug">
+   606→            <button
+   607→              className="font-semibold text-foreground hover:underline"
+   608→              onClick={() => onFocus(s.sid)}
+   609→              title={t("Show in document")}
+   610→            >
+   611→              {s.authorName}
+   612→            </button>{" "}
+   613→            <span className="text-muted-foreground">{verb}</span>
+   614→            {s.createdAt > 0 && (
+   615→              <span className="text-muted-foreground"> · {relativeTime(new Date(s.createdAt).toISOString(), lang)}</span>
+   616→            )}
+   617→          </p>
+   618→          {s.kind !== "para" && (
+   619→            <button
+   620→              className="mt-1.5 block w-full rounded-md bg-muted/60 px-2 py-1.5 text-left text-xs leading-snug transition-colors hover:bg-muted"
+   621→              onClick={() => onFocus(s.sid)}
+   622→              aria-label={t("Show this suggestion in the document")}
+   623→            >
+   624→              <span
+   625→                className="line-clamp-3"
+   626→                style={{
+   627→                  textDecorationLine: s.kind === "del" ? "line-through" : "underline",
+   628→                  textDecorationColor: s.authorColor,
+   629→                  textDecorationThickness: "1.5px",
+   630→                  textUnderlineOffset: "2px",
+   631→                  color: s.kind === "del" ? s.authorColor : undefined,
+   632→                }}
+   633→              >
+   634→                {preview || t("(empty)")}
+   635→              </span>
+   636→            </button>
+   637→          )}
+   638→        </div>
+   639→      </div>
+   640→      <div className="mt-2 flex items-center justify-end gap-1.5">
+   641→        <Button
+   642→          variant="ghost"
+   643→          size="sm"
+   644→          className="h-7 gap-1.5 rounded-md px-2.5 text-xs text-muted-foreground hover:text-foreground"
+   645→          onClick={() => onReject(s.sid)}
+   646→        >
+   647→          <X className="h-3.5 w-3.5" /> {t("Reject")}
+   648→        </Button>
+   649→        <Button
+   650→          size="sm"
+   651→          className="h-7 gap-1.5 rounded-md px-2.5 text-xs"
+   652→          onClick={() => onAccept(s.sid)}
+   653→        >
+   654→          <Check className="h-3.5 w-3.5" /> {t("Accept")}
+   655→        </Button>
+   656→      </div>
+   657→    </div>
+   658→  )
+   659→}
+   660→
+   661→/* ------------------------------------------------------------- sidebar shell */
+   662→
+   663→export interface CommentsSidebarProps {
+   664→  open: boolean
+   665→  onClose: () => void
+   666→  comments: CommentDTO[]
+   667→  loading: boolean
+   668→  activeCommentId: string | null
+   669→  pendingQuote: PendingQuote | null
+   670→  busy: boolean
+   671→  meId: string | null
+   672→  onSubmitComment: (text: string) => void
+   673→  onCancelComposer: () => void
+   674→  onReply: (parentId: string, text: string) => void
+   675→  onEdit: (id: string, content: string) => void
+   676→  onToggleResolve: (c: CommentDTO) => void
+   677→  onDelete: (c: CommentDTO) => void
+   678→  onFocusComment: (c: CommentDTO) => void
+   679→  onToggleReaction?: (commentId: string, emoji: string) => void
+   680→  /* suggesting mode */
+   681→  suggestions?: SuggestionInfo[]
+   682→  activeSuggestionId?: string | null
+   683→  onAcceptSuggestion?: (sid: string) => void
+   684→  onRejectSuggestion?: (sid: string) => void
+   685→  onFocusSuggestion?: (sid: string) => void
+   686→}
+   687→
+   688→export function CommentsSidebar(props: CommentsSidebarProps) {
+   689→  const {
+   690→    open, onClose, comments, loading, activeCommentId, pendingQuote, busy, meId,
+   691→    onSubmitComment, onCancelComposer, onReply, onEdit, onToggleResolve, onDelete, onFocusComment, onToggleReaction,
+   692→    suggestions = [], activeSuggestionId = null,
+   693→    onAcceptSuggestion, onRejectSuggestion, onFocusSuggestion,
+   694→  } = props
+   695→
+   696→  const openThreads = React.useMemo(() => comments.filter((c) => !c.resolved), [comments])
+   697→  const resolvedThreads = React.useMemo(() => comments.filter((c) => c.resolved), [comments])
+   698→  const [showResolved, setShowResolved] = React.useState(false)
+   699→  const { t } = useI18n()
+   700→
+   701→  return (
+   702→    <aside
+   703→      aria-label={t("Comments and suggestions")}
+   704→      data-open={open}
+   705→      className={cn(
+   706→        "no-print relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-l bg-background/95 backdrop-blur-sm",
+   707→        "transition-[margin-right] duration-300 ease-in-out",
+   708→        open ? "mr-0" : "pointer-events-none -mr-[340px] max-lg:-mr-[100%]",
+   709→        "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:w-full max-lg:border-l max-lg:bg-background max-lg:transition-transform",
+   710→        !open && "max-lg:pointer-events-none max-lg:translate-x-full"
+   711→      )}
+   712→    >
+   713→      <div className="flex h-full w-full flex-col lg:w-[340px]">
+   714→        {/* header */}
+   715→        <div className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+   716→          <MessageCircle className="h-4 w-4 text-primary" />
+   717→          <h2 className="text-sm font-semibold">{t("Comments")}</h2>
+   718→          {!loading && (
+   719→            <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+   720→              {t("{n} open", { n: openThreads.length })}
+   721→            </span>
+   722→          )}
+   723→          <Button
+   724→            variant="ghost"
+   725→            size="icon"
+   726→            aria-label={t("Close comments panel")}
+   727→            className="ml-auto h-8 w-8 rounded-md text-muted-foreground"
+   728→            onClick={onClose}
+   729→          >
+   730→            <X className="h-4 w-4" />
+   731→          </Button>
+   732→        </div>
+   733→
+   734→        {/* body */}
+   735→        <div className="slim-scroll flex-1 space-y-3 overflow-y-auto p-3">
+   736→          {suggestions.length > 0 && (
+   737→            <div className="space-y-2">
+   738→              <div className="sticky top-0 z-[1] -mx-1 flex items-center gap-2 bg-background/95 px-1 py-1 backdrop-blur-sm">
+   739→                <PencilLine className="h-3.5 w-3.5 text-primary" />
+   740→                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+   741→                  {t("Suggestions")}
+   742→                </h3>
+   743→                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-primary">
+   744→                  {suggestions.length}
+   745→                </span>
+   746→              </div>
+   747→              {suggestions.map((s) => (
+   748→                <SuggestionCard
+   749→                  key={s.sid}
+   750→                  s={s}
+   751→                  active={activeSuggestionId === s.sid}
+   752→                  onAccept={onAcceptSuggestion ?? (() => {})}
+   753→                  onReject={onRejectSuggestion ?? (() => {})}
+   754→                  onFocus={onFocusSuggestion ?? (() => {})}
+   755→                />
+   756→              ))}
+   757→              <div className="pt-1" />
+   758→            </div>
+   759→          )}
+   760→
+   761→          <Composer
+   762→            quote={pendingQuote?.quote ?? null}
+   763→            submitting={busy}
+   764→            onSubmit={onSubmitComment}
+   765→            onCancel={onCancelComposer}
+   766→          />
+   767→
+   768→          {loading ? (
+   769→            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+   770→              <Loader2 className="h-4 w-4 animate-spin" /> {t("Loading comments…")}
+   771→            </div>
+   772→          ) : comments.length === 0 && pendingQuote == null ? (
+   773→            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-10 text-center">
+   774→              <MessageSquarePlus className="h-8 w-8 text-muted-foreground/40" />
+   775→              <div>
+   776→                <p className="font-editorial text-[14.5px] font-medium italic tracking-tight text-foreground/80">{t("No comments yet")}</p>
+   777→                <p className="mt-1 max-w-[240px] text-xs text-muted-foreground">
+   778→                  {t("Select text in the document and press the comment button to start a discussion.")}
+   779→                </p>
+   780→              </div>
+   781→            </div>
+   782→          ) : (
+   783→            <>
+   784→              {openThreads.map((c) => (
+   785→                <ThreadCard
+   786→                  key={c.id}
+   787→                  comment={c}
+   788→                  active={activeCommentId === c.id}
+   789→                  busy={busy}
+   790→                  meId={meId}
+   791→                  onReply={(text) => onReply(c.id, text)}
+   792→                  onEdit={onEdit}
+   793→                  onToggleResolve={() => onToggleResolve(c)}
+   794→                  onDelete={() => onDelete(c)}
+   795→                  onFocusClick={() => onFocusComment(c)}
+   796→                  onToggleReaction={onToggleReaction}
+   797→                />
+   798→              ))}
+   799→
+   800→              {resolvedThreads.length > 0 && (
+   801→                <div className="pt-1">
+   802→                  <button
+   803→                    onClick={() => setShowResolved((v) => !v)}
+   804→                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+   805→                    aria-expanded={showResolved}
+   806→                  >
+   807→                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
+   808→                    {resolvedThreads.length === 1
+   809→                      ? t("{n} resolved thread", { n: resolvedThreads.length })
+   810→                      : t("{n} resolved threads", { n: resolvedThreads.length })}
+   811→                    <span className="ml-auto text-[10px]">{showResolved ? t("Hide") : t("Show")}</span>
+   812→                  </button>
+   813→                  {showResolved &&
+   814→                    resolvedThreads.map((c) => (
+   815→                      <div key={c.id} className="mt-2">
+   816→                        <ThreadCard
+   817→                          comment={c}
+   818→                          active={activeCommentId === c.id}
+   819→                          busy={busy}
+   820→                          meId={meId}
+   821→                          onReply={(text) => onReply(c.id, text)}
+   822→                          onEdit={onEdit}
+   823→                          onToggleResolve={() => onToggleResolve(c)}
+   824→                          onDelete={() => onDelete(c)}
+   825→                          onFocusClick={() => onFocusComment(c)}
+   826→                          onToggleReaction={onToggleReaction}
+   827→                        />
+   828→                      </div>
+   829→                    ))}
+   830→                </div>
+   831→              )}
+   832→            </>
+   833→          )}
+   834→        </div>
+   835→      </div>
+   836→    </aside>
+   837→  )
+   838→}
+   839→
+   840→/* --------------------------------------------------- selection comment bubble */
+   841→
+   842→export function CommentBubble({
+   843→  x,
+   844→  y,
+   845→  onAdd,
+   846→}: {
+   847→  x: number
+   848→  y: number
+   849→  onAdd: () => void
+   850→}) {
+   851→  const { t } = useI18n()
+   852→  return (
+   853→    <button
+   854→      role="button"
+   855→      aria-label={t("Add comment on selected text")}
+   856→      data-testid="comment-bubble"
+   857→      onMouseDown={(e) => e.preventDefault()} // keep the text selection
+   858→      onClick={onAdd}
+   859→      className="no-print animate-fade-in fixed z-50 flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border/80 bg-card px-3 py-1.5 text-xs font-medium text-foreground elev-2 transition-[border-color,box-shadow,transform] hover:scale-105 hover:border-primary/40"
+   860→      style={{
+   861→        left: Math.min(Math.max(x - 60, 8), window.innerWidth - 140),
+   862→        top: Math.max(y, 8),
+   863→      }}
+   864→    >
+   865→      <MessageSquarePlus className="h-3.5 w-3.5 text-primary" />
+   866→      {t("Comment")}
+   867→    </button>
+   868→  )
+   869→}
+   870→

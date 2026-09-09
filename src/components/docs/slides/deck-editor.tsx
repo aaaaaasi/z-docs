@@ -6,12 +6,21 @@
  * thumbnail rail, canvas and the collapsible speaker-notes panel.
  * Autosaves 900ms after any change (PATCH), with Ctrl+Z undo, PageUp/Down
  * & arrow slide switching and Ctrl+Enter to present.
+ *
+ * Responsive top bar:
+ *  • ≥1024: full controls incl. the textual SaveStatus pill.
+ *  • 768–1024: ThemeControls collapse into a "⋮" design popover; save
+ *    feedback shrinks to a 6px status dot.
+ *  • <768: additionally star / speaker notes / layout / PPTX export move
+ *    into the same "⋮" popover (44px rows), and the slide rail becomes a
+ *    bottom filmstrip (see slide-rail.tsx).
  */
 
 import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import { useI18n } from "@/lib/i18n"
@@ -24,6 +33,7 @@ import {
   Download,
   LayoutTemplate,
   Loader2,
+  MoreVertical,
   Play,
   Star,
   StickyNote,
@@ -32,8 +42,8 @@ import {
 import { useSlidesStore } from "./deck-store"
 import { SlideRail } from "./slide-rail"
 import { SlideCanvas } from "./slide-canvas"
-import { ThemeControls } from "./theme-controls"
-import { LayoutPickerPopover } from "./layout-picker"
+import { AccentSwatches, ThemeControls, ThemeFontToggle } from "./theme-controls"
+import { LayoutGrid, LayoutPickerPopover } from "./layout-picker"
 import { cn } from "@/lib/utils"
 
 function SaveStatus() {
@@ -43,36 +53,67 @@ function SaveStatus() {
 
   if (status === "error") {
     return (
-      <button
-        type="button"
-        onClick={() => void saveNow()}
-        className="flex h-8 items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/5 px-3 text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10"
-      >
-        <CloudOff className="h-3.5 w-3.5" />
-        {t("Couldn’t save — retry")}
-      </button>
+      <>
+        {/* <1024: compact retry affordance */}
+        <button
+          type="button"
+          onClick={() => void saveNow()}
+          aria-label={t("Couldn’t save — retry")}
+          title={t("Couldn’t save — retry")}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-destructive outline-none transition-colors hover:bg-destructive/10 lg:hidden"
+        >
+          <CloudOff className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          onClick={() => void saveNow()}
+          className="hidden h-8 items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/5 px-3 text-[13px] text-destructive outline-none transition-colors hover:bg-destructive/10 lg:flex"
+        >
+          <CloudOff className="h-3.5 w-3.5" />
+          {t("Couldn’t save — retry")}
+        </button>
+      </>
     )
   }
 
   const busy = status === "pending" || status === "saving"
+  const label = busy ? t("Saving…") : t("All changes saved")
   return (
-    <div
-      className="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-muted-foreground"
-      role="status"
-      aria-live="polite"
-    >
-      {busy ? (
-        <>
-          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
-          <span>{t("Saving…")}</span>
-        </>
-      ) : (
-        <>
-          <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
-          <span>{t("All changes saved")}</span>
-        </>
-      )}
-    </div>
+    <>
+      {/* <1024: 6px status dot — amber pulsing while saving, green when saved */}
+      <span
+        role="status"
+        aria-live="polite"
+        aria-label={label}
+        title={label}
+        className="flex h-8 w-8 shrink-0 items-center justify-center lg:hidden"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "h-1.5 w-1.5 rounded-full",
+            busy ? "animate-pulse bg-amber-500" : "bg-primary"
+          )}
+        />
+      </span>
+      <div
+        className="hidden h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] text-muted-foreground lg:flex"
+        role="status"
+        aria-live="polite"
+      >
+        {busy ? (
+          <>
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+            <span>{t("Saving…")}</span>
+          </>
+        ) : (
+          <>
+            <Check className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+            <span>{t("All changes saved")}</span>
+          </>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -119,6 +160,34 @@ function NotesPanel({ onClose }: { onClose: () => void }) {
   )
 }
 
+/** 44px-tall action row used inside the mobile (⌄ <768) overflow popover. */
+function PanelRow({
+  icon,
+  label,
+  onClick,
+  disabled,
+  pressed,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  pressed?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={pressed}
+      className="flex h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent disabled:pointer-events-none disabled:opacity-50"
+    >
+      {icon}
+      <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+    </button>
+  )
+}
+
 export function DeckEditor({
   onBack,
   onPresent,
@@ -142,6 +211,7 @@ export function DeckEditor({
   const [titleDraft, setTitleDraft] = React.useState("")
   const [notesOpen, setNotesOpen] = React.useState(false)
   const [exporting, setExporting] = React.useState(false)
+  const [moreOpen, setMoreOpen] = React.useState(false)
 
   const slides = data?.slides ?? []
   const currentLayout =
@@ -222,6 +292,11 @@ export function DeckEditor({
     if (v && v !== title) void renameOpenDeck(v)
   }
 
+  const applyLayoutToCurrent = (layout: Parameters<typeof setSlideLayout>[1]) => {
+    const id = currentSlideId ?? slides[0]?.id
+    if (id) setSlideLayout(id, layout)
+  }
+
   return (
     <div className="flex h-dvh w-full flex-col overflow-hidden bg-background">
       {/* top bar */}
@@ -255,7 +330,7 @@ export function DeckEditor({
             }}
             onBlur={commitTitle}
             aria-label={t("Presentation title")}
-            className="h-9 w-44 rounded-md text-[15px] font-medium sm:w-64 lg:w-80"
+            className="h-9 w-44 min-w-0 rounded-md text-[15px] font-medium sm:w-64 lg:w-80"
           />
         ) : (
           <Tooltip>
@@ -301,7 +376,7 @@ export function DeckEditor({
           </TooltipContent>
         </Tooltip>
 
-        <div className="ml-1 hidden lg:flex">
+        <div className="ml-1 flex">
           <SaveStatus />
         </div>
 
@@ -315,10 +390,7 @@ export function DeckEditor({
             <LayoutPickerPopover
               title={t("Change layout")}
               current={currentLayout}
-              onPick={(layout) => {
-                const id = currentSlideId ?? slides[0]?.id
-                if (id) setSlideLayout(id, layout)
-              }}
+              onPick={(layout) => applyLayoutToCurrent(layout)}
               trigger={
                 <Button
                   variant="ghost"
@@ -341,7 +413,7 @@ export function DeckEditor({
                 aria-label={t("Toggle speaker notes")}
                 aria-pressed={notesOpen}
                 className={cn(
-                  "h-9 w-9 rounded-full",
+                  "hidden h-9 w-9 rounded-full sm:inline-flex",
                   notesOpen && "bg-accent text-accent-foreground"
                 )}
               >
@@ -360,7 +432,7 @@ export function DeckEditor({
                 onClick={() => void onExportPptx()}
                 disabled={exporting || slides.length === 0}
                 aria-label={t("Export PPTX")}
-                className="h-9 gap-1.5 rounded-full px-3 text-[13px]"
+                className="hidden h-9 gap-1.5 rounded-full px-3 text-[13px] sm:inline-flex"
               >
                 {exporting ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -374,6 +446,85 @@ export function DeckEditor({
               {t("Export as PowerPoint (.pptx)")}
             </TooltipContent>
           </Tooltip>
+
+          {/* <768 overflow: design (theme color & font on all sizes below md)
+              plus star / speaker notes / layout / export rows on phones. */}
+          <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("More actions")}
+                className="h-9 w-9 rounded-full md:hidden"
+              >
+                <MoreVertical className="h-4.5 w-4.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-72 p-3">
+              <div className="flex flex-col gap-0.5 sm:hidden">
+                <PanelRow
+                  icon={
+                    <Star
+                      className={cn(
+                        "h-4.5 w-4.5",
+                        deckStarred && "fill-amber-400 text-amber-400"
+                      )}
+                    />
+                  }
+                  label={deckStarred ? t("Remove star") : t("Add star")}
+                  pressed={deckStarred}
+                  onClick={() => void toggleOpenDeckStar()}
+                />
+                <PanelRow
+                  icon={<StickyNote className="h-4.5 w-4.5" />}
+                  label={t("Speaker notes")}
+                  pressed={notesOpen}
+                  onClick={() => {
+                    setNotesOpen((o) => !o)
+                    setMoreOpen(false)
+                  }}
+                />
+                <PanelRow
+                  icon={
+                    exporting ? (
+                      <Loader2 className="h-4.5 w-4.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Download className="h-4.5 w-4.5" />
+                    )
+                  }
+                  label={t("Export PPTX")}
+                  disabled={exporting || slides.length === 0}
+                  onClick={() => {
+                    void onExportPptx()
+                    setMoreOpen(false)
+                  }}
+                />
+              </div>
+
+              <p className="mt-2 text-[13px] font-medium sm:mt-0">{t("Design")}</p>
+              <p className="mt-3 text-[12px] font-medium text-muted-foreground">
+                {t("Theme color")}
+              </p>
+              <div className="mt-2">
+                <AccentSwatches />
+              </div>
+              <p className="mt-3 text-[12px] font-medium text-muted-foreground">
+                {t("Theme font")}
+              </p>
+              <div className="mt-2">
+                <ThemeFontToggle />
+              </div>
+
+              <div className="sm:hidden">
+                <p className="mt-3 text-[12px] font-medium text-muted-foreground">
+                  {t("Change layout")}
+                </p>
+                <div className="mt-2">
+                  <LayoutGrid current={currentLayout} onPick={(layout) => applyLayoutToCurrent(layout)} />
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -394,9 +545,9 @@ export function DeckEditor({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <SlideRail />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <SlideCanvas />
           {notesOpen && <NotesPanel onClose={() => setNotesOpen(false)} />}
         </div>

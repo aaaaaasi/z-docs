@@ -1,0 +1,2002 @@
+     1→"use client"
+     2→
+     3→import * as React from "react"
+     4→import { Button } from "@/components/ui/button"
+     5→import { Skeleton } from "@/components/ui/skeleton"
+     6→import { useToast } from "@/hooks/use-toast"
+     7→import { useDocsStore } from "@/store/docs-store"
+     8→import { useLocalUser } from "@/lib/identity"
+     9→import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@/hooks/use-collab"
+    10→import { docStats, escapeHtml, getSnippet, htmlToText, countWords, type DocStats } from "@/lib/doc-utils"
+    11→import { buildPrintDocument, exportSafeName } from "@/lib/print-html"
+    12→import { api as apiFetch } from "@/lib/api-client"
+    13→import { freezeRemoteImages } from "@/lib/image-freeze"
+    14→import { trackedDownload, readBlobWithProgress } from "@/store/export-progress-store"
+    15→import { useI18n, tForLang, getCurrentLang } from "@/lib/i18n"
+    16→import {
+    17→  selectionOffsets, selectedBlocks, findQuoteRange,
+    18→  getTableContext, describeTableAt, insertTableRow, insertTableColumn, deleteTableRow,
+    19→  deleteTableColumn, deleteTableEl, toggleTableHeader, ensureParagraph, placeCaretInCell,
+    20→  mergeTableCells, splitTableCell,
+    21→  caretRangeFromPoint, pointInSelection, findTextMatches, scrollRangeIntoCanvasView, mapRangeToClone,
+    22→  type TableInfo, type TextMatch,
+    23→} from "@/lib/editor-dom"
+    24→import type { DocumentDTO, CommentDTO } from "@/lib/docs-types"
+    25→import {
+    26→  collectSuggestions, suggestInsertText, suggestInsertParagraph, suggestDeleteSelection,
+    27→  deletionUnitRange, caretSugSpan, acceptSuggestionMark, rejectSuggestionMark,
+    28→  focusSuggestionMark, clearSuggestionFocus,
+    29→  type SuggestionInfo, type SuggestionAuthor,
+    30→} from "@/lib/suggest-dom"
+    31→import { DEFAULT_MARGINS, type PageMargins } from "./ruler"
+    32→import { EditorCanvas } from "./editor-canvas"
+    33→import { EditorHeader } from "./editor-header"
+    34→import { MenuBar } from "./menu-bar"
+    35→import { Toolbar } from "./toolbar"
+    36→import { StatusPill } from "./status-pill"
+    37→import { CommentsSidebar, CommentBubble, type PendingQuote } from "./comments-sidebar"
+    38→import { DEFAULT_FORMAT, type EditorApi, type FormatState, type TableOp } from "./editor-types"
+    39→import { LinkDialog, ImageDialog, TableDialog } from "./dialogs-basic"
+    40→import { ShareDialog } from "./share-dialog"
+    41→import { VersionHistorySheet } from "./version-history"
+    42→import { HelpWriteDialog } from "./help-write-dialog"
+    43→import { WordCountDialog, ShortcutsDialog, AboutDialog } from "./info-dialogs"
+    44→import { OutlineSidebar, type OutlineItem } from "./outline-sidebar"
+    45→import { EmojiDialog } from "./emoji-dialog"
+    46→import { FindReplacePanel } from "./find-replace"
+    47→import { useVoiceTyping, VoicePill } from "./voice-typing"
+    48→import { SpellCheckDialog } from "./spell-check-dialog"
+    49→import { WritingStudioDialog } from "./writing-studio"
+    50→import { InsightsSidebar } from "./insights-sidebar"
+    51→import { createWritingTracker, type WritingStats, type WritingTracker } from "@/lib/writing-tracker"
+    52→import { AiToolsDialog, type AiSource } from "./ai-tools-dialog"
+    53→import { FileWarning, Loader2, Rows3, Columns3, Heading, Trash2, TableCellsMerge, TableCellsSplit } from "lucide-react"
+    54→import {
+    55→  ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger,
+    56→} from "@/components/ui/context-menu"
+    57→
+    58→/* ---------------- structured plain-text export ---------------- */
+    59→
+    60→const TXT_BLOCK_TAGS = new Set(["p", "div", "li", "blockquote", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "tr", "table", "figure"])
+    61→
+    62→/** Client-side DOM walk producing a genuinely structured .txt export:
+    63→ *  underlined headings, real list markers with nesting, quote prefixes,
+    64→ *  verbatim code blocks, tables as `a | b` rows, image alt placeholders. */
+    65→function htmlToPlainText(html: string): string {
+    66→  if (!html) return ""
+    67→  const doc = new DOMParser().parseFromString(html, "text/html")
+    68→  const lines: string[] = []
+    69→  const push = (s: string) => {
+    70→    if (s.trim()) lines.push(s.replace(/\u00a0/g, " ").trimEnd())
+    71→  }
+    72→
+    73→  const inlineText = (node: Node): string => {
+    74→    let s = ""
+    75→    node.childNodes.forEach((ch) => {
+    76→      if (ch.nodeType === Node.TEXT_NODE) s += (ch.textContent || "").replace(/\s+/g, " ")
+    77→      else if (ch.nodeType === Node.ELEMENT_NODE) {
+    78→        const el = ch as Element
+    79→        const tag = el.tagName.toLowerCase()
+    80→        if (tag === "br") s += "\n"
+    81→        else if (tag === "img") {
+    82→          const alt = el.getAttribute("alt")
+    83→          if (alt) s += `[${alt}]`
+    84→        } else if (TXT_BLOCK_TAGS.has(tag)) s += `\n${inlineText(el)}\n`
+    85→        else s += inlineText(el)
+    86→      }
+    87→    })
+    88→    return s
+    89→  }
+    90→
+    91→  const walkList = (list: Element, depth: number) => {
+    92→    const ordered = list.tagName.toLowerCase() === "ol"
+    93→    const indent = "  ".repeat(depth)
+    94→    let i = 1
+    95→    list.childNodes.forEach((n) => {
+    96→      if (n.nodeType !== Node.ELEMENT_NODE) return
+    97→      const li = n as Element
+    98→      if (li.tagName.toLowerCase() !== "li") return
+    99→      let inline = ""
+   100→      const nested: Element[] = []
+   101→      li.childNodes.forEach((ch) => {
+   102→        if (ch.nodeType === Node.TEXT_NODE) inline += (ch.textContent || "").replace(/\s+/g, " ")
+   103→        else if (ch.nodeType === Node.ELEMENT_NODE) {
+   104→          const cel = ch as Element
+   105→          const ctag = cel.tagName.toLowerCase()
+   106→          if (ctag === "ul" || ctag === "ol") nested.push(cel)
+   107→          else if (ctag === "br") inline += "\n"
+   108→          else inline += inlineText(cel)
+   109→        }
+   110→      })
+   111→      const marker = ordered ? `${i++}. ` : "- "
+   112→      push(indent + marker + inline.trim())
+   113→      nested.forEach((nl) => walkList(nl, depth + 1))
+   114→    })
+   115→  }
+   116→
+   117→  const walkBlocks = (parent: Element, depth = 0) => {
+   118→    const indent = "  ".repeat(depth)
+   119→    parent.childNodes.forEach((node) => {
+   120→      if (node.nodeType === Node.TEXT_NODE) {
+   121→        push(indent + (node.textContent || "").replace(/\s+/g, " ").trim())
+   122→        return
+   123→      }
+   124→      if (node.nodeType !== Node.ELEMENT_NODE) return
+   125→      const el = node as Element
+   126→      const tag = el.tagName.toLowerCase()
+   127→      if (/^h[1-6]$/.test(tag)) {
+   128→        const text = inlineText(el).trim()
+   129→        if (!text) return
+   130→        lines.push("")
+   131→        push(indent + text)
+   132→        if (tag === "h1") push("=".repeat(Math.min(60, Math.max(6, text.length * 2))))
+   133→        else if (tag === "h2") push("-".repeat(Math.min(60, Math.max(6, text.length * 2))))
+   134→        lines.push("")
+   135→      } else if (tag === "p") {
+   136→        const text = inlineText(el).replace(/[ \t]+\n/g, "\n").trim()
+   137→        if (text) text.split("\n").forEach((l) => push(indent + l))
+   138→      } else if (tag === "ul" || tag === "ol") {
+   139→        walkList(el, depth)
+   140→      } else if (tag === "blockquote") {
+   141→        const inner = inlineText(el).trim()
+   142→        if (inner) {
+   143→          lines.push("")
+   144→          inner.split("\n").forEach((l) => push("> " + l.trim()))
+   145→          lines.push("")
+   146→        }
+   147→      } else if (tag === "pre") {
+   148→        const text = el.textContent || ""
+   149→        lines.push("")
+   150→        text.split("\n").forEach((l) => lines.push(l))
+   151→        lines.push("")
+   152→      } else if (tag === "hr") {
+   153→        lines.push("")
+   154→        push("-".repeat(40))
+   155→        lines.push("")
+   156→      } else if (tag === "table") {
+   157→        lines.push("")
+   158→        Array.from(el.querySelectorAll("tr")).forEach((tr) => {
+   159→          const cells = Array.from(tr.querySelectorAll("th,td")).map((td) => inlineText(td).replace(/\s+/g, " ").trim())
+   160→          push(cells.join(" | "))
+   161→        })
+   162→        lines.push("")
+   163→      } else if (tag === "br") {
+   164→        lines.push("")
+   165→      } else {
+   166→        walkBlocks(el, depth)
+   167→      }
+   168→    })
+   169→  }
+   170→
+   171→  walkBlocks(doc.body)
+   172→  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim() + "\n"
+   173→}
+   174→
+   175→export function EditorView() {
+   176→  const docId = useDocsStore((s) => s.currentDocId) ?? ""
+   177→  const goHomeStore = useDocsStore((s) => s.goHome)
+   178→  const openDoc = useDocsStore((s) => s.openDoc)
+   179→  const patchDocMeta = useDocsStore((s) => s.patchDocMeta)
+   180→  const openAiOnEditor = useDocsStore((s) => s.openAiOnEditor)
+   181→  const setOpenAiOnEditor = useDocsStore((s) => s.setOpenAiOnEditor)
+   182→  const { toast } = useToast()
+   183→  const user = useLocalUser()
+   184→  const { t, lang } = useI18n()
+   185→
+   186→  /* ---------------- document state ---------------- */
+   187→  const [doc, setDoc] = React.useState<DocumentDTO | null>(null)
+   188→  const [loadError, setLoadError] = React.useState<"not-found" | "load-failed" | null>(null)
+   189→  const [title, setTitle] = React.useState("")
+   190→  const [starred, setStarred] = React.useState(false)
+   191→  const [saveStatus, setSaveStatus] = React.useState<"saved" | "saving" | "unsaved" | "error">("saved")
+   192→  const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
+   193→  const [stats, setStats] = React.useState<DocStats>({ words: 0, chars: 0, cjkChars: 0, latinWords: 0, isCJK: true, paragraphs: 0, pages: 1, readingMinutes: 1 })
+   194→  const [zoom, setZoomState] = React.useState(1)
+   195→  const [spellCheck, setSpellCheck] = React.useState(true)
+   196→  const [fmt, setFmt] = React.useState<FormatState>(DEFAULT_FORMAT)
+   197→  const [tableInfo, setTableInfo] = React.useState<TableInfo | null>(null)
+   198→  const [activeTableEl, setActiveTableEl] = React.useState<HTMLTableElement | null>(null)
+   199→  const [menuTableInfo, setMenuTableInfo] = React.useState<TableInfo | null>(null)
+   200→  const [outlineOpen, setOutlineOpen] = React.useState(false)
+   201→  const [insightsOpen, setInsightsOpen] = React.useState(false)
+   202→  const [outlineItems, setOutlineItems] = React.useState<OutlineItem[]>([])
+   203→  const [remoteContent, setRemoteContent] = React.useState<string | null>(null)
+   204→  const [dialog, setDialog] = React.useState<string | null>(null)
+   205→  const [linkHasSelection, setLinkHasSelection] = React.useState(false)
+   206→  const [aiSource, setAiSource] = React.useState<AiSource | null>(null)
+   207→
+   208→  /* ---------------- writing studio / telemetry ---------------- */
+   209→  const trackerRef = React.useRef<WritingTracker | null>(null)
+   210→  const [writingStats, setWritingStats] = React.useState<Partial<WritingStats> | null>(null)
+   211→  const [editCount, setEditCount] = React.useState(0)
+   212→
+   213→  // workspace default zoom (Settings → Workspace defaults) — applied once on mount
+   214→  React.useEffect(() => {
+   215→    try {
+   216→      const z = window.localStorage.getItem("zdocs-default-zoom")
+   217→      if (z === "125") setZoomState(1.25)
+   218→      else if (z === "150") setZoomState(1.5)
+   219→    } catch {
+   220→      // storage unavailable — keep 100%
+   221→    }
+   222→  }, [])
+   223→
+   224→  /* ---------------- find & replace state ---------------- */
+   225→  const [findOpen, setFindOpen] = React.useState(false)
+   226→  const [findReplaceMode, setFindReplaceMode] = React.useState(false)
+   227→  const [findQuery, setFindQuery] = React.useState("")
+   228→  const [findCase, setFindCase] = React.useState(false)
+   229→  const [findMatches, setFindMatches] = React.useState<TextMatch[]>([])
+   230→  const [findActiveIndex, setFindActiveIndex] = React.useState(-1)
+   231→
+   232→  /* ---------------- comments state ---------------- */
+   233→  const [comments, setComments] = React.useState<CommentDTO[]>([])
+   234→  const [commentsLoading, setCommentsLoading] = React.useState(false)
+   235→  const [commentsOpen, setCommentsOpen] = React.useState(false)
+   236→  const [activeCommentId, setActiveCommentId] = React.useState<string | null>(null)
+   237→  const [commentBusy, setCommentBusy] = React.useState(false)
+   238→  const [contentTick, setContentTick] = React.useState(0)
+   239→  const [bubble, setBubble] = React.useState<{ x: number; y: number } | null>(null)
+   240→  const [pendingQuote, setPendingQuoteState] = React.useState<PendingQuote | null>(null)
+   241→  const pendingQuoteRef = React.useRef<PendingQuote | null>(null)
+   242→
+   243→  /* ---------------- suggesting mode state ---------------- */
+   244→  const [mode, setModeState] = React.useState<"edit" | "suggest">("edit")
+   245→  const [suggestions, setSuggestions] = React.useState<SuggestionInfo[]>([])
+   246→  const [activeSuggestionId, setActiveSuggestionId] = React.useState<string | null>(null)
+   247→
+   248→  /* ---------------- page margins state (ruler drag) ---------------- */
+   249→  const [pageMargins, setPageMarginsState] = React.useState<PageMargins>(DEFAULT_MARGINS)
+   250→
+   251→  /* ---------------- refs ---------------- */
+   252→  const pageRef = React.useRef<HTMLDivElement | null>(null)
+   253→  const titleInputRef = React.useRef<HTMLInputElement | null>(null)
+   254→  const savedRangeRef = React.useRef<Range | null>(null)
+   255→  const aiRangeRef = React.useRef<Range | null>(null)
+   256→  const contentRef = React.useRef("")
+   257→  const latestTitleRef = React.useRef("")
+   258→  const dirtyRef = React.useRef(false)
+   259→  const lastInputAtRef = React.useRef(0)
+   260→  const lastCursorEmitRef = React.useRef(0)
+   261→  const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+   262→  const statsTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+   263→  const broadcastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+   264→  const versionCounterRef = React.useRef(0)
+   265→  const myIdRef = React.useRef<string | null>(null)
+   266→  const userRef = React.useRef<SuggestionAuthor | null>(null)
+   267→  const modeRef = React.useRef<"edit" | "suggest">("edit")
+   268→  const prevSidsRef = React.useRef<Set<string>>(new Set())
+   269→
+   270→  React.useEffect(() => {
+   271→    userRef.current = user ? { id: user.id, name: user.name, color: user.color } : null
+   272→    myIdRef.current = user?.id ?? null
+   273→  }, [user])
+   274→  React.useEffect(() => {
+   275→    modeRef.current = mode
+   276→  }, [mode])
+   277→
+   278→  // restore the persisted mode (global) — Google remembers your last mode
+   279→  React.useEffect(() => {
+   280→    try {
+   281→      const saved = window.localStorage.getItem("zdocs:mode")
+   282→      if (saved === "suggest") setModeState("suggest")
+   283→    } catch {
+   284→      // private mode etc.
+   285→    }
+   286→  }, [])
+   287→
+   288→  /* ---------------- load document ---------------- */
+   289→  React.useEffect(() => {
+   290→    let cancelled = false
+   291→    setDoc(null)
+   292→    setLoadError(null)
+   293→    setSaveStatus("saved")
+   294→    setRemoteContent(null)
+   295→    fetch(`/api/documents/${docId}`)
+   296→      .then((r) => {
+   297→        if (r.status === 404) throw new Error("not-found")
+   298→        if (!r.ok) throw new Error("load-failed")
+   299→        return r.json() as Promise<{ document: DocumentDTO }>
+   300→      })
+   301→      .then((data) => {
+   302→        if (cancelled) return
+   303→        const d = data.document
+   304→        setDoc(d)
+   305→        setTitle(d.title)
+   306→        latestTitleRef.current = d.title
+   307→        contentRef.current = d.content
+   308→        setStarred(d.starred)
+   309→        setStats(docStats(d.content))
+   310→        setLastSavedAt(new Date(d.updatedAt))
+   311→        // writing telemetry from the server blob (if any)
+   312→        const rawStats = (d as DocumentDTO & { stats?: unknown; editCount?: number }).stats
+   313→        setWritingStats(
+   314→          rawStats && typeof rawStats === "object" ? (rawStats as Partial<WritingStats>) : null
+   315→        )
+   316→        setEditCount(
+   317→          typeof (d as DocumentDTO & { editCount?: number }).editCount === "number"
+   318→            ? ((d as DocumentDTO & { editCount: number }).editCount)
+   319→            : 0
+   320→        )
+   321→      })
+   322→      .catch((e: Error) => {
+   323→        if (cancelled) return
+   324→        setLoadError(e.message === "not-found" ? "not-found" : "load-failed")
+   325→      })
+   326→    // restore per-document page margins
+   327→    try {
+   328→      const raw = window.localStorage.getItem(`zdocs:margins:${docId}`)
+   329→      if (raw) {
+   330→        const m = JSON.parse(raw) as PageMargins
+   331→        if (typeof m?.left === "number" && typeof m?.right === "number") {
+   332→          setPageMarginsState({
+   333→            left: Math.min(336, Math.max(48, m.left)),
+   334→            right: Math.min(336, Math.max(48, m.right)),
+   335→          })
+   336→        }
+   337→      } else {
+   338→        setPageMarginsState(DEFAULT_MARGINS)
+   339→      }
+   340→    } catch {
+   341→      setPageMarginsState(DEFAULT_MARGINS)
+   342→    }
+   343→    // initial suggestion scan (marks persist inside the document HTML)
+   344→    requestAnimationFrame(() => {
+   345→      if (cancelled) return
+   346→      const list = collectSuggestions(pageRef.current)
+   347→      setSuggestions(list)
+   348→      prevSidsRef.current = new Set(list.map((s) => s.sid))
+   349→    })
+   350→    return () => {
+   351→      cancelled = true
+   352→    }
+   353→  }, [docId])
+   354→
+   355→  // auto-open the AI writer when requested from the template gallery
+   356→  React.useEffect(() => {
+   357→    if (openAiOnEditor && doc) {
+   358→      setDialog("helpwrite")
+   359→      setOpenAiOnEditor(false)
+   360→    }
+   361→  }, [openAiOnEditor, doc, setOpenAiOnEditor])
+   362→
+   363→  /* ---------------- writing telemetry tracker ----------------
+   364→   * One tracker per document: observes beforeinput on the editable page,
+   365→   * flushes to /api/documents/:id/stats every 30s + on unmount. */
+   366→  React.useEffect(() => {
+   367→    if (!docId) return
+   368→    const tracker = createWritingTracker(docId)
+   369→    trackerRef.current = tracker
+   370→    let detach = () => {}
+   371→    let cancelled = false
+   372→    const attach = () => {
+   373→      const el = pageRef.current
+   374→      if (el) {
+   375→        detach = tracker.observe(el)
+   376→        return true
+   377→      }
+   378→      return false
+   379→    }
+   380→    // the canvas mounts after doc load — retry until it exists
+   381→    const attachTimer = setInterval(() => {
+   382→      if (cancelled || attach()) clearInterval(attachTimer)
+   383→    }, 400)
+   384→    const flushTimer = setInterval(() => {
+   385→      void tracker.flush().then(() => {
+   386→        const snap = tracker.snapshot()
+   387→        if (snap) setWritingStats(snap)
+   388→      })
+   389→    }, 30_000)
+   390→    const onUnload = () => {
+   391→      void tracker.flush()
+   392→    }
+   393→    window.addEventListener("beforeunload", onUnload)
+   394→    return () => {
+   395→      cancelled = true
+   396→      clearInterval(attachTimer)
+   397→      clearInterval(flushTimer)
+   398→      window.removeEventListener("beforeunload", onUnload)
+   399→      detach()
+   400→      void tracker.flush()
+   401→      trackerRef.current = null
+   402→    }
+   403→  }, [docId])
+   404→
+   405→  /* ---------------- comments: load & helpers ---------------- */
+   406→  React.useEffect(() => {
+   407→    if (!docId) return
+   408→    let cancelled = false
+   409→    setComments([])
+   410→    setCommentsLoading(true)
+   411→    setActiveCommentId(null)
+   412→    fetch(`/api/documents/${docId}/comments`)
+   413→      .then((r) => (r.ok ? (r.json() as Promise<{ comments: CommentDTO[] }>) : Promise.reject(new Error("failed"))))
+   414→      .then((data) => {
+   415→        if (!cancelled) setComments(data.comments ?? [])
+   416→      })
+   417→      .catch(() => {
+   418→        // non-fatal: the sidebar shows an empty state
+   419→      })
+   420→      .finally(() => {
+   421→        if (!cancelled) setCommentsLoading(false)
+   422→      })
+   423→    return () => {
+   424→      cancelled = true
+   425→    }
+   426→  }, [docId])
+   427→
+   428→  const setPendingQuote = React.useCallback((pq: PendingQuote | null) => {
+   429→    pendingQuoteRef.current = pq
+   430→    setPendingQuoteState(pq)
+   431→  }, [])
+   432→
+   433→  const refreshComments = React.useCallback(async () => {
+   434→    if (!docId) return
+   435→    try {
+   436→      const res = await fetch(`/api/documents/${docId}/comments`)
+   437→      if (!res.ok) return
+   438→      const data = (await res.json()) as { comments: CommentDTO[] }
+   439→      setComments(data.comments ?? [])
+   440→    } catch {
+   441→      // ignore — next mutation will retry
+   442→    }
+   443→  }, [docId])
+   444→
+   445→  /* ---------------- collaboration ---------------- */
+   446→  const onDocChange = React.useCallback((p: DocChangePayload) => {
+   447→    if (myIdRef.current && p.by === myIdRef.current) return
+   448→    // last-write-wins: skip remote updates while actively typing
+   449→    if (Date.now() - lastInputAtRef.current < 1600) return
+   450→    if (p.content != null) {
+   451→      if (p.content !== contentRef.current) {
+   452→        contentRef.current = p.content
+   453→        setRemoteContent(p.content)
+   454→        setStats(docStats(p.content))
+   455→      }
+   456→      setSaveStatus("saved")
+   457→      setLastSavedAt(new Date())
+   458→    }
+   459→    if (p.title != null && document.activeElement !== titleInputRef.current && p.title !== latestTitleRef.current) {
+   460→      latestTitleRef.current = p.title
+   461→      setTitle(p.title)
+   462→    }
+   463→  }, [])
+   464→
+   465→  const onCommentsChanged = React.useCallback(
+   466→    (p: CommentsChangedPayload) => {
+   467→      void refreshComments()
+   468→      if (p.action === "add" || p.action === "reply") {
+   469→        const lang = getCurrentLang()
+   470→        toast({ title: tForLang(lang, "New comment activity"), description: tForLang(lang, "A collaborator updated the discussion.") })
+   471→      }
+   472→    },
+   473→    [refreshComments, toast]
+   474→  )
+   475→
+   476→  // guests run fully locally — no realtime collaboration socket at all
+   477→  const guestMode = useDocsStore((s) => s.guestMode)
+   478→  const { connected, myId, presence, remoteCursors, emitDocChange, emitCursor, emitCommentsChanged } = useCollab(
+   479→    docId || null,
+   480→    guestMode ? null : user,
+   481→    onDocChange,
+   482→    onCommentsChanged
+   483→  )
+   484→  React.useEffect(() => {
+   485→    myIdRef.current = myId
+   486→  }, [myId])
+   487→
+   488→  /* ---------------- autosave ---------------- */
+   489→  const performSave = React.useCallback(
+   490→    async (manual = false) => {
+   491→      if (!docId) return
+   492→      const content = contentRef.current
+   493→      const t = latestTitleRef.current
+   494→      setSaveStatus("saving")
+   495→      try {
+   496→        const res = await fetch(`/api/documents/${docId}`, {
+   497→          method: "PATCH",
+   498→          headers: { "Content-Type": "application/json" },
+   499→          body: JSON.stringify({ content, title: t }),
+   500→        })
+   501→        if (!res.ok) throw new Error("save failed")
+   502→        const data = (await res.json()) as { document: DocumentDTO }
+   503→        dirtyRef.current = false
+   504→        setSaveStatus("saved")
+   505→        setLastSavedAt(new Date())
+   506→        patchDocMeta(docId, {
+   507→          title: t,
+   508→          snippet: getSnippet(content),
+   509→          wordCount: countWords(htmlToText(content)),
+   510→          updatedAt: data.document.updatedAt,
+   511→        })
+   512→        if (manual) toast({ title: tForLang(getCurrentLang(), "Saved"), description: tForLang(getCurrentLang(), "All changes are safe.") })
+   513→      } catch {
+   514→        setSaveStatus("error")
+   515→        // retry shortly
+   516→        if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+   517→        saveTimerRef.current = setTimeout(() => void performSave(), 5000)
+   518→      }
+   519→    },
+   520→    [docId, patchDocMeta, toast]
+   521→  )
+   522→
+   523→  const scheduleSave = React.useCallback(() => {
+   524→    dirtyRef.current = true
+   525→    setSaveStatus("unsaved")
+   526→    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+   527→    saveTimerRef.current = setTimeout(() => void performSave(), 900)
+   528→  }, [performSave])
+   529→
+   530→  // flush unsaved changes when leaving the doc
+   531→  React.useEffect(() => {
+   532→    const id = docId
+   533→    return () => {
+   534→      if (!dirtyRef.current || !id) return
+   535→      try {
+   536→        fetch(`/api/documents/${id}`, {
+   537→          method: "PATCH",
+   538→          keepalive: true,
+   539→          headers: { "Content-Type": "application/json" },
+   540→          body: JSON.stringify({ content: contentRef.current, title: latestTitleRef.current }),
+   541→        }).catch(() => {})
+   542→      } catch {
+   543→        // ignore
+   544→      }
+   545→    }
+   546→  }, [docId])
+   547→
+   548→  // warn before leaving with unsaved changes
+   549→  React.useEffect(() => {
+   550→    const onBefore = (e: BeforeUnloadEvent) => {
+   551→      if (dirtyRef.current) {
+   552→        e.preventDefault()
+   553→        e.returnValue = ""
+   554→      }
+   555→    }
+   556→    window.addEventListener("beforeunload", onBefore)
+   557→    return () => window.removeEventListener("beforeunload", onBefore)
+   558→  }, [])
+   559→
+   560→  /* ---------------- content input pipeline ---------------- */
+   561→  const scheduleStats = React.useCallback(() => {
+   562→    if (statsTimerRef.current) clearTimeout(statsTimerRef.current)
+   563→    statsTimerRef.current = setTimeout(() => {
+   564→      setStats(docStats(contentRef.current))
+   565→      // bump so the comment highlight overlays re-align after local edits
+   566→      setContentTick((t) => t + 1)
+   567→      // re-derive suggestion cards from the document marks
+   568→      setSuggestions(collectSuggestions(pageRef.current))
+   569→    }, 400)
+   570→  }, [])
+   571→
+   572→  const scheduleBroadcast = React.useCallback(() => {
+   573→    if (broadcastTimerRef.current) clearTimeout(broadcastTimerRef.current)
+   574→    broadcastTimerRef.current = setTimeout(() => {
+   575→      versionCounterRef.current += 1
+   576→      emitDocChange(contentRef.current, latestTitleRef.current, versionCounterRef.current)
+   577→    }, 300)
+   578→  }, [emitDocChange])
+   579→
+   580→  const handleInput = React.useCallback(() => {
+   581→    const el = pageRef.current
+   582→    if (!el) return
+   583→    contentRef.current = el.innerHTML
+   584→    lastInputAtRef.current = Date.now()
+   585→    scheduleSave()
+   586→    scheduleBroadcast()
+   587→    scheduleStats()
+   588→  }, [scheduleSave, scheduleBroadcast, scheduleStats])
+   589→
+   590→  /* ---------------- suggesting mode ---------------- */
+   591→  /** Intercept raw edits while in Suggesting mode and convert them into
+   592→   *  marked suggestion spans. Everything flows through execCommand so each
+   593→   *  edit is ONE undo step, just like normal typing. */
+   594→  React.useEffect(() => {
+   595→    const el = pageRef.current
+   596→    if (!el || mode !== "suggest" || !doc) return
+   597→
+   598→    const onBeforeInput = (e: Event) => {
+   599→      const input = e as InputEvent
+   600→      const author = userRef.current
+   601→      if (!author) return
+   602→      switch (input.inputType) {
+   603→        case "insertText": {
+   604→          const data = input.data
+   605→          if (!data) return
+   606→          // typing at the end of your own insertion extends it naturally —
+   607→          // let the default insertText happen (it stays inside the mark)
+   608→          const span = caretSugSpan(el)
+   609→          if (span && span.classList.contains("sug-ins") && span.dataset.ai === author.id) return
+   610→          input.preventDefault()
+   611→          if (suggestInsertText(el, data, author)) handleInput()
+   612→          break
+   613→        }
+   614→        case "insertParagraph": {
+   615→          input.preventDefault()
+   616→          if (suggestInsertParagraph(el, author)) handleInput()
+   617→          break
+   618→        }
+   619→        case "insertFromPaste": {
+   620→          input.preventDefault()
+   621→          const text = input.dataTransfer?.getData("text/plain") ?? ""
+   622→          if (text && suggestInsertText(el, text.slice(0, 5000), author)) handleInput()
+   623→          break
+   624→        }
+   625→        case "deleteContentBackward":
+   626→        case "deleteContentForward": {
+   627→          const dir = input.inputType === "deleteContentBackward" ? "backward" : "forward"
+   628→          // backspace inside your own deletion mark shortens it — default ok
+   629→          const span = caretSugSpan(el)
+   630→          const sel = window.getSelection()
+   631→          if (
+   632→            sel &&
+   633→            sel.isCollapsed &&
+   634→            span &&
+   635→            span.classList.contains("sug-del") &&
+   636→            span.dataset.ai === author.id
+   637→          ) {
+   638→            return
+   639→          }
+   640→          if (!sel || !sel.rangeCount) return
+   641→          // selection delete → wrap the whole selection as a deletion mark
+   642→          if (!sel.isCollapsed) {
+   643→            const range = sel.getRangeAt(0)
+   644→            if (el.contains(range.commonAncestorContainer)) {
+   645→              input.preventDefault()
+   646→              // direct-DOM mutation: no input event fires, so drive the
+   647→              // autosave pipeline manually
+   648→              if (suggestDeleteSelection(range, author)) handleInput()
+   649→            }
+   650→            return
+   651→          }
+   652→          // collapsed delete → mark the single unit the browser would remove
+   653→          const unit = deletionUnitRange(el, dir)
+   654→          if (unit && el.contains(unit.startContainer)) {
+   655→            input.preventDefault()
+   656→            if (suggestDeleteSelection(unit, author)) handleInput()
+   657→          }
+   658→          // no unit → structural delete (paragraph merge etc.): default
+   659→          break
+   660→        }
+   661→        default:
+   662→          // insertCompositionText, format changes, word deletes, … → default
+   663→          break
+   664→      }
+   665→    }
+   666→
+   667→    el.addEventListener("beforeinput", onBeforeInput)
+   668→    return () => el.removeEventListener("beforeinput", onBeforeInput)
+   669→  }, [mode, doc, handleInput])
+   670→
+   671→  /** Apply a suggestion: mark → plain content, then persist. */
+   672→  const acceptSuggestion = React.useCallback(
+   673→    (sid: string) => {
+   674→      const el = pageRef.current
+   675→      if (!el) return
+   676→      if (acceptSuggestionMark(el, sid)) {
+   677→        handleInput()
+   678→        setSuggestions(collectSuggestions(el))
+   679→        if (activeSuggestionId === sid) {
+   680→          setActiveSuggestionId(null)
+   681→          clearSuggestionFocus(el)
+   682→        }
+   683→      }
+   684→    },
+   685→    [handleInput, activeSuggestionId]
+   686→  )
+   687→
+   688→  /** Revert a suggestion: mark disappears, the original text stays/returns. */
+   689→  const rejectSuggestion = React.useCallback(
+   690→    (sid: string) => {
+   691→      const el = pageRef.current
+   692→      if (!el) return
+   693→      if (rejectSuggestionMark(el, sid)) {
+   694→        handleInput()
+   695→        setSuggestions(collectSuggestions(el))
+   696→        if (activeSuggestionId === sid) {
+   697→          setActiveSuggestionId(null)
+   698→          clearSuggestionFocus(el)
+   699→        }
+   700→      }
+   701→    },
+   702→    [handleInput, activeSuggestionId]
+   703→  )
+   704→
+   705→  /** Scroll a suggestion mark into view + highlight it. */
+   706→  const focusSuggestion = React.useCallback((sid: string) => {
+   707→    setActiveSuggestionId(sid)
+   708→    focusSuggestionMark(pageRef.current, sid)
+   709→  }, [])
+   710→
+   711→  const setMode = React.useCallback(
+   712→    (m: "edit" | "suggest") => {
+   713→      setModeState(m)
+   714→      try {
+   715→        window.localStorage.setItem("zdocs:mode", m)
+   716→      } catch {
+   717→        // ignore
+   718→      }
+   719→      if (m === "suggest") {
+   720→        const el = pageRef.current
+   721→        if (el && collectSuggestions(el).length > 0) setCommentsOpen(true)
+   722→        const lang = getCurrentLang()
+   723→        toast({
+   724→          title: tForLang(lang, "You're in suggesting mode"),
+   725→          description: tForLang(lang, "Edits you make show as suggestions others can accept or reject."),
+   726→        })
+   727→      }
+   728→    },
+   729→    [toast]
+   730→  )
+   731→
+   732→  /** Dragging the ruler handles: persist per document. */
+   733→  const setPageMargins = React.useCallback(
+   734→    (m: PageMargins) => {
+   735→      setPageMarginsState(m)
+   736→      try {
+   737→        window.localStorage.setItem(`zdocs:margins:${docId}`, JSON.stringify(m))
+   738→      } catch {
+   739→        // ignore
+   740→      }
+   741→    },
+   742→    [docId]
+   743→  )
+   744→
+   745→  // Google Docs behavior: the review rail pops open when a NEW suggestion
+   746→  // appears while you're in suggesting mode.
+   747→  React.useEffect(() => {
+   748→    if (mode !== "suggest") {
+   749→      prevSidsRef.current = new Set(suggestions.map((s) => s.sid))
+   750→      return
+   751→    }
+   752→    const hasNew = suggestions.some((s) => !prevSidsRef.current.has(s.sid))
+   753→    if (hasNew && suggestions.length > 0 && !commentsOpen) setCommentsOpen(true)
+   754→    prevSidsRef.current = new Set(suggestions.map((s) => s.sid))
+   755→  }, [suggestions, mode, commentsOpen])
+   756→
+   757→  // remote content applied → re-derive suggestion cards (other users'
+   758→  // suggestions arrive inside the broadcast HTML)
+   759→  React.useEffect(() => {
+   760→    if (remoteContent != null) return
+   761→    const t = setTimeout(() => {
+   762→      setSuggestions(collectSuggestions(pageRef.current))
+   763→    }, 80)
+   764→    return () => clearTimeout(t)
+   765→  }, [remoteContent, contentTick, doc])
+   766→
+   767→  /* ---------------- format state ---------------- */
+   768→  const refreshFmt = React.useCallback(() => {
+   769→    const q = (c: string) => {
+   770→      try {
+   771→        return document.queryCommandState(c)
+   772→      } catch {
+   773→        return false
+   774→      }
+   775→    }
+   776→    let block = "p"
+   777→    try {
+   778→      block = (document.queryCommandValue("formatBlock") || "p").toLowerCase()
+   779→    } catch {
+   780→      // ignore
+   781→    }
+   782→    const sel = window.getSelection()
+   783→    const node = sel?.anchorNode
+   784→    const elem =
+   785→      node && node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement | null)
+   786→    const computed = elem ? window.getComputedStyle(elem) : null
+   787→    const fontName = (computed?.fontFamily ?? "Arial").split(",")[0].replace(/["']/g, "").trim()
+   788→    const fontSizePt = computed ? Math.max(6, Math.round(parseFloat(computed.fontSize) / 1.3333)) : 11
+   789→
+   790→    setFmt({
+   791→      bold: q("bold"),
+   792→      italic: q("italic"),
+   793→      underline: q("underline"),
+   794→      strike: q("strikeThrough"),
+   795→      superscript: q("superscript"),
+   796→      subscript: q("subscript"),
+   797→      ul: q("insertUnorderedList"),
+   798→      ol: q("insertOrderedList"),
+   799→      block,
+   800→      align: q("justifyCenter")
+   801→        ? "center"
+   802→        : q("justifyRight")
+   803→          ? "right"
+   804→          : q("justifyFull")
+   805→            ? "full"
+   806→            : "left",
+   807→      fontName,
+   808→      fontSize: fontSizePt,
+   809→      link: !!elem?.closest("a"),
+   810→    })
+   811→  }, [])
+   812→
+   813→  React.useEffect(() => {
+   814→    const onSel = () => {
+   815→      const el = pageRef.current
+   816→      if (!el) return
+   817→      const sel = window.getSelection()
+   818→      if (!sel || !sel.anchorNode || !el.contains(sel.anchorNode)) return
+   819→      if (sel.rangeCount > 0) savedRangeRef.current = sel.getRangeAt(0).cloneRange()
+   820→      refreshFmt()
+   821→      setTableInfo(describeTableAt(el))
+   822→      const ctx = getTableContext(el)
+   823→      setActiveTableEl(ctx ? ctx.table : null)
+   824→      const now = Date.now()
+   825→      if (now - lastCursorEmitRef.current > 140) {
+   826→        lastCursorEmitRef.current = now
+   827→        const off = selectionOffsets(el)
+   828→        if (off) emitCursor(off.start, off.end)
+   829→      }
+   830→
+   831→      // comment bubble: show above a non-collapsed selection with text
+   832→      const inside = sel.rangeCount > 0 && el.contains(sel.focusNode)
+   833→      if (inside && !sel.isCollapsed && !pendingQuoteRef.current) {
+   834→        const text = sel.toString().replace(/\s+/g, " ").trim()
+   835→        if (text) {
+   836→          const rect = sel.getRangeAt(0).getBoundingClientRect()
+   837→          setBubble({ x: rect.left + rect.width / 2, y: rect.top - 38 })
+   838→        } else {
+   839→          setBubble(null)
+   840→        }
+   841→      } else {
+   842→        setBubble(null)
+   843→      }
+   844→    }
+   845→    document.addEventListener("selectionchange", onSel)
+   846→    return () => document.removeEventListener("selectionchange", onSel)
+   847→  }, [refreshFmt, emitCursor])
+   848→
+   849→  // hide the comment bubble whenever any scroll happens (position would drift)
+   850→  React.useEffect(() => {
+   851→    const onScroll = () => setBubble(null)
+   852→    window.addEventListener("scroll", onScroll, true)
+   853→    return () => window.removeEventListener("scroll", onScroll, true)
+   854→  }, [])
+   855→
+   856→  /* ---------------- editing commands ---------------- */
+   857→  /** Focus the editor and make sure the last valid selection is active — so
+   858→   *  toolbar clicks (which blur the editor) never lose the user's selection. */
+   859→  const ensureSelection = React.useCallback(() => {
+   860→    const el = pageRef.current
+   861→    if (!el) return
+   862→    el.focus()
+   863→    const sel = window.getSelection()
+   864→    const inside = !!sel && sel.rangeCount > 0 && !!sel.anchorNode && el.contains(sel.anchorNode)
+   865→    if (!inside && savedRangeRef.current) {
+   866→      try {
+   867→        sel?.removeAllRanges()
+   868→        sel?.addRange(savedRangeRef.current.cloneRange())
+   869→      } catch {
+   870→        // saved range no longer valid
+   871→      }
+   872→    }
+   873→  }, [])
+   874→
+   875→  const exec = React.useCallback(
+   876→    (cmd: string, val?: string) => {
+   877→      const el = pageRef.current
+   878→      if (!el) return
+   879→      ensureSelection()
+   880→      try {
+   881→        document.execCommand(cmd, false, val)
+   882→      } catch {
+   883→        // command unsupported — ignore
+   884→      }
+   885→      handleInput()
+   886→      refreshFmt()
+   887→    },
+   888→    [handleInput, refreshFmt, ensureSelection]
+   889→  )
+   890→
+   891→  const applyFontSize = React.useCallback(
+   892→    (pt: number) => {
+   893→      const el = pageRef.current
+   894→      if (!el) return
+   895→      ensureSelection()
+   896→      document.execCommand("fontSize", false, "7")
+   897→      el.querySelectorAll('font[size="7"]').forEach((f) => {
+   898→        const span = document.createElement("span")
+   899→        span.style.fontSize = `${pt}pt`
+   900→        span.innerHTML = f.innerHTML
+   901→        f.replaceWith(span)
+   902→      })
+   903→      handleInput()
+   904→      refreshFmt()
+   905→    },
+   906→    [handleInput, refreshFmt]
+   907→  )
+   908→
+   909→  const applyLineSpacing = React.useCallback(
+   910→    (lh: number) => {
+   911→      const el = pageRef.current
+   912→      if (!el) return
+   913→      el.focus()
+   914→      const blocks = selectedBlocks(el)
+   915→      blocks.forEach((b) => {
+   916→        b.style.lineHeight = String(lh)
+   917→      })
+   918→      handleInput()
+   919→    },
+   920→    [handleInput]
+   921→  )
+   922→
+   923→  const applyAlignment = React.useCallback(
+   924→    (a: "left" | "center" | "right" | "full") => {
+   925→      const cmd =
+   926→        a === "center" ? "justifyCenter" : a === "right" ? "justifyRight" : a === "full" ? "justifyFull" : "justifyLeft"
+   927→      exec(cmd)
+   928→    },
+   929→    [exec]
+   930→  )
+   931→
+   932→  const clearFormatting = React.useCallback(() => {
+   933→    exec("removeFormat")
+   934→    exec("formatBlock", "p")
+   935→  }, [exec])
+   936→
+   937→  const focusEditor = React.useCallback(() => {
+   938→    const el = pageRef.current
+   939→    if (!el) return
+   940→    el.focus()
+   941→    const sel = window.getSelection()
+   942→    const range = document.createRange()
+   943→    range.selectNodeContents(el)
+   944→    range.collapse(false)
+   945→    sel?.removeAllRanges()
+   946→    sel?.addRange(range)
+   947→  }, [])
+   948→
+   949→  const onTitleChange = React.useCallback(
+   950→    (t: string) => {
+   951→      setTitle(t)
+   952→      latestTitleRef.current = t
+   953→      scheduleSave()
+   954→      scheduleBroadcast()
+   955→    },
+   956→    [scheduleSave, scheduleBroadcast]
+   957→  )
+   958→
+   959→  /* ---------------- insert helpers ---------------- */
+   960→  const insertLink = React.useCallback(
+   961→    (url: string, text: string) => {
+   962→      const el = pageRef.current
+   963→      if (!el) return
+   964→      ensureSelection()
+   965→      const sel = window.getSelection()
+   966→      const collapsed = !sel || sel.isCollapsed || !el.contains(sel.anchorNode)
+   967→      if (collapsed) {
+   968→        const safeUrl = url.replace(/"/g, "%22")
+   969→        document.execCommand(
+   970→          "insertHTML",
+   971→          false,
+   972→          `<a href="${safeUrl}">${escapeHtml(text || url)}</a>`
+   973→        )
+   974→      } else {
+   975→        document.execCommand("createLink", false, url)
+   976→      }
+   977→      handleInput()
+   978→      refreshFmt()
+   979→    },
+   980→    [handleInput, refreshFmt, ensureSelection]
+   981→  )
+   982→
+   983→  const insertImage = React.useCallback(
+   984→    (src: string, alt: string) => {
+   985→      const el = pageRef.current
+   986→      if (!el) return
+   987→      ensureSelection()
+   988→      const safeSrc = src.replace(/"/g, "%22")
+   989→      document.execCommand(
+   990→        "insertHTML",
+   991→        false,
+   992→        `<img src="${safeSrc}" alt="${escapeHtml(alt)}" style="max-width:100%">`
+   993→      )
+   994→      handleInput()
+   995→    },
+   996→    [handleInput]
+   997→  )
+   998→
+   999→  const insertHtmlAtCursor = React.useCallback(
+  1000→    (html: string) => {
+  1001→      const el = pageRef.current
+  1002→      if (!el) return
+  1003→      ensureSelection()
+  1004→      document.execCommand("insertHTML", false, html)
+  1005→      handleInput()
+  1006→    },
+  1007→    [handleInput, ensureSelection]
+  1008→  )
+  1009→
+  1010→  /* ---------------- insert table ---------------- */
+  1011→  const insertTable = React.useCallback(
+  1012→    (rows: number, cols: number) => {
+  1013→      const r = Math.min(20, Math.max(1, Math.floor(rows)))
+  1014→      const c = Math.min(10, Math.max(1, Math.floor(cols)))
+  1015→      let html = '<table class="zdocs-table"><tbody>'
+  1016→      for (let i = 0; i < r; i++) {
+  1017→        html += "<tr>"
+  1018→        for (let j = 0; j < c; j++) html += "<td>&nbsp;</td>"
+  1019→        html += "</tr>"
+  1020→      }
+  1021→      html += "</tbody></table><p><br></p>"
+  1022→      insertHtmlAtCursor(html)
+  1023→      toast({ title: tForLang(getCurrentLang(), "Inserted {r}×{c} table", { r, c }) })
+  1024→    },
+  1025→    [insertHtmlAtCursor, toast]
+  1026→  )
+  1027→
+  1028→  /* ---------------- table structural operations ---------------- */
+  1029→  const tableOp = React.useCallback(
+  1030→    (op: TableOp) => {
+  1031→      if (op === "insert") {
+  1032→        setDialog("table")
+  1033→        return
+  1034→      }
+  1035→      const el = pageRef.current
+  1036→      if (!el) return
+  1037→      const ctx = getTableContext(el)
+  1038→      if (!ctx) return
+  1039→      switch (op) {
+  1040→        case "row-above":
+  1041→        case "row-below": {
+  1042→          const tr = insertTableRow(ctx, op === "row-above" ? "above" : "below")
+  1043→          placeCaretInCell(tr.cells[0])
+  1044→          toast({ title: tForLang(getCurrentLang(), "Row inserted") })
+  1045→          break
+  1046→        }
+  1047→        case "col-left":
+  1048→        case "col-right": {
+  1049→          const cells = insertTableColumn(ctx, op === "col-left" ? "left" : "right")
+  1050→          const target = cells[Math.min(ctx.rowIndex, cells.length - 1)]
+  1051→          if (target) placeCaretInCell(target)
+  1052→          toast({ title: tForLang(getCurrentLang(), "Column inserted") })
+  1053→          break
+  1054→        }
+  1055→        case "delete-row": {
+  1056→          const removedTable = !deleteTableRow(ctx)
+  1057→          if (!removedTable) {
+  1058→            const nextRow = ctx.table.rows[Math.min(ctx.rowIndex, ctx.table.rows.length - 1)]
+  1059→            if (nextRow?.cells[0]) placeCaretInCell(nextRow.cells[0])
+  1060→          }
+  1061→          toast({ title: tForLang(getCurrentLang(), removedTable ? "Last row removed, table deleted" : "Row deleted") })
+  1062→          break
+  1063→        }
+  1064→        case "delete-col": {
+  1065→          const removedTable = !deleteTableColumn(ctx)
+  1066→          if (!removedTable) {
+  1067→            const row = ctx.table.rows[ctx.rowIndex]
+  1068→            const cell = row?.cells[Math.min(ctx.colIndex, row.cells.length - 1)]
+  1069→            if (cell) placeCaretInCell(cell)
+  1070→          }
+  1071→          toast({ title: tForLang(getCurrentLang(), removedTable ? "Last column removed, table deleted" : "Column deleted") })
+  1072→          break
+  1073→        }
+  1074→        case "delete-table": {
+  1075→          const next = ctx.table.nextElementSibling as HTMLElement | null
+  1076→          const prev = ctx.table.previousElementSibling as HTMLElement | null
+  1077→          deleteTableEl(ctx)
+  1078→          // park the caret in a nearby block so typing keeps working
+  1079→          const park = next?.querySelector("p, td, th") ?? prev?.querySelector("p, td, th")
+  1080→          if (park) placeCaretInCell(park as HTMLElement)
+  1081→          toast({ title: tForLang(getCurrentLang(), "Table deleted") })
+  1082→          break
+  1083→        }
+  1084→        case "toggle-header": {
+  1085→          const nowHeader = toggleTableHeader(ctx)
+  1086→          placeCaretInCell(ctx.cell)
+  1087→          toast({ title: tForLang(getCurrentLang(), nowHeader ? "Header row on" : "Header row off") })
+  1088→          break
+  1089→        }
+  1090→        case "merge-right":
+  1091→        case "merge-down": {
+  1092→          const ok = mergeTableCells(ctx, op === "merge-right" ? "right" : "down")
+  1093→          toast({ title: tForLang(getCurrentLang(), ok ? "Cells merged" : "Cells can’t be merged that way") })
+  1094→          break
+  1095→        }
+  1096→        case "split-cell": {
+  1097→          const ok = splitTableCell(ctx)
+  1098→          toast({ title: tForLang(getCurrentLang(), ok ? "Cell split" : "This cell isn’t merged") })
+  1099→          break
+  1100→        }
+  1101→      }
+  1102→      ensureParagraph(el)
+  1103→      handleInput()
+  1104→      refreshFmt()
+  1105→      setTableInfo(describeTableAt(el))
+  1106→      setActiveTableEl(getTableContext(el)?.table ?? null)
+  1107→    },
+  1108→    [handleInput, refreshFmt, toast]
+  1109→  )
+  1110→
+  1111→  /* ---------------- comments: actions ---------------- */
+  1112→  const submitComment = React.useCallback(
+  1113→    async (text: string) => {
+  1114→      const pq = pendingQuoteRef.current
+  1115→      if (!docId || !user || !pq) return
+  1116→      setCommentBusy(true)
+  1117→      try {
+  1118→        const res = await fetch(`/api/documents/${docId}/comments`, {
+  1119→          method: "POST",
+  1120→          headers: { "Content-Type": "application/json" },
+  1121→          body: JSON.stringify({
+  1122→            content: text,
+  1123→            quote: pq.quote,
+  1124→            anchorOffset: pq.offset,
+  1125→            authorId: user.id,
+  1126→            authorName: user.name,
+  1127→            authorColor: user.color,
+  1128→          }),
+  1129→        })
+  1130→        if (!res.ok) throw new Error("failed")
+  1131→        const data = (await res.json()) as { comment: CommentDTO }
+  1132→        setComments((prev) => [...prev, { ...data.comment, replies: data.comment.replies ?? [] }])
+  1133→        setActiveCommentId(data.comment.id)
+  1134→        setPendingQuote(null)
+  1135→        emitCommentsChanged("add", data.comment.id)
+  1136→        toast({ title: tForLang(getCurrentLang(), "Comment added") })
+  1137→      } catch {
+  1138→        toast({ title: tForLang(getCurrentLang(), "Couldn’t add the comment"), variant: "destructive" })
+  1139→      } finally {
+  1140→        setCommentBusy(false)
+  1141→      }
+  1142→    },
+  1143→    [docId, user, setPendingQuote, emitCommentsChanged, toast]
+  1144→  )
+  1145→
+  1146→  const submitReply = React.useCallback(
+  1147→    async (parentId: string, text: string) => {
+  1148→      if (!docId || !user) return
+  1149→      setCommentBusy(true)
+  1150→      try {
+  1151→        const res = await fetch(`/api/documents/${docId}/comments`, {
+  1152→          method: "POST",
+  1153→          headers: { "Content-Type": "application/json" },
+  1154→          body: JSON.stringify({
+  1155→            content: text,
+  1156→            parentId,
+  1157→            authorId: user.id,
+  1158→            authorName: user.name,
+  1159→            authorColor: user.color,
+  1160→          }),
+  1161→        })
+  1162→        if (!res.ok) throw new Error("failed")
+  1163→        const data = (await res.json()) as { comment: CommentDTO }
+  1164→        setComments((prev) =>
+  1165→          prev.map((c) =>
+  1166→            c.id === parentId ? { ...c, replies: [...(c.replies ?? []), data.comment] } : c
+  1167→          )
+  1168→        )
+  1169→        emitCommentsChanged("reply", data.comment.id)
+  1170→      } catch {
+  1171→        toast({ title: tForLang(getCurrentLang(), "Couldn’t post the reply"), variant: "destructive" })
+  1172→      } finally {
+  1173→        setCommentBusy(false)
+  1174→      }
+  1175→    },
+  1176→    [docId, user, emitCommentsChanged, toast]
+  1177→  )
+  1178→
+  1179→  const toggleResolveComment = React.useCallback(
+  1180→    async (c: CommentDTO) => {
+  1181→      setCommentBusy(true)
+  1182→      try {
+  1183→        const res = await fetch(`/api/comments/${c.id}`, {
+  1184→          method: "PATCH",
+  1185→          headers: { "Content-Type": "application/json" },
+  1186→          body: JSON.stringify({ resolved: !c.resolved }),
+  1187→        })
+  1188→        if (!res.ok) throw new Error("failed")
+  1189→        setComments((prev) =>
+  1190→          prev.map((t) => (t.id === c.id ? { ...t, resolved: !c.resolved } : t))
+  1191→        )
+  1192→        emitCommentsChanged(c.resolved ? "unresolve" : "resolve", c.id)
+  1193→      } catch {
+  1194→        toast({ title: tForLang(getCurrentLang(), "Couldn’t update the comment"), variant: "destructive" })
+  1195→      } finally {
+  1196→        setCommentBusy(false)
+  1197→      }
+  1198→    },
+  1199→    [emitCommentsChanged, toast]
+  1200→  )
+  1201→
+  1202→  /** Toggle an emoji reaction on a comment or reply (optimistic, no busy
+  1203→   *  spinner so quick multi-reactions stay snappy). */
+  1204→  const toggleReaction = React.useCallback(
+  1205→    async (commentId: string, emoji: string) => {
+  1206→      if (!user) return
+  1207→      // optimistic toggle on a deep-copied list
+  1208→      const apply = (list: CommentDTO[]): CommentDTO[] =>
+  1209→        list.map((c) => {
+  1210→          if (c.id === commentId) {
+  1211→            const mine = (c.reactions ?? []).some((rx) => rx.userId === user.id && rx.emoji === emoji)
+  1212→            const next = mine
+  1213→              ? (c.reactions ?? []).filter((rx) => !(rx.userId === user.id && rx.emoji === emoji))
+  1214→              : [
+  1215→                  ...(c.reactions ?? []),
+  1216→                  { id: `optimistic-${emoji}`, commentId, userId: user.id, userName: user.name, emoji },
+  1217→                ]
+  1218→            return { ...c, reactions: next }
+  1219→          }
+  1220→          const replies = c.replies ? apply(c.replies) : c.replies
+  1221→          if (replies !== c.replies) return { ...c, replies }
+  1222→          return c
+  1223→        })
+  1224→      setComments((prev) => apply(prev))
+  1225→      try {
+  1226→        const res = await fetch(`/api/comments/${commentId}/reactions`, {
+  1227→          method: "POST",
+  1228→          headers: { "Content-Type": "application/json" },
+  1229→          body: JSON.stringify({ emoji, userId: user.id, userName: user.name }),
+  1230→        })
+  1231→        if (!res.ok) throw new Error("failed")
+  1232→        emitCommentsChanged("react", commentId)
+  1233→      } catch {
+  1234→        toast({ title: tForLang(getCurrentLang(), "Couldn’t save the reaction"), variant: "destructive" })
+  1235→        void refreshComments()
+  1236→      }
+  1237→    },
+  1238→    [user, emitCommentsChanged, toast, refreshComments]
+  1239→  )
+  1240→
+  1241→  const editComment = React.useCallback(
+  1242→    async (id: string, content: string) => {
+  1243→      setCommentBusy(true)
+  1244→      try {
+  1245→        const res = await fetch(`/api/comments/${id}`, {
+  1246→          method: "PATCH",
+  1247→          headers: { "Content-Type": "application/json" },
+  1248→          body: JSON.stringify({ content }),
+  1249→        })
+  1250→        if (!res.ok) throw new Error("failed")
+  1251→        setComments((prev) =>
+  1252→          prev.map((c) => {
+  1253→            if (c.id === id) return { ...c, content }
+  1254→            const replies = c.replies?.map((r) => (r.id === id ? { ...r, content } : r))
+  1255→            if (replies && replies !== c.replies) return { ...c, replies }
+  1256→            return c
+  1257→          })
+  1258→        )
+  1259→        emitCommentsChanged("edit", id)
+  1260→        toast({ title: tForLang(getCurrentLang(), "Comment updated") })
+  1261→      } catch {
+  1262→        toast({ title: tForLang(getCurrentLang(), "Couldn’t update the comment"), variant: "destructive" })
+  1263→      } finally {
+  1264→        setCommentBusy(false)
+  1265→      }
+  1266→    },
+  1267→    [emitCommentsChanged, toast]
+  1268→  )
+  1269→
+  1270→  const deleteComment = React.useCallback(
+  1271→    async (c: CommentDTO) => {
+  1272→      setCommentBusy(true)
+  1273→      try {
+  1274→        const res = await fetch(`/api/comments/${c.id}`, { method: "DELETE" })
+  1275→        if (!res.ok) throw new Error("failed")
+  1276→        setComments((prev) => prev.filter((t) => t.id !== c.id))
+  1277→        if (activeCommentId === c.id) setActiveCommentId(null)
+  1278→        emitCommentsChanged("delete", c.id)
+  1279→        toast({ title: tForLang(getCurrentLang(), "Comment deleted") })
+  1280→      } catch {
+  1281→        toast({ title: tForLang(getCurrentLang(), "Couldn’t delete the comment"), variant: "destructive" })
+  1282→      } finally {
+  1283→        setCommentBusy(false)
+  1284→      }
+  1285→    },
+  1286→    [activeCommentId, emitCommentsChanged, toast]
+  1287→  )
+  1288→
+  1289→  /** Scroll the quoted text of a comment into view and flash its highlight. */
+  1290→  const focusComment = React.useCallback(
+  1291→    (c: CommentDTO) => {
+  1292→      setActiveCommentId(c.id)
+  1293→      if (c.quote) {
+  1294→        const el = pageRef.current
+  1295→        if (el) {
+  1296→          const found = findQuoteRange(el, c.quote, c.anchorOffset)
+  1297→          if (found) {
+  1298→            const canvas = el.closest(".doc-canvas-bg") as HTMLElement | null
+  1299→            const rect = found.range.getBoundingClientRect()
+  1300→            if (canvas) {
+  1301→              const canvasRect = canvas.getBoundingClientRect()
+  1302→              const target =
+  1303→                canvas.scrollTop + (rect.top - canvasRect.top) / zoom - canvasRect.height / 3 / zoom
+  1304→              canvas.scrollTo({ top: Math.max(0, target), behavior: "smooth" })
+  1305→            }
+  1306→          }
+  1307→        }
+  1308→      }
+  1309→      window.setTimeout(() => {
+  1310→        setActiveCommentId((cur) => (cur === c.id ? null : cur))
+  1311→      }, 5000)
+  1312→    },
+  1313→    [zoom]
+  1314→  )
+  1315→
+  1316→  const toggleComments = React.useCallback(
+  1317→    (open?: boolean) => {
+  1318→      setCommentsOpen((prev) => {
+  1319→        const next = open ?? !prev
+  1320→        if (!next) setPendingQuote(null)
+  1321→        return next
+  1322→      })
+  1323→    },
+  1324→    [setPendingQuote]
+  1325→  )
+  1326→
+  1327→  /** Capture the current selection as a quote and open the comment composer. */
+  1328→  const openCommentComposer = React.useCallback(() => {
+  1329→    const el = pageRef.current
+  1330→    const sel = window.getSelection()
+  1331→    const hasSelection =
+  1332→      !!el && !!sel && sel.rangeCount > 0 && !sel.isCollapsed && el.contains(sel.anchorNode)
+  1333→    if (hasSelection && el) {
+  1334→      const off = selectionOffsets(el)
+  1335→      const quote = (sel?.toString() ?? "").replace(/\s+/g, " ").trim().slice(0, 400)
+  1336→      setPendingQuote({ quote, offset: off?.start ?? 0 })
+  1337→    } else {
+  1338→      setPendingQuote({ quote: "", offset: 0 })
+  1339→    }
+  1340→    setCommentsOpen(true)
+  1341→    setBubble(null)
+  1342→  }, [setPendingQuote])
+  1343→
+  1344→  const replaceDocumentHtml = React.useCallback(
+  1345→    (html: string) => {
+  1346→      const el = pageRef.current
+  1347→      if (!el) return
+  1348→      el.innerHTML = html
+  1349→      handleInput()
+  1350→    },
+  1351→    [handleInput]
+  1352→  )
+  1353→
+  1354→  /* ---------------- AI quick actions (polish) ---------------- */
+  1355→  /** Plain text → paragraph HTML (blank-line paragraphs, single newlines as <br>). */
+  1356→  const plainTextToHtml = React.useCallback((text: string): string => {
+  1357→    const paras = text
+  1358→      .split(/\n{2,}/)
+  1359→      .map((p) => p.trim())
+  1360→      .filter(Boolean)
+  1361→    if (paras.length === 0) return ""
+  1362→    return paras
+  1363→      .map((p) => `<p>${escapeHtml(p).replace(/\n/g, "<br>")}</p>`)
+  1364→      .join("")
+  1365→  }, [])
+  1366→
+  1367→  /** Replace the captured selection (or the whole document) with AI output.
+  1368→   *  Runs AFTER the dialog closes (240ms delay in the dialog), so execCommand
+  1369→   *  is usable — the edit lands on the browser undo stack (⌘Z works). Falls
+  1370→   *  back to direct Range manipulation if execCommand is unavailable. */
+  1371→  const replaceAiResult = React.useCallback(
+  1372→    (text: string) => {
+  1373→      const el = pageRef.current
+  1374→      if (!el) return
+  1375→      const html = plainTextToHtml(text)
+  1376→      if (!html) {
+  1377→        toast({ title: tForLang(getCurrentLang(), "Nothing to apply"), description: tForLang(getCurrentLang(), "The AI result is empty.") })
+  1378→        return
+  1379→      }
+  1380→      const range = aiRangeRef.current
+  1381→      if (aiSource?.isSelection && range && el.contains(range.startContainer)) {
+  1382→        el.focus()
+  1383→        const sel = window.getSelection()
+  1384→        let applied = false
+  1385→        try {
+  1386→          sel?.removeAllRanges()
+  1387→          sel?.addRange(range.cloneRange())
+  1388→          applied = document.execCommand("insertHTML", false, html)
+  1389→        } catch {
+  1390→          applied = false
+  1391→        }
+  1392→        if (!applied) {
+  1393→          // fallback: direct Range surgery (NOT undoable, but always works)
+  1394→          try {
+  1395→            range.deleteContents()
+  1396→            const frag = range.createContextualFragment(html)
+  1397→            range.insertNode(frag)
+  1398→          } catch {
+  1399→            el.insertAdjacentHTML("beforeend", html)
+  1400→          }
+  1401→        }
+  1402→        const after = sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null
+  1403→        if (after) savedRangeRef.current = after
+  1404→        handleInput()
+  1405→        toast({ title: tForLang(getCurrentLang(), "Selection updated"), description: tForLang(getCurrentLang(), "AI result applied to the selected text.") })
+  1406→      } else {
+  1407→        replaceDocumentHtml(html)
+  1408→        toast({ title: tForLang(getCurrentLang(), "Document updated"), description: tForLang(getCurrentLang(), "AI result replaced the document.") })
+  1409→      }
+  1410→    },
+  1411→    [aiSource, plainTextToHtml, handleInput, replaceDocumentHtml, toast]
+  1412→  )
+  1413→
+  1414→  /** Insert AI output as new paragraphs at the caret. */
+  1415→  const insertAiResult = React.useCallback(
+  1416→    (text: string) => {
+  1417→      const html = plainTextToHtml(text)
+  1418→      if (html) insertHtmlAtCursor(html)
+  1419→    },
+  1420→    [plainTextToHtml, insertHtmlAtCursor]
+  1421→  )
+  1422→
+  1423→  /* ---------------- find & replace engine ---------------- */
+  1424→
+  1425→  /** Re-run the search against the live DOM. Keeps the active match pointed
+  1426→   *  at the same content position (by global offset) when possible.
+  1427→   *  Returns the fresh matches + the index runFind selected. */
+  1428→  const runFind = React.useCallback(
+  1429→    (query: string, caseSensitive: boolean, keepOffset?: number | null): { matches: TextMatch[]; idx: number } => {
+  1430→      const el = pageRef.current
+  1431→      if (!el || !query) {
+  1432→        setFindMatches([])
+  1433→        setFindActiveIndex(-1)
+  1434→        return { matches: [], idx: -1 }
+  1435→      }
+  1436→      const matches = findTextMatches(el, query, caseSensitive)
+  1437→      let idx = 0
+  1438→      if (keepOffset != null && matches.length > 0) {
+  1439→        idx = matches.findIndex((m) => m.start >= keepOffset)
+  1440→        if (idx === -1) idx = 0 // wrapped past the end — restart from the top
+  1441→      }
+  1442→      setFindMatches(matches)
+  1443→      setFindActiveIndex(matches.length > 0 ? idx : -1)
+  1444→      return { matches, idx: matches.length > 0 ? idx : -1 }
+  1445→    },
+  1446→    []
+  1447→  )
+  1448→
+  1449→  /** Debounced re-run whenever the query / case flag changes. */
+  1450→  React.useEffect(() => {
+  1451→    if (!findOpen) return
+  1452→    const t = setTimeout(() => runFind(findQuery, findCase), 130)
+  1453→    return () => clearTimeout(t)
+  1454→  }, [findOpen, findQuery, findCase, runFind])
+  1455→
+  1456→  /** Re-run after local edits so highlights stay glued to the text. */
+  1457→  React.useEffect(() => {
+  1458→    if (!findOpen || !findQuery) return
+  1459→    const keep = findActiveIndex >= 0 ? findMatches[findActiveIndex]?.start ?? null : null
+  1460→    runFind(findQuery, findCase, keep)
+  1461→  }, [contentTick, remoteContent])
+  1462→
+  1463→  /** Select a match range in the document WITHOUT losing the panel's focus.
+  1464→   *  Chrome moves DOM focus to a contentEditable when a range inside it is
+  1465→   *  added to the selection — for a user typing in the find field that would
+  1466→   *  divert subsequent keystrokes into the document (overwriting the selected
+  1467→   *  match). Capture the focused element first and hand focus back after. */
+  1468→  const selectMatchKeepFocus = React.useCallback((m: TextMatch) => {
+  1469→    const el = pageRef.current
+  1470→    if (!el) return
+  1471→    const prior = document.activeElement
+  1472→    try {
+  1473→      const sel = window.getSelection()
+  1474→      sel?.removeAllRanges()
+  1475→      sel?.addRange(m.range.cloneRange())
+  1476→      scrollRangeIntoCanvasView(el, m.range)
+  1477→    } catch {
+  1478→      // range detached — ignore
+  1479→    }
+  1480→    if (prior instanceof HTMLElement && prior !== el && !el.contains(prior)) {
+  1481→      prior.focus()
+  1482→    }
+  1483→  }, [])
+  1484→
+  1485→  /** Jump to a match: highlight, select it in the document, scroll into view. */
+  1486→  const goToMatch = React.useCallback(
+  1487→    (index: number) => {
+  1488→      const m = findMatches[index]
+  1489→      if (!m) return
+  1490→      setFindActiveIndex(index)
+  1491→      selectMatchKeepFocus(m)
+  1492→    },
+  1493→    [findMatches, selectMatchKeepFocus]
+  1494→  )
+  1495→
+  1496→  const findNext = React.useCallback(() => {
+  1497→    if (findMatches.length === 0) return
+  1498→    goToMatch((findActiveIndex + 1) % findMatches.length)
+  1499→  }, [findMatches, findActiveIndex, goToMatch])
+  1500→
+  1501→  const findPrev = React.useCallback(() => {
+  1502→    if (findMatches.length === 0) return
+  1503→    goToMatch((findActiveIndex - 1 + findMatches.length) % findMatches.length)
+  1504→  }, [findMatches, findActiveIndex, goToMatch])
+  1505→
+  1506→  /**
+  1507→   * Highlight + scroll to a text snippet in the live document (used by the
+  1508→   * writing studio: sentence rhythm, paragraph density, echo, POV…).
+  1509→   */
+  1510→  const highlightText = React.useCallback(
+  1511→    (text: string) => {
+  1512→      const el = pageRef.current
+  1513→      if (!el || !text) return
+  1514→      const matches = findTextMatches(el, text, false)
+  1515→      if (matches.length === 0) return
+  1516→      setFindMatches(matches)
+  1517→      setFindActiveIndex(0)
+  1518→      scrollRangeIntoCanvasView(el, matches[0].range)
+  1519→    },
+  1520→    []
+  1521→  )
+  1522→
+  1523→  /** Auto-select the first match whenever a fresh search produces results. */
+  1524→  React.useEffect(() => {
+  1525→    if (findOpen && findMatches.length > 0 && findActiveIndex === 0) {
+  1526→      const m = findMatches[0]
+  1527→      if (m) selectMatchKeepFocus(m)
+  1528→    }
+  1529→  }, [findMatches])
+  1530→
+  1531→  const openFindPanel = React.useCallback(
+  1532→    (withReplace: boolean) => {
+  1533→      setFindOpen(true)
+  1534→      setFindReplaceMode(withReplace)
+  1535→      // seed the query with the current selection when it is short & plain
+  1536→      const el = pageRef.current
+  1537→      const sel = window.getSelection()
+  1538→      if (el && sel && !sel.isCollapsed && el.contains(sel.anchorNode)) {
+  1539→        const text = sel.toString()
+  1540→        if (text && text.length <= 60 && !text.includes("\n")) {
+  1541→          setFindQuery(text)
+  1542→          runFind(text, findCase)
+  1543→        }
+  1544→      }
+  1545→    },
+  1546→    [findCase, runFind]
+  1547→  )
+  1548→
+  1549→  const closeFindPanel = React.useCallback(() => {
+  1550→    setFindOpen(false)
+  1551→    setFindMatches([])
+  1552→    setFindActiveIndex(-1)
+  1553→    window.getSelection()?.removeAllRanges()
+  1554→  }, [])
+  1555→
+  1556→  /** Replace the currently active match. Uses execCommand("insertText")
+  1557→   *  with the match selected so the change lands in the browser's undo
+  1558→   *  stack and inherits the surrounding formatting. */
+  1559→  const replaceCurrent = React.useCallback(
+  1560→    (replacement: string) => {
+  1561→      const m = findMatches[findActiveIndex]
+  1562→      const el = pageRef.current
+  1563→      if (!m || !el) return
+  1564→      try {
+  1565→        el.focus()
+  1566→        const sel = window.getSelection()
+  1567→        sel?.removeAllRanges()
+  1568→        sel?.addRange(m.range.cloneRange())
+  1569→        document.execCommand("insertText", false, replacement)
+  1570→      } catch {
+  1571→        return
+  1572→      }
+  1573→      // re-run the search starting just after this replacement
+  1574→      const keep = m.start + replacement.length
+  1575→      const { matches: next, idx } = runFind(findQuery, findCase, keep)
+  1576→      if (idx >= 0 && next[idx]) {
+  1577→        selectMatchKeepFocus(next[idx])
+  1578→      } else {
+  1579→        toast({ title: tForLang(getCurrentLang(), "No more matches") })
+  1580→      }
+  1581→    },
+  1582→    [findMatches, findActiveIndex, findQuery, findCase, runFind, selectMatchKeepFocus, toast]
+  1583→  )
+  1584→
+  1585→  /** Replace every match in ONE undoable transaction (Google Docs parity).
+  1586→   *  The replacements are computed on a detached clone of the page (so the
+  1587→   *  live match ranges stay valid while we walk them), then applied to the
+  1588→   *  live document with a single select-all + insertHTML execCommand —
+  1589→   *  Chromium records that as exactly one undo step, preserving all rich
+  1590→   *  formatting, comment marks and table colgroups. */
+  1591→  const replaceAllMatches = React.useCallback(
+  1592→    (replacement: string) => {
+  1593→      const el = pageRef.current
+  1594→      if (!el || !findQuery || findMatches.length === 0) return 0
+  1595→      // 1) compute the post-replacement content on a detached clone
+  1596→      const clone = el.cloneNode(true) as HTMLElement
+  1597→      let count = 0
+  1598→      for (let i = findMatches.length - 1; i >= 0; i--) {
+  1599→        const m = findMatches[i]
+  1600→        const r = mapRangeToClone(el, clone, m.range)
+  1601→        if (!r) continue
+  1602→        // guard against drift: the cloned range must still cover the query
+  1603→        const covered = r.toString()
+  1604→        if (findCase ? covered !== findQuery : covered.toLowerCase() !== findQuery.toLowerCase()) continue
+  1605→        try {
+  1606→          r.deleteContents()
+  1607→          r.insertNode(document.createTextNode(replacement))
+  1608→          count++
+  1609→        } catch {
+  1610→          // skip this one — the final re-scan reports the true state
+  1611→        }
+  1612→      }
+  1613→      if (count === 0) {
+  1614→        runFind(findQuery, findCase)
+  1615→        return 0
+  1616→      }
+  1617→      const newHtml = clone.innerHTML
+  1618→      // 2) apply as a single undoable edit
+  1619→      el.focus()
+  1620→      const sel = window.getSelection()
+  1621→      let applied = false
+  1622→      try {
+  1623→        sel?.removeAllRanges()
+  1624→        const all = document.createRange()
+  1625→        all.selectNodeContents(el)
+  1626→        sel?.addRange(all)
+  1627→        applied = document.execCommand("insertHTML", false, newHtml)
+  1628→      } catch {
+  1629→        applied = false
+  1630→      }
+  1631→      if (!applied) {
+  1632→        // fallback: direct DOM write + synthetic input event (not undoable,
+  1633→        // but the autosave + version history still capture the change)
+  1634→        el.innerHTML = newHtml
+  1635→      }
+  1636→      handleInput()
+  1637→      toast({ title: count === 1
+  1638→        ? tForLang(getCurrentLang(), "Replaced 1 match")
+  1639→        : tForLang(getCurrentLang(), "Replaced {n} matches", { n: count }) })
+  1640→      runFind(findQuery, findCase)
+  1641→      return count
+  1642→    },
+  1643→    [findQuery, findCase, findMatches, runFind, handleInput, toast]
+  1644→  )
+  1645→
+  1646→  /* ---------------- voice typing ---------------- */
+  1647→  /** Insert a finalized dictation chunk at the caret. Goes through
+  1648→   *  execCommand so each spoken chunk lands on the undo stack and inherits
+  1649→   *  the surrounding formatting, exactly like typed text. */
+  1650→  const insertSpokenText = React.useCallback(
+  1651→    (text: string) => {
+  1652→      const el = pageRef.current
+  1653→      if (!el) return
+  1654→      const sel = window.getSelection()
+  1655→      const caretInDoc = sel && sel.rangeCount > 0 && el.contains(sel.anchorNode)
+  1656→      if (!caretInDoc) {
+  1657→        // restore the last known caret, or fall back to the document end
+  1658→        const r = savedRangeRef.current
+  1659→        if (r && el.contains(r.startContainer)) {
+  1660→          sel?.removeAllRanges()
+  1661→          sel?.addRange(r)
+  1662→        } else {
+  1663→          const rg = document.createRange()
+  1664→          rg.selectNodeContents(el)
+  1665→          rg.collapse(false)
+  1666→          sel?.removeAllRanges()
+  1667→          sel?.addRange(rg)
+  1668→          savedRangeRef.current = rg.cloneRange()
+  1669→        }
+  1670→      }
+  1671→      el.focus()
+  1672→      try {
+  1673→        document.execCommand("insertText", false, text + " ")
+  1674→      } catch {
+  1675→        // ignore — next chunk will retry
+  1676→      }
+  1677→      handleInput()
+  1678→    },
+  1679→    [handleInput]
+  1680→  )
+  1681→
+  1682→  const voice = useVoiceTyping(insertSpokenText)
+  1683→
+  1684→  /** Surface recognizer errors once (mic denied / network / unsupported). */
+  1685→  React.useEffect(() => {
+  1686→    if (!voice.error) return
+  1687→    const lang = getCurrentLang()
+  1688→    if (voice.error === "unsupported") {
+  1689→      toast({ title: tForLang(lang, "Voice typing isn’t supported in this browser"), description: tForLang(lang, "Try a Chromium-based browser.") })
+  1690→    } else if (voice.error === "not-allowed" || voice.error === "service-not-allowed") {
+  1691→      toast({ title: tForLang(lang, "Microphone access was denied"), description: tForLang(lang, "Allow microphone access in your browser settings to dictate.") })
+  1692→    } else if (voice.error !== "start-failed") {
+  1693→      toast({ title: tForLang(lang, "Voice typing stopped"), description: tForLang(lang, "Reason: {reason}", { reason: voice.error }) })
+  1694→    }
+  1695→  }, [voice.error, toast])
+  1696→
+  1697→  const toggleVoiceTyping = React.useCallback(() => {
+  1698→    voice.toggle()
+  1699→  }, [voice])
+  1700→
+  1701→  /* ---------------- export & print ---------------- */
+  1702→
+  1703→  /** Shared export document builder — the exact same CSS/layout the
+  1704→   *  server-side Chromium PDF renderer prints, so every format (PDF / Word
+  1705→   *  / HTML / print) is pixel-consistent. */
+  1706→  const buildExportHtml = React.useCallback(
+  1707→    (mode: "print" | "word" | "html" = "word") =>
+  1708→      buildPrintDocument({
+  1709→        title: latestTitleRef.current || tForLang(getCurrentLang(), "Untitled document"),
+  1710→        bodyHtml: contentRef.current,
+  1711→        mode,
+  1712→      }),
+  1713→    []
+  1714→  )
+  1715→
+  1716→  const saveBlobFile = (blob: Blob, filename: string) => {
+  1717→    const url = URL.createObjectURL(blob)
+  1718→    const a = document.createElement("a")
+  1719→    a.href = url
+  1720→    a.download = filename
+  1721→    document.body.appendChild(a)
+  1722→    a.click()
+  1723→    a.remove()
+  1724→    // Revoke asynchronously: some browsers (Safari, headless) start the download
+  1725→    // after the current task — a synchronous revoke can kill the transfer.
+  1726→    setTimeout(() => URL.revokeObjectURL(url), 30_000)
+  1727→  }
+  1728→
+  1729→  const printDoc = React.useCallback(() => {
+  1730→    const html = buildExportHtml("print")
+  1731→    const iframe = document.createElement("iframe")
+  1732→    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;"
+  1733→    document.body.appendChild(iframe)
+  1734→    const idoc = iframe.contentDocument
+  1735→    if (!idoc) return
+  1736→    idoc.open()
+  1737→    idoc.write(html)
+  1738→    idoc.close()
+  1739→    setTimeout(() => {
+  1740→      iframe.contentWindow?.focus()
+  1741→      iframe.contentWindow?.print()
+  1742→      setTimeout(() => iframe.remove(), 800)
+  1743→    }, 300)
+  1744→  }, [buildExportHtml])
+  1745→
+  1746→  /** Export the current document as a real .pdf file (Google Docs parity).
+  1747→   *
+  1748→   *  Tries the server-side Chromium vector renderer FIRST — selectable text,
+  1749→   *  correct CJK fonts, correct wrapping of very long words — then falls back
+  1750→   *  to the local html2canvas raster pipeline, and finally to the print
+  1751→   *  dialog when canvas rendering is unavailable. */
+  1752→  const downloadPdf = React.useCallback(async () => {
+  1753→    const el = pageRef.current
+  1754→    const lang = getCurrentLang()
+  1755→    const name = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
+  1756→    const title = latestTitleRef.current || tForLang(lang, "Untitled document")
+  1757→    // large docs stream real progress; small ones just show the download card
+  1758→    const estWords = countWords(htmlToText(contentRef.current ?? ""))
+  1759→    const big = estWords >= 600
+  1760→    const tracker = trackedDownload({
+  1761→      kind: "pdf",
+  1762→      title,
+  1763→      fileName: `${name}.pdf`,
+  1764→      note: big ? tForLang(lang, "Large document — this may take a moment") : undefined,
+  1765→    })
+  1766→
+  1767→    // 1) server-side vector PDF (Chromium print — real text layer)
+  1768→    try {
+  1769→      const res = await apiFetch("/api/export/pdf", {
+  1770→        method: "POST",
+  1771→        headers: { "Content-Type": "application/json" },
+  1772→        body: JSON.stringify({ title: latestTitleRef.current, html: contentRef.current }),
+  1773→      })
+  1774→      if (res.ok) {
+  1775→        tracker.tick({ phase: "download", note: tForLang(lang, "Downloading…") })
+  1776→        const blob = await readBlobWithProgress(res, (loaded, total) => {
+  1777→          tracker.tick({
+  1778→            phase: "download",
+  1779→            percent: total && total > 0 ? Math.min(99, (loaded / total) * 100) : null,
+  1780→          })
+  1781→        })
+  1782→        if (blob.size > 0) {
+  1783→          saveBlobFile(blob, `${name}.pdf`)
+  1784→          tracker.finish(true)
+  1785→          toast({ title: tForLang(lang, "Download started"), description: `${name}.pdf` })
+  1786→          return
+  1787→        }
+  1788→      }
+  1789→    } catch {
+  1790→      /* offline / renderer unavailable → client fallbacks below */
+  1791→    }
+  1792→
+  1793→    // 2) client raster fallback (html2canvas)
+  1794→    if (!el) {
+  1795→      tracker.finish(false)
+  1796→      return
+  1797→    }
+  1798→    let wrap: HTMLElement | null = null
+  1799→    let prevTransform = ""
+  1800→    let unfreezeImages: (() => void) | null = null
+  1801→    try {
+  1802→      // capture at scale 1 — reset the zoom transform during the snapshot
+  1803→      wrap = el.closest("[data-doc-zoom-wrap]") as HTMLElement | null
+  1804→      if (wrap) {
+  1805→        prevTransform = wrap.style.transform
+  1806→        wrap.style.transform = "none"
+  1807→      }
+  1808→      // freeze remote images → data URLs (same-origin) so html2canvas never
+  1809→      // taints the canvas on hosts without CORS headers; srcs are restored
+  1810→      // afterwards — export must not rewrite the saved document.
+  1811→      if (el.querySelector("img")) {
+  1812→        tracker.tick({ phase: "prepare", note: tForLang(lang, "Embedding remote images…") })
+  1813→        unfreezeImages = await freezeRemoteImages(el)
+  1814→      }
+  1815→      const [{ jsPDF }, h2c] = await Promise.all([import("jspdf"), import("html2canvas-pro")])
+  1816→      tracker.tick({ phase: "render", note: tForLang(lang, "Rendering the document pages") })
+  1817→      // export the "accepted" view — suggestion marks flattened (Google parity).
+  1818→      // The class stays on through BOTH the capture and the block measuring so
+  1819→      // the pagination slices match the rendered canvas exactly (finally removes it).
+  1820→      if (el.querySelector("[data-sid]") != null) el.classList.add("exporting")
+  1821→      const canvas = await h2c.default(el, {
+  1822→        scale: 2,
+  1823→        backgroundColor: "#ffffff",
+  1824→        useCORS: true,
+  1825→        logging: false,
+  1826→      })
+  1827→      // long unbreakable strings must wrap during capture too
+  1828→      el.classList.add("export-wrap-all")
+  1829→      // page geometry: Letter at 96dpi = 816×1056 CSS px inside the page el
+  1830→      const PAGE_H = 1056
+  1831→      const total = el.getBoundingClientRect().height
+  1832→      // paginate on block boundaries (never slice a text line in half)
+  1833→      const blocks = Array.from(el.children) as HTMLElement[]
+  1834→      const elTop = el.getBoundingClientRect().top
+  1835→      const pages: { start: number; end: number }[] = []
+  1836→      let pageStart = 0
+  1837→      let pageEnd = 0
+  1838→      for (const b of blocks) {
+  1839→        const r = b.getBoundingClientRect()
+  1840→        const top = r.top - elTop
+  1841→        const bottom = top + r.height
+  1842→        if (pageEnd > pageStart && bottom - pageStart > PAGE_H) {
+  1843→          pages.push({ start: pageStart, end: pageStart + PAGE_H })
+  1844→          pageStart = top
+  1845→        }
+  1846→        pageEnd = bottom
+  1847→      }
+  1848→      pages.push({ start: pageStart, end: Math.max(pageEnd, pageStart) })
+  1849→      // trim the last page to actual content height
+  1850→      pages[pages.length - 1].end = Math.min(pages[pages.length - 1].end, Math.max(total, 1))
+  1851→
+  1852→      const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter", compress: true })
+  1853→      const PW = pdf.internal.pageSize.getWidth()
+  1854→      const PH = pdf.internal.pageSize.getHeight()
+  1855→      for (let i = 0; i < pages.length; i++) {
+  1856→        // per-page progress — the card shows “第 2 页，共 5 页” while slicing
+  1857→        tracker.tick({
+  1858→          phase: "render",
+  1859→          percent: ((i + 1) / pages.length) * 100,
+  1860→          note: tForLang(lang, "Page {i} of {n}", { i: i + 1, n: pages.length }),
+  1861→        })
+  1862→        const y0 = Math.max(0, pages[i].start) * 2
+  1863→        const y1 = Math.max(y0 + 1, Math.min(pages[i].end * 2, canvas.height))
+  1864→        const slice = document.createElement("canvas")
+  1865→        slice.width = canvas.width
+  1866→        slice.height = y1 - y0
+  1867→        const ctx2d = slice.getContext("2d")
+  1868→        if (!ctx2d) continue
+  1869→        ctx2d.fillStyle = "#ffffff"
+  1870→        ctx2d.fillRect(0, 0, slice.width, slice.height)
+  1871→        ctx2d.drawImage(canvas, 0, y0, canvas.width, y1 - y0, 0, 0, canvas.width, y1 - y0)
+  1872→        if (i > 0) pdf.addPage()
+  1873→        pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, PW, PH, undefined, "FAST")
+  1874→      }
+  1875→      const name2 = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
+  1876→      pdf.save(`${name2}.pdf`)
+  1877→      tracker.finish(true)
+  1878→      toast({ title: tForLang(lang, "Download started"), description: `${name2}.pdf` })
+  1879→    } catch {
+  1880→      // 3) final fallback — print dialog (browser "Save as PDF" is vector)
+  1881→      tracker.finish(false)
+  1882→      toast({ title: tForLang(lang, "PDF export fell back to print"), description: tForLang(lang, "Choose “Save as PDF” as the destination") })
+  1883→      printDoc()
+  1884→    } finally {
+  1885→      if (wrap) wrap.style.transform = prevTransform
+  1886→      unfreezeImages?.()
+  1887→      el.classList.remove("exporting", "export-wrap-all")
+  1888→    }
+  1889→  }, [printDoc, toast])
+  1890→
+  1891→  const downloadDoc = React.useCallback(
+  1892→    async (format: "docx" | "doc" | "html" | "txt") => {
+  1893→      const lang = getCurrentLang()
+  1894→      const name = exportSafeName(latestTitleRef.current || tForLang(lang, "Untitled document"))
+  1895→      const title = latestTitleRef.current || tForLang(lang, "Untitled document")
+  1896→      if (format === "docx") {
+  1897→        const tracker = trackedDownload({ kind: "docx", title, fileName: `${name}.docx` })
+  1898→        // real Word package rendered server-side; legacy .doc HTML as fallback
+  1899→        try {
+  1900→          const res = await apiFetch("/api/export/docx", {
+  1901→            method: "POST",
+  1902→            headers: { "Content-Type": "application/json" },
+  1903→            body: JSON.stringify({ title: latestTitleRef.current, html: contentRef.current }),
+  1904→          })
+  1905→          if (res.ok) {
+  1906→            tracker.tick({ phase: "download", note: tForLang(lang, "Downloading…") })
+  1907→            const blob = await readBlobWithProgress(res, (loaded, total) => {
+  1908→              tracker.tick({
+  1909→                phase: "download",
+  1910→                percent: total && total > 0 ? Math.min(99, (loaded / total) * 100) : null,
+  1911→              })
+  1912→            })
+  1913→            if (blob.size > 0) {
+  1914→              saveBlobFile(blob, `${name}.docx`)
+  1915→              tracker.finish(true)
+  1916→              toast({ title: tForLang(lang, "Download started"), description: `${name}.docx` })
+  1917→              return
+  1918→            }
+  1919→          }
+  1920→        } catch {
+  1921→          /* server unavailable → legacy .doc below */
+  1922→        }
+  1923→        saveBlobFile(new Blob(["\ufeff" + buildExportHtml("word")], { type: "application/msword" }), `${name}.doc`)
+  1924→        tracker.finish(true)
+  1925→        toast({ title: tForLang(lang, "Download started"), description: `${name}.doc` })
+  1926→        return
+  1927→      }
+  1928→      let blob: Blob
+  1929→      if (format === "txt") {
+  1930→        blob = new Blob([htmlToPlainText(contentRef.current)], { type: "text/plain;charset=utf-8" })
+  1931→      } else if (format === "html") {
+  1932→        blob = new Blob([buildExportHtml("html")], { type: "text/html;charset=utf-8" })
+  1933→      } else {
+  1934→        blob = new Blob(["\ufeff" + buildExportHtml("word")], { type: "application/msword" })
+  1935→      }
+  1936→      const tracker = trackedDownload({ kind: format, title, fileName: `${name}.${format}` })
+  1937→      saveBlobFile(blob, `${name}.${format}`)
+  1938→      tracker.finish(true)
+  1939→      toast({ title: tForLang(lang, "Download started"), description: `${name}.${format}` })
+  1940→    },
+  1941→    [buildExportHtml, toast]
+  1942→  )
+  1943→
+  1944→  /* ---------------- document actions ---------------- */
+  1945→  const goHome = React.useCallback(() => {
+  1946→    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+  1947→    if (dirtyRef.current) void performSave()
+  1948→    goHomeStore()
+  1949→  }, [performSave, goHomeStore])
+  1950→
+  1951→  const toggleStar = React.useCallback(async () => {
+  1952→    const next = !starred
+  1953→    setStarred(next)
+  1954→    patchDocMeta(docId, { starred: next })
+  1955→    try {
+  1956→      await fetch(`/api/documents/${docId}`, {
+  1957→        method: "PATCH",
+  1958→        headers: { "Content-Type": "application/json" },
+  1959→        body: JSON.stringify({ starred: next }),
+  1960→      })
+  1961→    } catch {
+  1962→      setStarred(!next)
+  1963→    }
+  1964→  }, [starred, docId, patchDocMeta])
+  1965→
+  1966→  const moveToTrash = React.useCallback(async () => {
+  1967→    if (dirtyRef.current) await performSave()
+  1968→    await fetch(`/api/documents/${docId}`, {
+  1969→      method: "PATCH",
+  1970→      headers: { "Content-Type": "application/json" },
+  1971→      body: JSON.stringify({ trashed: true }),
+  1972→    })
+  1973→    toast({ title: tForLang(getCurrentLang(), "Moved to trash"), description: latestTitleRef.current })
+  1974→    goHomeStore()
+  1975→  }, [docId, performSave, goHomeStore, toast])
+  1976→
+  1977→  const duplicate = React.useCallback(async () => {
+  1978→    if (dirtyRef.current) await performSave()
+  1979→    try {
+  1980→      const res = await fetch(`/api/documents/${docId}/duplicate`, { method: "POST" })
+  1981→      if (!res.ok) throw new Error()
+  1982→      const data = (await res.json()) as { document: DocumentDTO }
+  1983→      toast({ title: tForLang(getCurrentLang(), "Copy created"), description: data.document.title })
+  1984→      openDoc(data.document.id)
+  1985→    } catch {
+  1986→      toast({ title: tForLang(getCurrentLang(), "Couldn't duplicate this document"), variant: "destructive" })
+  1987→    }
+  1988→  }, [docId, performSave, openDoc, toast])
+  1989→
+  1990→  const restoreVersion = React.useCallback(
+  1991→    (content: string) => {
+  1992→      const el = pageRef.current
+  1993→      if (el) el.innerHTML = content
+  1994→      contentRef.current = content
+  1995→      handleInput()
+  1996→      setStats(docStats(content))
+  1997→    },
+  1998→    [handleInput]
+  1999→  )
+  2000→
+
+[showing lines 1-2000 of 2550; use offset=2001 with limit to continue reading]

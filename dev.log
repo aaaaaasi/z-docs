@@ -12,4 +12,304 @@
  GET /api/auth/me 401 in 32ms (next.js: 5ms, application-code: 27ms)
  GET / 200 in 37ms (next.js: 4ms, application-code: 33ms)
  GET /api/auth/me 401 in 46ms (next.js: 26ms, application-code: 21ms)
-ext.js: 26ms, application-code: 21ms)
+ GET / 200 in 42ms (next.js: 3ms, application-code: 39ms)
+ GET / 200 in 39ms (next.js: 3ms, application-code: 35ms)
+ GET /api/auth/me 401 in 10ms (next.js: 3ms, application-code: 7ms)
+ GET / 200 in 43ms (next.js: 4ms, application-code: 39ms)
+ GET /api/auth/me 401 in 8ms (next.js: 4ms, application-code: 4ms)
+ GET / 200 in 41ms (next.js: 3ms, application-code: 38ms)
+ GET /api/auth/me 401 in 7ms (next.js: 2ms, application-code: 5ms)
+ GET / 200 in 36ms (next.js: 3ms, application-code: 33ms)
+ GET /api/auth/me 401 in 7ms (next.js: 2ms, application-code: 5ms)
+ GET / 200 in 33ms (next.js: 3ms, application-code: 30ms)
+ GET /api/auth/me 401 in 8ms (next.js: 3ms, application-code: 6ms)
+ GET / 200 in 42ms (next.js: 4ms, application-code: 38ms)
+ GET /api/auth/me 401 in 8ms (next.js: 3ms, application-code: 5ms)
+ GET / 200 in 31ms (next.js: 3ms, application-code: 29ms)
+ GET /api/auth/me 401 in 7ms (next.js: 3ms, application-code: 4ms)
+ GET / 200 in 37ms (next.js: 5ms, application-code: 32ms)
+ GET /api/auth/me 401 in 6ms (next.js: 2ms, application-code: 4ms)
+ GET / 200 in 35ms (next.js: 3ms, application-code: 33ms)
+ GET /api/auth/me 401 in 6ms (next.js: 2ms, application-code: 4ms)
+ GET / 200 in 29ms (next.js: 3ms, application-code: 27ms)
+ GET /api/auth/me 401 in 6ms (next.js: 2ms, application-code: 4ms)
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_original-stack-frames from "preview-chat-8c1bfc6c-b41f-4ffc-9ce3-95820cc25228.space-z.ai".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['preview-chat-8c1bfc6c-b41f-4ffc-9ce3-95820cc25228.space-z.ai'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_font/geist-latin.woff2 from "preview-chat-8c1bfc6c-b41f-4ffc-9ce3-95820cc25228.space-z.ai".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['preview-chat-8c1bfc6c-b41f-4ffc-9ce3-95820cc25228.space-z.ai'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+[browser] A tree hydrated but some attributes of the server rendered HTML didn't match the client properties. This won't be patched up. This can happen if a SSR-ed Client Component used:
+
+- A server/client branch `if (typeof window !== 'undefined')`.
+- Variable input such as `Date.now()` or `Math.random()` which changes each time it's called.
+- Date formatting in a user's locale which doesn't match the server.
+- External changing data without sending a snapshot of it along with the HTML.
+- Invalid HTML tag nesting.
+
+It can also happen if the client has a browser extension installed which messes with the HTML before React loaded.
+
+https://react.dev/link/hydration-mismatch
+
+  ...
+    <V attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange={true}>
+      <script>
+      <I18nProvider>
+        ...
+          <HTTPAccessFallbackErrorBoundary pathname="/" notFound={{...}} forbidden={undefined} unauthorized={undefined} ...>
+            <RedirectBoundary>
+              <RedirectErrorBoundary router={{...}}>
+                <InnerLayoutRouter url="/" tree={[...]} params={{}} cacheNode={{rsc:{...}, ...}} segmentPath={[...]} ...>
+                  <SegmentViewNode type="page" pagePath="page.tsx">
+                    <SegmentTrieNode>
+                    <Home>
+                      <DocsApp>
+                        <TooltipProvider delayDuration={250}>
+                          <TooltipProvider data-slot="tooltip-pr..." delayDuration={250}>
+                            <TooltipProviderProvider scope={undefined} isOpenDelayedRef={{current:true}} ...>
+                              <SettingsEffects>
+                              <div
+                                className="flex min-h-dvh items-center justify-center bg-background"
++                               aria-label="Loading"
+-                               aria-label="加载中"
+                              >
+                                <DocsLogo size="sm">
+                                  <div
+                                    className="flex items-center gap-1.5 select-none"
++                                   aria-label="Z-Docs 首页"
+-                                   aria-label="Z-文档首页"
+                                  >
+                  ...
+                ...
+        <Toaster>
+          <ToastProvider>
+            <ToastCollectionProvider scope={undefined}>
+              <ToastCollectionProviderProvider scope={undefined} itemMap={Map} collectionRef={{current:null}}>
+                <ToastProviderProvider scope={undefined} label="Notification" duration={5000} swipeDirection="right" ...>
+                  <_c>
+                    <ToastViewport ref={null} className="fixed top-...">
+                      <DismissableLayerBranch ref={{current:null}} role="region" aria-label="Notificati..." tabIndex={-1} ...>
+                        <Primitive.div role="region" aria-label="Notificati..." tabIndex={-1} style={{...}} ...>
+                          <div
+                            role="region"
++                           aria-label="Notifications (F8)"
+-                           aria-label="通知（F8）"
+                            tabIndex={-1}
+                            style={{pointerEvents:"none"}}
+                            ref={function}
+                          >
+        ...
+ 
+⚠ Blocked cross-origin request to Next.js dev resource /__nextjs_font/geist-mono-latin.woff2 from "preview-chat-8c1bfc6c-b41f-4ffc-9ce3-95820cc25228.space-z.ai".
+Cross-origin access to Next.js dev resources is blocked by default for safety.
+
+To allow this host in development, add it to "allowedDevOrigins" in next.config.js and restart the dev server:
+
+// next.config.js
+module.exports = {
+  allowedDevOrigins: ['preview-chat-8c1bfc6c-b41f-4ffc-9ce3-95820cc25228.space-z.ai'],
+}
+
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+[browser] Uncaught NotFoundError: Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.
+ GET /? 200 in 34ms (next.js: 3ms, application-code: 31ms)
+ GET /api/auth/me 401 in 6ms (next.js: 3ms, application-code: 4ms)
+ GET / 200 in 32ms (next.js: 3ms, application-code: 28ms)
+ GET /api/auth/me 401 in 6ms (next.js: 2ms, application-code: 4ms)
+ GET / 200 in 48ms (next.js: 2ms, application-code: 45ms)
+ GET /api/auth/me 401 in 10ms (next.js: 2ms, application-code: 8ms)
+ GET / 200 in 53ms (next.js: 4ms, application-code: 49ms)
+ GET /api/auth/me 401 in 10ms (next.js: 2ms, application-code: 8ms)
+✓ Compiled in 502ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 41ms (next.js: 21ms, application-code: 20ms)
+✓ Compiled in 239ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 79ms (next.js: 37ms, application-code: 41ms)
+✓ Compiled in 330ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 89ms (next.js: 53ms, application-code: 36ms)
+✓ Compiled in 280ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 55ms (next.js: 8ms, application-code: 47ms)
+✓ Compiled in 387ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 23ms (next.js: 7ms, application-code: 16ms)
+✓ Compiled in 285ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 113ms (next.js: 27ms, application-code: 86ms)
+ GET /api/auth/me 401 in 14ms (next.js: 5ms, application-code: 9ms)
+ GET /api/auth/me 401 in 28ms (next.js: 2ms, application-code: 25ms)
+✓ Compiled in 393ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 23ms (next.js: 5ms, application-code: 17ms)
+ GET / 200 in 146ms (next.js: 5ms, application-code: 141ms)
+✓ Compiled in 391ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 43ms (next.js: 12ms, application-code: 31ms)
+ GET /api/auth/me 401 in 6ms (next.js: 2ms, application-code: 4ms)
+✓ Compiled in 285ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 115ms (next.js: 22ms, application-code: 93ms)
+ GET / 200 in 101ms (next.js: 45ms, application-code: 57ms)
+✓ Compiled in 646ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 94ms (next.js: 11ms, application-code: 83ms)
+ GET / 200 in 23ms (next.js: 4ms, application-code: 19ms)
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 29ms (next.js: 9ms, application-code: 20ms)
+ GET /api/auth/me 401 in 7ms (next.js: 3ms, application-code: 5ms)
+✓ Compiled in 243ms
+ GET /api/auth/me 401 in 12ms (next.js: 6ms, application-code: 7ms)
+ GET / 200 in 85ms (next.js: 4ms, application-code: 81ms)
+ GET /api/auth/me 401 in 8ms (next.js: 3ms, application-code: 5ms)
+ GET /api/auth/me 401 in 6ms (next.js: 3ms, application-code: 3ms)
+✓ Compiled in 373ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 38ms (next.js: 6ms, application-code: 32ms)
+ GET / 200 in 24ms (next.js: 4ms, application-code: 20ms)
+ GET / 200 in 46ms (next.js: 3ms, application-code: 43ms)
+ GET /api/auth/me 401 in 6ms (next.js: 2ms, application-code: 4ms)
+✓ Compiled in 325ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 50ms (next.js: 24ms, application-code: 26ms)
+✓ Compiled in 193ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 107ms (next.js: 19ms, application-code: 87ms)
+✓ Compiled in 532ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 36ms (next.js: 9ms, application-code: 28ms)
+✓ Compiled in 287ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 95ms (next.js: 33ms, application-code: 62ms)
+✓ Compiled in 384ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 53ms (next.js: 8ms, application-code: 45ms)
+✓ Compiled in 451ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 73ms (next.js: 12ms, application-code: 61ms)
+✓ Compiled in 328ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 44ms (next.js: 16ms, application-code: 27ms)
+✓ Compiled in 325ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 54ms (next.js: 7ms, application-code: 47ms)
+ GET /api/auth/me 401 in 8ms (next.js: 2ms, application-code: 6ms)
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 62ms (next.js: 22ms, application-code: 40ms)
+ GET /api/auth/me 401 in 11ms (next.js: 7ms, application-code: 4ms)
+✓ Compiled in 316ms
+ GET / 200 in 106ms (next.js: 3ms, application-code: 103ms)
+ GET /api/auth/me 401 in 10ms (next.js: 3ms, application-code: 6ms)
+✓ Compiled in 291ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 61ms (next.js: 9ms, application-code: 52ms)
+ GET / 200 in 33ms (next.js: 4ms, application-code: 29ms)
+✓ Compiled in 305ms
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 46ms (next.js: 6ms, application-code: 40ms)
+ GET / 200 in 34ms (next.js: 15ms, application-code: 19ms)
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 22ms (next.js: 6ms, application-code: 17ms)
+✓ Compiled in 317ms
+ GET / 200 in 74ms (next.js: 3ms, application-code: 71ms)
+✓ Compiled in 1118ms
+✓ Compiled in 836ms
+ GET / 200 in 38ms (next.js: 4ms, application-code: 34ms)
+ GET /api/auth/me 401 in 6ms (next.js: 1.9ms, application-code: 4ms)
+ GET /?doc=local-803771d121b5420bac87cc57a8d7be10 200 in 48ms (next.js: 11ms, application-code: 37ms)
+ GET /?doc=local-ed7ba7592a104a1e8998517be87ad0b8 200 in 27ms (next.js: 3ms, application-code: 23ms)
+ GET / 200 in 42ms (next.js: 7ms, application-code: 34ms)
+ GET /api/auth/me 401 in 64ms (next.js: 3ms, application-code: 61ms)
+✓ Compiled in 463ms
+ GET / 200 in 91ms (next.js: 53ms, application-code: 38ms)
+✓ Compiled in 2ms
+ GET / 200 in 43ms (next.js: 3ms, application-code: 39ms)
+ GET /api/auth/me 401 in 14ms (next.js: 4ms, application-code: 10ms)
+ GET / 200 in 38ms (next.js: 3ms, application-code: 35ms)
+ GET /api/auth/me 401 in 7ms (next.js: 4ms, application-code: 3ms)
+✓ Compiled in 465ms
+ GET / 200 in 33ms (next.js: 8ms, application-code: 25ms)
+✓ Compiled in 1ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 44ms (next.js: 6ms, application-code: 38ms)
+ GET / 200 in 49ms (next.js: 5ms, application-code: 44ms)
+ GET /api/auth/me 401 in 7ms (next.js: 3ms, application-code: 5ms)
+✓ Compiled in 508ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 71ms (next.js: 15ms, application-code: 56ms)
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 52ms (next.js: 17ms, application-code: 35ms)
+✓ Compiled in 293ms
+✓ Compiled in 330ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 146ms (next.js: 47ms, application-code: 99ms)
+✓ Compiled in 466ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 173ms (next.js: 32ms, application-code: 140ms)
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 22ms (next.js: 6ms, application-code: 16ms)
+✓ Compiled in 255ms
+✓ Compiled in 315ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 31ms (next.js: 6ms, application-code: 25ms)
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 297ms (next.js: 166ms, application-code: 131ms)
+✓ Compiled in 1194ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 576ms (next.js: 356ms, application-code: 220ms)
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 284ms (next.js: 189ms, application-code: 96ms)
+✓ Compiled in 267ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 59ms (next.js: 5ms, application-code: 54ms)
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 25ms (next.js: 5ms, application-code: 20ms)
+✓ Compiled in 238ms
+✓ Compiled in 513ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 261ms (next.js: 128ms, application-code: 132ms)
+✓ Compiled in 406ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 101ms (next.js: 34ms, application-code: 67ms)
+✓ Compiled in 806ms
+✓ Compiled in 550ms
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 50ms (next.js: 11ms, application-code: 39ms)
+ GET /api/auth/me 401 in 35ms (next.js: 4ms, application-code: 31ms)
+✓ Compiled in 351ms
+ GET /api/auth/me 401 in 12ms (next.js: 4ms, application-code: 7ms)
+ GET /api/auth/me 401 in 11ms (next.js: 1.9ms, application-code: 9ms)
+ GET /api/auth/me 401 in 6ms (next.js: 1.8ms, application-code: 4ms)
+ GET /api/auth/me 401 in 10ms (next.js: 3ms, application-code: 7ms)
+ GET /api/auth/me 401 in 19ms (next.js: 1.7ms, application-code: 18ms)
+ GET /api/auth/me 401 in 8ms (next.js: 4ms, application-code: 4ms)
+ GET /api/auth/me 401 in 11ms (next.js: 8ms, application-code: 3ms)
+ GET /?doc=local-6481385a276846619ae8ca8f874aa6b2 200 in 54ms (next.js: 11ms, application-code: 42ms)
+ GET / 200 in 85ms (next.js: 5ms, application-code: 81ms)
+ GET /api/auth/me 401 in 19ms (next.js: 3ms, application-code: 17ms)
+ GET / 200 in 76ms (next.js: 4ms, application-code: 72ms)
+ GET /api/auth/me 401 in 8ms (next.js: 3ms, application-code: 4ms)
+ GET / 200 in 36ms (next.js: 3ms, application-code: 33ms)
+ GET /api/auth/me 401 in 14ms (next.js: 3ms, application-code: 10ms)
+ GET /?app=forms 200 in 65ms (next.js: 3ms, application-code: 62ms)
+ GET /api/auth/me 401 in 13ms (next.js: 4ms, application-code: 9ms)
+ GET / 200 in 34ms (next.js: 3ms, application-code: 31ms)
+ GET /api/auth/me 401 in 6ms (next.js: 2ms, application-code: 4ms)
+ GET / 200 in 46ms (next.js: 2ms, application-code: 44ms)
+ GET /api/auth/me 401 in 5ms (next.js: 1.8ms, application-code: 3ms)
+ GET / 200 in 54ms (next.js: 3ms, application-code: 52ms)
+ GET /api/auth/me 401 in 14ms (next.js: 3ms, application-code: 11ms)
+ GET / 200 in 49ms (next.js: 3ms, application-code: 46ms)
+ GET /api/auth/me 401 in 5ms (next.js: 2.0ms, application-code: 4ms)
+ GET /?app=slides 200 in 76ms (next.js: 30ms, application-code: 47ms)
+ GET /api/auth/me 401 in 14ms (next.js: 3ms, application-code: 11ms)
+ GET / 200 in 99ms (next.js: 3ms, application-code: 96ms)
+ GET /api/auth/me 401 in 6ms (next.js: 2ms, application-code: 4ms)
+ GET / 200 in 110ms (next.js: 5ms, application-code: 105ms)
+ GET /api/auth/me 401 in 19ms (next.js: 2ms, application-code: 16ms)
+ GET /?app=sheets 200 in 108ms (next.js: 7ms, application-code: 101ms)
+ GET /api/auth/me 401 in 10ms (next.js: 1.9ms, application-code: 8ms)
+ GET /?app=slides 200 in 82ms (next.js: 8ms, application-code: 74ms)
+ GET /api/auth/me 401 in 12ms (next.js: 3ms, application-code: 9ms)
+ GET / 200 in 47ms (next.js: 3ms, application-code: 44ms)
+ GET /api/auth/me 401 in 6ms (next.js: 1.8ms, application-code: 4ms)
+✓ Compiled in 326ms
+✓ Compiled in 446ms
+✓ Compiled in 398ms
+✓ Compiled in 378ms
+✓ Compiled in 776ms
+✓ Compiled in 460ms
+✓ Compiled in 671ms
+✓ Compiled in 426ms
+✓ Compiled in 394ms
+ GET / 200 in 107ms (next.js: 15ms, application-code: 92ms)
+ GET /api/auth/me 401 in 13ms (next.js: 3ms, application-code: 10ms)
+ GET / 200 in 35ms (next.js: 3ms, application-code: 32ms)
+ GET /api/auth/me 401 in 6ms (next.js: 1.9ms, application-code: 5ms)
+✓ Compiled in 375ms
+ GET /?doc=local-5d2decd248614aa094d2d35b86eeb275 200 in 101ms (next.js: 14ms, application-code: 86ms)
+ GET / 200 in 26ms (next.js: 6ms, application-code: 20ms)
+ GET / 200 in 34ms (next.js: 3ms, application-code: 32ms)
+ GET /api/auth/me 401 in 6ms (next.js: 1.9ms, application-code: 4ms)
+✓ Compiled in 402ms
+ GET / 200 in 39ms (next.js: 4ms, application-code: 35ms)
+ GET /api/auth/me 401 in 6ms (next.js: 1.9ms, application-code: 4ms)
+ext.js: 1.9ms, application-code: 4ms)

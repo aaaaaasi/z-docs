@@ -1,23 +1,26 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
-import { getSnippet, countWords, htmlToText } from "@/lib/doc-utils"
+import { getSnippet, countWords, htmlToText, buildSearchMatches, searchTerms } from "@/lib/doc-utils"
 import { actorFromRequest, logActivity } from "@/lib/server-activity"
 import { guardRoute } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
-function toMeta(doc: {
-  id: string
-  title: string
-  content: string
-  starred: boolean
-  trashed: boolean
-  folderId: string | null
-  createdAt: Date
-  updatedAt: Date
-  /** present when fetched with the tags include */
-  tags?: { tag: { id: string; name: string; color: string } }[]
-}) {
+function toMeta(
+  doc: {
+    id: string
+    title: string
+    content: string
+    starred: boolean
+    trashed: boolean
+    folderId: string | null
+    createdAt: Date
+    updatedAt: Date
+    /** present when fetched with the tags include */
+    tags?: { tag: { id: string; name: string; color: string } }[]
+  },
+  query?: string
+) {
   return {
     id: doc.id,
     title: doc.title,
@@ -30,6 +33,8 @@ function toMeta(doc: {
       .sort((a, b) => a.name.localeCompare(b.name)),
     snippet: getSnippet(doc.content),
     wordCount: countWords(htmlToText(doc.content)),
+    // multi-term search: per-document match count + paragraph context snippets
+    matches: query ? buildSearchMatches(doc.title, doc.content, query) : undefined,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   }
@@ -64,9 +69,13 @@ export async function GET(req: NextRequest) {
     else if (folderId && folderId !== "all") base.folderId = folderId
 
     // compose filters as AND-ed clauses so the visibility OR never collides
-    // with the search OR at the top level
+    // with the search OR at the top level. Search is multi-term AND: every
+    // whitespace-separated term must occur in the title or the body (SQLite
+    // LIKE is ASCII-case-insensitive, CJK matches verbatim).
     const and: Record<string, unknown>[] = [base]
-    if (q) and.push({ OR: [{ title: { contains: q } }, { content: { contains: q } }] })
+    for (const term of searchTerms(q)) {
+      and.push({ OR: [{ title: { contains: term } }, { content: { contains: term } }] })
+    }
     and.push({
       OR: [
         { ownerId: user.id },
@@ -83,7 +92,7 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return NextResponse.json({ documents: documents.map(toMeta) })
+    return NextResponse.json({ documents: documents.map((d) => toMeta(d, q)) })
   } catch (e) {
     console.error("GET /api/documents failed:", e)
     return NextResponse.json({ error: "Failed to list documents" }, { status: 500 })

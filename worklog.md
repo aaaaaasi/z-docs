@@ -949,3 +949,50 @@ Stage Summary:
 - **标题输入框**：sizer 精确测宽，长中文标题完整显示。
 - **安全**：npm audit 32→6（critical 清零），next 16.3.4；剩余 6 项开发链已评估接受并文档化。
 - 本轮提交推送后与远端同步；后续巡检 Task 28 起交接。
+---
+Task ID: 29-b
+Agent: full-stack-developer
+Task: Slides / Forms / Sheets 三端响应式适配（手机 <768 / 平板 768-1024 / 桌面 >1024）——修复手机端功能不可达（缩略图栏消失、主题色/布局/星标/语言切换入口隐藏、保存零反馈）并统一全站断点语义（900px 自定义断点 → 1024 lg），桌面端（>1024）视觉保持不变。
+
+Work Log:
+- 【Slides slide-rail.tsx】原 `hidden md:flex` 手机整栏消失（新建/选中/复制/上移/下移/删除全部不可达）。重构为三态：手机 <768 = 底部固定 96px 横向胶片条（w-32 缩略图 + 左下角实时数字角标 + 卡片右上角**常显** ⋮ 菜单按钮（触屏无 hover，opacity-100）+ 末尾虚线"+"新建卡走 LayoutPickerPopover）；768-1024 = rail 收窄 w-48（编号+小缩略图，原竖排布局不变）；≥1024 = w-56 与原来逐像素一致（桌面专用编号 span 与手机角标 span 分离渲染，杜绝 md: 覆盖残留）。父容器 deck-editor 改 `flex-col md:flex-row` + rail `order-last md:order-none`（画布在上、胶片条在下），画布列加 min-h-0。
+- 【Slides deck-editor.tsx】①新 <768 "⋮ 更多操作" Popover 面板（w-72，aria-label=更多操作）：手机段（sm:hidden）= 星标 / 演讲者备注 / 导出 PPTX（44px PanelRow 行，aria-pressed）+ 布局 6 宫格；全 <768 段 = 设计（主题色 6 色板 + 无衬线/衬线切换，即原 ThemeControls 同款控件内联渲染）；640-768 顶栏保留 星标/备注/导出/布局/语言/演示，仅主题控件收进 ⋮。②SaveStatus：<1024 由 `hidden lg:flex` 文字药丸改为 6px 状态圆点（绿=已保存 bg-primary / 琥珀脉冲=保存中 / CloudOff 图标=错误可点重试），role=status + aria-live + aria-label 复用既有词条；≥1024 文字药丸不变。③标题按钮已有 min-w-0 truncate ✓、编辑态 Input 补 min-w-0 防 360px 溢出；360/320 实测 header scrollWidth=clientWidth 零溢出。④menu-bar 触控：slides 顶栏可见按钮实测 360px 下 = 返回/标题/圆点/语言/⋮/演示。
+- 【Slides 组件复用重构（桌面 DOM 不变）】theme-controls.tsx 拆出 `AccentSwatches`（6 色板）与 `ThemeFontToggle`（max-md:h-8 触控加高，≥md 恢复 h-7）；layout-picker.tsx 拆出 `LayoutGrid`（6 宫格 min-h-11）；`ThemeControls`/`LayoutPickerPopover` 组合层类名原样保留 → >1024 视觉与重构前一致。
+- 【Slides slides-list.tsx】`min-[400px]`（Z-Slides 字标）与 `min-[480px]`×3（星标/回收站标签+图标）全部统一为标准 `sm:` 前缀（<640 仅图标，与 Google Drive 移动端一致）。
+- 【Forms form-top-bar.tsx】①保存反馈：原 `hidden lg:flex` 在手机/平板零反馈 → <1024 渲染 6px 圆点（绿=已保存/琥珀脉冲=保存中/红=失败）+ role=status aria-label（复用"正在保存…/所有更改已保存/保存失败"词条），≥1024 原文字药丸不变；实测改名保存全程 正在保存…→所有更改已保存(bg-primary)。②星标：手机（<sm）顶栏 Star 隐藏 → 溢出菜单顶部新增"为表单加星标/取消表单星标"项（sm:hidden，实测可点亮）。③标题 min-w-0 flex-1 收缩链确认无溢出。
+- 【Sheets sheet-editor.tsx】LangToggle `hidden min-[420px]:inline-flex` 自定义断点 → `hidden sm:inline-flex`；<640 语言切换收进"电子表格菜单"More 菜单：新增 DropdownMenuSub（ Languages 图标 + "切换语言" + 中文/English 两项带 ✓ 勾选，sm:hidden），实测手机端切换 en→zh 生效；顶栏触点 h-11 sm:h-9 保持未动，320px 实测顶栏零溢出。
+- 【编辑器周边】①menu-bar.tsx 菜单触发器 `max-sm:h-11 max-sm:px-3`（实测 44×50px 触控目标）+ 容器 `max-sm:h-11`（因"文件/插入"等文字按钮固定 w-11 会截断文字，用 padding 保宽 ≥44px，满足 44px 触控标准）。②editor-canvas.tsx `window.innerWidth < 900` → `< 1024`；`max-[900px]:px-1 max-[900px]:pt-4` → 移动优先 `px-1 pt-4 lg:px-10 lg:pt-10`；globals.css 两处 `@media (max-width:900px)`（.doc-page 92vw 窄页 + 自定义边距护栏）→ `@media (max-width:1023.98px)` 对齐 Tailwind max-lg 语义——平板 768-1024 现在也走窄页模式（实测 820px 页宽 754px/padding 32px/ gutter 4px；1440px 仍 816px/96px/40px 不变）。③editor-view.tsx:2504 加载骨架 `p-24` → `p-24 max-sm:p-6`（该文件仅此一处 className 改动，避开并行任务冲突面）。④status-pill 按要求未动。
+- 【i18n】dict-slides.ts 追加 2 词条：`"More actions"→"更多操作"`、`"Design"→"设计"`；Forms/Sheets 新 UI 全部复用既有词条（表单星标/保存三态、切换语言、主题色、布局宫格等），dict-apps.ts 无需新增（未删改任何现有词条）。
+- 【三端冒烟（agent-browser 游客模式，17 张截图存 download/29b-*.png + VLM 审图）】手机 375/360/320：胶片条新建第 2 张幻灯片（选"标题和正文"）✓、每页 ⋮ 菜单开合 + 上移/删除可达 ✓、⋮ 面板换主题色（青绿→锈红 #a8431a 实测生效且缩略图同步）✓、布局改"章节页"生效 ✓、4 张幻灯片横向滚动（scrollWidth 688>375）✓、顶栏 360/320 零溢出、保存圆点绿/琥珀两态 ✓；Forms 375：改名保存圆点两态 ✓、溢出菜单加星 ✓；Sheets 375/320：顶栏零溢出 ✓、More 子菜单切换语言实测生效 ✓。平板 820：slides rail=192px(w-48) ✓、无 ⋮（主题控件在栏内）✓、保存圆点 ✓；docs 92vw 窄页 ✓；sheets 语言钮在栏 ✓；forms 圆点两态 ✓。桌面 1440：slides rail=224px(w-56)+完整顶栏（星标/文字保存状态/主题色/字体/布局/备注/导出/演示）✓、docs 816px 页+40px gutter ✓、sheets 完整顶栏 ✓——与改造前一致。browser errors 空、dev.log 无业务错误。
+- 【质量门】`bunx tsc --noEmit`（过滤 examples/skills）零输出 ✓；`bun run lint` 0 错误、仅 1 条 editor-view.tsx:386 未使用 eslint-disable 警告（位于并行任务 28 的改动区，非本任务引入，未触碰）。
+- 已知并行面：docs editor-header 手机 375px 有不可见标题测宽 sizer span（invisible absolute，Task 27 引入）使 header scrollWidth 422>375——无视觉影响，属 editor-header.tsx（并行任务文件）未处理。
+
+Stage Summary:
+- **Slides 手机从"功能不可达"到全可达**：底部胶片条（缩略图切换 + 数字角标 + 常显 ⋮ 菜单 + "+"新建）+ ⋮ 设计面板（主题色/字体/布局/星标/备注/导出），平板 rail 收窄 w-48，桌面逐像素不变。
+- **Forms/Sheets 反馈与入口补齐**：双端 <1024 保存 6px 圆点（含 aria）、Forms 星标入溢出菜单、Sheets 语言切换标准化 sm + More 子菜单；320px 顶栏零溢出。
+- **断点语义统一**：docs 窄页模式 900px→1023.98px（lg 对齐，canvas JS 同步 1024）、slides-list 任意断点清零、menu-bar 44px 触控——全站三档（<768/768-1024/>1024）行为一致可预期。
+- 质量门全绿（tsc 0 / eslint 0 错误），17 张三端截图 + VLM 审图归档 download/29b-*。
+
+---
+Task ID: 29
+Agent: main (Z.ai Code) + full-stack-developer 子代理 (29-b)
+Task: 用户实测反馈六类问题修复——①中文选中文本字号 +/- 强制 36pt 无法恢复（重大 bug）②存储 15GB 数据造假③模板库假链接/无反应按钮④中文字体缺失⑤「开始新文档」面板应只在全部文档视图显示⑥搜索需多词+段落高亮+点击定位；外加全应用三端响应式适配（手机/平板/桌面）——每项先联网研究再实施，全部完成后提交推送
+
+Work Log:
+- 【联网研究 5 组】①Chrome execCommand fontSize 行为变更（StackOverflow/styleWithCSS 线索→实测确认 Chrome ≥119 输出 span[style=xxx-large] 而非 font[size=7]，48px=36pt 正是用户报的卡死值）②MD3 导航抽屉规范（<768 模态/768-1024 收窄栏/>1024 常驻）③中文字体栈（PingFang SC→Hiragino→YaHei→Noto Sans SC 标准顺序；系统栈避免 CJK webfont 体积）④搜索 UX（Meilisearch 式命中总数+上下文片段高亮）⑤Google 15GB 为真实云端配额（本应用本地 SQLite/localStorage 声称 15GB = 造假）
+- 【字号 P0 修复】agent-browser 复现根因（spanStyle=xxx-large）；applyFontSize 重写：命令后归一化 font[size=7] + span[style*=xxx-large] 双轨到精确 pt（历史遗留 xxx-large 也被修复）；步进器改"严格上/下一档"语义（indexOf -1 不再跳 8）+ 上下限 disabled；实测 11→12→11→10 连续递减、遗留文本归一化、合流后回归全过
+- 【存储诚实化】STORAGE_QUOTA_GB 环境变量可选（默认 0=未知）；侧栏卡/设置页 quota=0 时只显示真实用量+条目数（"已使用 797 B · 2 项内容"）不渲染假进度条；游客 local-mode quota 同步归零；清理未用的"1.8 GB of 15 GB used"词条
+- 【模板库假链接→真功能】cursor-default 装饰 span 改真按钮 + 完整模板库 Dialog（2/3/4 列响应网格、空白/AI/全模板、168px 大预览、创建后自动关闭）；实测打开+会议记录创建成功
+- 【搜索升级】doc-utils 新增 searchTerms/buildSearchMatches/splitByTerms（多词 AND、命中计数、±窗口段落片段、标题回退）；API + 游客 local-mode 同语义；docs-grid 卡片/行渲染"N 处匹配"徽标 + mark 高亮（琥珀/深色适配）；openDoc({search}) → 编辑器 260ms 后自动弹查找面板带入搜索词（多词短语无字面命中回退首词）；实测"市场 推广"→10 处匹配+6 个 mark+点击进入→1/6 定位
+- 【中文字体】globals.css --font-sans/--font-mono/--font-editorial + 三处 Arial 默认全补 CJK 回退栈；layout body 加 font-sans；FONT_FAMILIES 重构为 {label,stack,sample}（6 个中文条目：苹方/微软雅黑/思源黑体/宋体/楷体/黑体，跨平台栈+永字预览）；实测 execCommand fontName 多字体栈正确应用 span
+- 【三端响应式 29-b 子代理】Slides 手机底部胶片条（缩略图+常显⋮菜单+新建卡；新建/复制/上移/下移/删除全可达）+ 平板 w-48 + 桌面不变；主题/布局收进更多操作面板；Forms 保存圆点+星标入溢出菜单；Sheets 语言入 More 菜单；menu-bar 44px 触点；900px 断点统一 1024；17 张截图+VLM 审查通过
+- 【编辑器侧栏（主任务）】三侧栏三档宽度（375 全宽浮层/820 中间档 288-360/1440 dock 不变）；<lg 遮罩（点击文档关闭全部）+ 右栏互斥（评论/洞察切换语义+安全网 effect）；find-replace 修复"评论开时 <lg 整个消失"（z-40 置顶）+ 洞察偏移；实测遮罩点击关闭、820=340px、1440=293 dock、互斥双向
+- 【起始面板条件渲染】home-view 按 filter=all && !folder && !tag && !search 条件渲染模板/快捷面板（星标视图实测隐藏、搜索激活实测隐藏）
+- 【QA】首页 62 按钮活性扫（NOOP 均为 Radix 合成事件局限/无选区 execCommand 预期行为，真实点击既往 R1-R10 已验证）；控制台三通道零错误；tsc src 零错误；eslint 零警告；dev.log 无业务错误
+- 【文档】CHANGELOG 1.1.2 完整块；README 中英双语（search.png 入矩阵、三端响应式/中文字体/诚实存储/全文搜索条目、深色+移动端合并 details）；home/search/editor 三截图重摄过 VLM 审查
+
+Stage Summary:
+- 用户六类问题全部根治：字号 36pt 冻结（Chrome 新行为根因）、15GB 造假（诚实显示）、模板库假链接（真对话框）、中文字体（6 条目+全局栈）、起始面板视图感知、搜索三件套（多词/高亮/定位）
+- 三端响应式：Slides 手机胶片条 + 编辑器侧栏三档浮层/互斥/遮罩 + Forms/Sheets/断点统一——桌面视觉完全不变
+- 质量门全过（tsc/eslint/dev.log/控制台/agent-browser 三端实测）；子代理 29-b 已在 worklog 交接
+- 本轮提交推送后与远端同步；后续巡检 Task 30 起交接

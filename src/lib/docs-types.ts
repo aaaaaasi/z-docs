@@ -1,3 +1,5 @@
+import type { SearchMatchInfo } from "./doc-utils"
+
 export interface DocumentDTO {
   id: string
   title: string
@@ -26,6 +28,8 @@ export interface DocumentMeta extends Omit<DocumentDTO, "content"> {
   wordCount: number
   /** full HTML is normally stripped in list views; present only when a full doc is stored */
   content?: string
+  /** present when the list was fetched with a search query: total hits + context snippets */
+  matches?: SearchMatchInfo | null
 }
 
 export interface FolderDTO {

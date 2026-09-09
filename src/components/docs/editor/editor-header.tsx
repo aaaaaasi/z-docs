@@ -79,7 +79,7 @@ export function EditorHeader({ api }: { api: EditorApi }) {
         <span
           ref={sizerRef}
           aria-hidden="true"
-          className="pointer-events-none invisible absolute -z-10 whitespace-pre text-lg font-medium"
+          className="pointer-events-none invisible absolute left-0 top-0 -z-10 whitespace-pre text-lg font-medium"
         />
         <div className="flex min-w-0 items-center">
           <input

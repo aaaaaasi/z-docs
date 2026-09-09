@@ -38,7 +38,10 @@ export function OutlineSidebar({ open, onClose, items, onJump }: OutlineSidebarP
         "no-print relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-r bg-background/95 backdrop-blur-sm",
         "transition-[margin-left] duration-300 ease-in-out",
         open ? "ml-0" : "pointer-events-none -ml-[248px] max-lg:-ml-[100%]",
-        "max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:w-full max-lg:border-r max-lg:bg-background max-lg:transition-transform",
+        // three-tier: phone full-width overlay → tablet 288px floating panel →
+        // desktop 248px docked rail (width from the inner column at lg)
+        "w-full lg:w-auto md:w-[288px]",
+        "max-lg:absolute max-lg:inset-y-0 max-lg:left-0 max-lg:border-r max-lg:bg-background max-lg:transition-transform",
         !open && "max-lg:pointer-events-none max-lg:-translate-x-full"
       )}
     >

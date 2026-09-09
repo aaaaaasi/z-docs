@@ -17,7 +17,7 @@
  *  - /api/export includes all activities (single-user DB)
  */
 
-import { countWords, getSnippet, htmlToText } from "@/lib/doc-utils"
+import { buildSearchMatches, countWords, getSnippet, htmlToText, searchTerms } from "@/lib/doc-utils"
 import { getCurrentLang } from "@/lib/i18n"
 import {
   GUEST_OWNER_ID,
@@ -66,7 +66,11 @@ const TAG_COLORS = ["#0b6b62", "#d93025", "#f9ab00", "#1e8e3e", "#a142f4", "#5f6
 const TAG_NAME_MAX = 24
 const MAX_TAGS_PER_DOC = 50
 const ALLOWED_EMOJI = ["👍", "❤️", "😂", "🎉", "✅", "👀"]
-const STORAGE_QUOTA_BYTES = 15 * 1024 * 1024 * 1024 // 15 GB
+// Guest data lives in this browser's localStorage — there is no cloud plan to
+// bill against, so no fabricated total: quota 0 = "unknown", the UI shows the
+// real measured local usage only. Guests can see the practical localStorage
+// ceiling via the browser itself; we never print a made-up "15 GB" figure.
+const STORAGE_QUOTA_BYTES = 0
 const MAX_CONTENT_BYTES = 5 * 1024 * 1024 // 5 MB per document content
 
 /** Fields the client owns inside the stats blob (server merges, never trusts). */
@@ -305,7 +309,9 @@ function listDocuments(db: GuestDb, sp: URLSearchParams): GuestRouteResult {
   const q = sp.get("q")?.trim() ?? ""
   const folderId = sp.get("folder")?.trim() ?? ""
 
-  const needle = q.toLowerCase()
+  // Multi-term AND search, same semantics as the server API: every
+  // whitespace-separated term must hit the title or the body.
+  const terms = searchTerms(q)
   const docs = db.documents
     .filter((d) => {
       if (filter === "trash") {
@@ -320,17 +326,27 @@ function listDocuments(db: GuestDb, sp: URLSearchParams): GuestRouteResult {
       } else if (folderId && folderId !== "all") {
         if (d.folderId !== folderId) return false
       }
-      if (needle) {
-        const inTitle = d.title.toLowerCase().includes(needle)
-        const inContent = d.content.toLowerCase().includes(needle)
-        if (!inTitle && !inContent) return false
+      if (terms.length > 0) {
+        const hayTitle = d.title.toLowerCase()
+        const hayBody = d.content.toLowerCase()
+        for (const term of terms) {
+          if (!hayTitle.includes(term) && !hayBody.includes(term)) return false
+        }
       }
       return true
     })
     .sort(byUpdatedDesc)
     .slice(0, MAX_DOC_LIST)
 
-  return json(200, { documents: docs.map((d) => docMeta(db, d)) })
+  return json(200, {
+    documents: docs.map((d) => {
+      const meta = docMeta(db, d)
+      // matches only on a real query — same payload shape as the server API
+      return terms.length > 0
+        ? { ...meta, matches: buildSearchMatches(d.title, d.content, q) }
+        : meta
+    }),
+  })
 }
 
 function createDocument(db: GuestDb, body: unknown): GuestRouteResult {

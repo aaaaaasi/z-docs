@@ -48,11 +48,12 @@ export const dictHome: Record<string, string> = {
   "Document tags": "文档标签",
   "Workspace apps": "工作区应用",
   "Storage": "存储空间",
-  "1.8 GB of 15 GB used": "已使用 1.8 GB，共 15 GB",
 
   // ---------- template gallery ----------
   "Start a new document": "开始新文档",
   "Template gallery": "模板库",
+  "Open template gallery": "打开模板库",
+  "Pick a template to start a new document": "选择一个模板，开始新文档",
   "Document templates": "文档模板",
   "Help me write with AI": "用 AI 帮我写",
   "Help me write": "帮我写",
@@ -86,6 +87,7 @@ export const dictHome: Record<string, string> = {
   "{n} document": "{n} 个文档",
   "{n} documents": "{n} 个文档",
   " matching “{query}”": " 匹配“{query}”",
+  "{n} matches": "{n} 处匹配",
   "Sort documents": "文档排序",
   "Last edited": "最后修改时间",
   "Date created": "创建日期",

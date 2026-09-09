@@ -619,7 +619,10 @@ function DataSection() {
     window.location.reload()
   }
 
-  const usedPercent = counts && quota > 0 ? Math.min(100, (bytes / quota) * 100) : 0
+  const usedPercent = quota > 0 ? Math.min(100, (bytes / quota) * 100) : 0
+  // Honest storage: the quota total only appears when the deployment defines
+  // one (STORAGE_QUOTA_GB env). Otherwise we show real usage only — no bar,
+  // no fabricated "15 GB"-style totals.
 
   return (
     <SectionCard
@@ -637,22 +640,24 @@ function DataSection() {
               <p className="text-[13px] font-medium">{t("Workspace storage")}</p>
               <p className="text-xs text-muted-foreground">
                 <span className="tnum font-medium text-foreground">{t("{size} used", { size: formatBytes(bytes) })}</span>
-                <span className="opacity-70"> · {quota > 0 ? t("{size} quota", { size: formatBytes(quota) }) : ""}</span>
+                {quota > 0 && <span className="opacity-70"> · {t("{size} quota", { size: formatBytes(quota) })}</span>}
               </p>
             </div>
-            <div
-              className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
-              role="progressbar"
-              aria-label={t("Workspace storage used")}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(usedPercent)}
-            >
+            {quota > 0 && (
               <div
-                className="h-full rounded-full bg-primary transition-[width] duration-500"
-                style={{ width: `${usedPercent}%` }}
-              />
-            </div>
+                className="mt-2 h-2 overflow-hidden rounded-full bg-muted"
+                role="progressbar"
+                aria-label={t("Workspace storage used")}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(usedPercent)}
+              >
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-500"
+                  style={{ width: `${usedPercent}%` }}
+                />
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {STORAGE_STATS.map((stat) => {

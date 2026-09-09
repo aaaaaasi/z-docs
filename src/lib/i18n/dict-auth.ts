@@ -17,6 +17,7 @@ export const dictAuth: Record<string, string> = {
   "Sign out": "退出登录",
   "Calculating…": "正在计算…",
   "{used} of {total} used — {count} items": "已使用 {used}，共 {total} · {count} 项内容",
+  "{used} used · {count} items": "已使用 {used} · {count} 项内容",
   "B": "B",
   "KB": "KB",
   "MB": "MB",

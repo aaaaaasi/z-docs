@@ -27,18 +27,20 @@ Z-Docs 是一套 Google Workspace 风格的全栈协作办公应用：用**自�
 |:---:|:---:|
 | ![文档编辑器](docs/screenshots/editor.png) | ![首页工作台](docs/screenshots/home.png) |
 
-| 电子表格 | 幻灯片 |
+| 全文搜索（匹配高亮） | 电子表格 |
 |:---:|:---:|
-| ![电子表格](docs/screenshots/sheets.png) | ![幻灯片](docs/screenshots/slides.png) |
+| ![全文搜索](docs/screenshots/search.png) | ![电子表格](docs/screenshots/sheets.png) |
 
-| 表单 | 深色模式 |
+| 幻灯片 | 表单 |
 |:---:|:---:|
-| ![表单](docs/screenshots/forms.png) | ![深色模式](docs/screenshots/home-dark.png) |
+| ![幻灯片](docs/screenshots/slides.png) | ![表单](docs/screenshots/forms.png) |
 
 <details>
-<summary>📱 移动端（375px 响应式）</summary>
+<summary>📱 移动端（375px）与 🌙 深色模式</summary>
 
 ![移动端](docs/screenshots/mobile-home.png)
+
+![深色模式](docs/screenshots/home-dark.png)
 
 </details>
 
@@ -55,7 +57,9 @@ Z-Docs 是一套 Google Workspace 风格的全栈协作办公应用：用**自�
 - **远程图片自动嵌入**：插入 URL 图片时经内置代理冻结为 data-URL（含 SSRF 防护）——文档自包含，导出不脏画布、外链失效不丢图
 - **多格式导出**：PDF（服务端矢量渲染）、DOCX（真 OOXML）、HTML、TXT、打印视图；导出进度中心（Google Drive 式下载卡片，字节级/分页级进度）
 - **模板库**：空白文档 / 会议记录 / 项目提案 / 信函 / 简历（含真实内容）
+- **中文原生字体**：系统级中文字体栈（苹方/微软雅黑/思源黑体/宋体/楷体/黑体，跨平台互为回退）+ 中西双文字体选择器（带实时预览）
 - 标星、回收站、复制副本、标签、文件夹、拖拽排序、批量操作
+- **全文搜索**：多关键词 AND 匹配（标题 + 正文）· 匹配段落上下文高亮（Meilisearch 式命中总数 + 片段）· 点击结果直达文档并自动定位全部匹配
 
 ### 📊 Z-Sheets 电子表格
 - 网格编辑、**公式引擎**（`SUM` 等函数、单元格区间引用、循环引用检测 `#CIRC!`）
@@ -73,8 +77,8 @@ Z-Docs 是一套 Google Workspace 风格的全栈协作办公应用：用**自�
 ### 🧩 平台能力
 - **实时协作**：基于 Yjs + Socket.io 的协作服务 —— 在线状态头像、远程光标、文档变更同步
 - **账号体系**：注册 / 登录 / 会话管理；**游客模式**（数据仅存本设备，随时登录升级到云端）
-- **存储统计**（真实用量 · 15GB 配额）、**近期动态**活动流（按应用分组）
-- **中英双语**（完整 i18n，`html lang` 正确同步）、**深色模式**、**移动端响应式**
+- **存储统计**（真实测算用量，可选 `STORAGE_QUOTA_GB` 配额显示，绝不虚构总量）、**近期动态**活动流（按应用分组）
+- **中英双语**（完整 i18n，`html lang` 正确同步）、**深色模式**、**三端响应式**（手机 <768 / 平板 768–1024 / 桌面 >1024：导航抽屉、幻灯片底部胶片条、编辑器侧栏浮层 + 遮罩、右栏互斥）
 - 无障碍：语义化 landmark、完整 aria 标签、键盘可导航
 
 ## 🏗️ 技术栈

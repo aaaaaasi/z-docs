@@ -27,18 +27,20 @@ Try it instantly in **guest mode** (data stays on your device); sign up to unloc
 |:---:|:---:|
 | ![Document Editor](docs/screenshots/editor.png) | ![Workspace Home](docs/screenshots/home.png) |
 
-| Spreadsheets | Slides |
+| Full-text Search (match highlighting) | Spreadsheets |
 |:---:|:---:|
-| ![Spreadsheets](docs/screenshots/sheets.png) | ![Slides](docs/screenshots/slides.png) |
+| ![Full-text Search](docs/screenshots/search.png) | ![Spreadsheets](docs/screenshots/sheets.png) |
 
-| Forms | Dark Mode |
+| Slides | Forms |
 |:---:|:---:|
-| ![Forms](docs/screenshots/forms.png) | ![Dark Mode](docs/screenshots/home-dark.png) |
+| ![Slides](docs/screenshots/slides.png) | ![Forms](docs/screenshots/forms.png) |
 
 <details>
-<summary>📱 Mobile (375px responsive)</summary>
+<summary>📱 Mobile (375px) & 🌙 Dark Mode</summary>
 
 ![Mobile](docs/screenshots/mobile-home.png)
+
+![Dark Mode](docs/screenshots/home-dark.png)
 
 </details>
 
@@ -54,8 +56,10 @@ Try it instantly in **guest mode** (data stays on your device); sign up to unloc
 - **Writing insights (Ellipsus-parity)**: live insights rail in the editor (debounced real-time recompute, "Analyzing…" state on long docs, click-to-locate) + writing studio deep-dive (8 journey + 15 insight metrics) — **Chinese-native analysis**: 0–100 readability difficulty score (weighted sentence length / rare chars / very-long-sentence share, 30/40-char research anchors), 被字句 passive-voice detection, Chinese adverbs and 地-adverbials, character-bigram word frequency, Word-style word counting (CJK characters + non-Chinese words)
 - **Remote image auto-embedding**: URL images are frozen to data-URLs via the built-in proxy (with SSRF guards) — self-contained documents, untainted export canvases, no dead-link rot
 - **Multi-format export**: PDF (server-side vector rendering), DOCX (true OOXML), HTML, TXT, print view; export progress center (Google-Drive-style download cards, byte/page-level progress)
-- **Template gallery**: blank / meeting notes / project proposal / letter / résumé — with real content
+- **Template gallery**: blank / meeting notes / project proposal / letter / résumé — with real content; full gallery dialog with larger previews
+- **Chinese-native fonts**: system CJK font stacks (PingFang SC / Microsoft YaHei / Noto Sans SC / SimSun / KaiTi / SimHei, cross-OS fallbacks) + bilingual font picker with live samples
 - Star, trash, duplicate, tags, folders, drag-to-reorder, bulk actions
+- **Full-text search**: multi-term AND matching (title + body) · highlighted match snippets with context (Meilisearch-style totals) · clicking a result drills into the document with every match located
 
 ### 📊 Z-Sheets
 - Grid editing with a **formula engine** (`SUM` and more, range references, circular-reference detection `#CIRC!`)
@@ -73,7 +77,7 @@ Try it instantly in **guest mode** (data stays on your device); sign up to unloc
 ### 🧩 Platform
 - **Real-time collaboration**: Yjs + Socket.io service — presence avatars, remote cursors, live document sync
 - **Accounts**: signup / login / sessions; **guest mode** (local-only data, upgrade to cloud anytime)
-- **Storage stats** (real usage · 15GB quota), **activity feed** (grouped by app)
+- **Storage stats** (real measured usage; optional `STORAGE_QUOTA_GB` display — never a fabricated total), **activity feed** (grouped by app)
 - **Bilingual UI** (English / Chinese, full i18n), **dark mode**, **mobile responsive**
 - Accessibility: semantic landmarks, complete aria labels, keyboard navigable
 

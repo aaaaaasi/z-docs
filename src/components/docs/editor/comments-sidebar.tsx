@@ -706,7 +706,10 @@ export function CommentsSidebar(props: CommentsSidebarProps) {
         "no-print relative z-30 flex h-full shrink-0 flex-col overflow-hidden border-l bg-background/95 backdrop-blur-sm",
         "transition-[margin-right] duration-300 ease-in-out",
         open ? "mr-0" : "pointer-events-none -mr-[340px] max-lg:-mr-[100%]",
-        "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:w-full max-lg:border-l max-lg:bg-background max-lg:transition-transform",
+        // three-tier: phone full-width overlay → tablet 360px floating panel →
+        // desktop 340px docked rail
+        "w-full lg:w-auto md:w-[360px]",
+        "max-lg:absolute max-lg:inset-y-0 max-lg:right-0 max-lg:border-l max-lg:bg-background max-lg:transition-transform",
         !open && "max-lg:pointer-events-none max-lg:translate-x-full"
       )}
     >

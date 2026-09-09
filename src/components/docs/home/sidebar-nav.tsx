@@ -60,25 +60,37 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
   const storageUsage = useDocsStore((s) => s.storageUsage)
   const fetchStorage = useDocsStore((s) => s.fetchStorage)
 
-  // real usage from /api/storage; refresh when the doc list changes shape
+  // Real usage from /api/storage. The quota is only shown when the server
+  // actually reports one (STORAGE_QUOTA_GB env) — never a fabricated total.
   const docCount = useDocsStore((s) => s.documents.length)
   React.useEffect(() => {
     void fetchStorage()
   }, [docCount, fetchStorage])
 
-  const storagePct = storageUsage
-    ? Math.min(100, (storageUsage.usedBytes / Math.max(1, storageUsage.quotaBytes)) * 100)
-    : 0
+  const hasQuota = !!storageUsage && storageUsage.quotaBytes > 0
+  const storagePct =
+    hasQuota && storageUsage
+      ? Math.min(100, (storageUsage.usedBytes / Math.max(1, storageUsage.quotaBytes)) * 100)
+      : 0
   const storageLabel = storageUsage
-    ? t("{used} of {total} used — {count} items", {
-        used: formatBytes(storageUsage.usedBytes, t),
-        total: formatBytes(storageUsage.quotaBytes, t),
-        count:
-          (storageUsage.counts.documents ?? 0) +
-          (storageUsage.counts.sheets ?? 0) +
-          (storageUsage.counts.slides ?? 0) +
-          (storageUsage.counts.forms ?? 0),
-      })
+    ? hasQuota
+      ? t("{used} of {total} used — {count} items", {
+          used: formatBytes(storageUsage.usedBytes, t),
+          total: formatBytes(storageUsage.quotaBytes, t),
+          count:
+            (storageUsage.counts.documents ?? 0) +
+            (storageUsage.counts.sheets ?? 0) +
+            (storageUsage.counts.slides ?? 0) +
+            (storageUsage.counts.forms ?? 0),
+        })
+      : t("{used} used · {count} items", {
+          used: formatBytes(storageUsage.usedBytes, t),
+          count:
+            (storageUsage.counts.documents ?? 0) +
+            (storageUsage.counts.sheets ?? 0) +
+            (storageUsage.counts.slides ?? 0) +
+            (storageUsage.counts.forms ?? 0),
+        })
     : t("Calculating…")
   const view = useDocsStore((s) => s.view)
   const openApp = useDocsStore((s) => s.openApp)
@@ -497,12 +509,16 @@ export function SidebarNavContent({ inSheet = false }: { inSheet?: boolean }) {
             <Cloud className="h-3.5 w-3.5" strokeWidth={1.75} />
             {t("Storage")}
           </div>
-          <div className="mt-2 h-1 overflow-hidden rounded-full bg-border/70">
-            <div
-              className="h-full rounded-full bg-primary transition-[width] duration-500"
-              style={{ width: `${Math.max(0.5, Math.min(100, storagePct))}%` }}
-            />
-          </div>
+          {/* Quota bar only when the deployment actually defines a quota —
+              otherwise the card shows the honest usage-only line. */}
+          {hasQuota && (
+            <div className="mt-2 h-1 overflow-hidden rounded-full bg-border/70">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-500"
+                style={{ width: `${Math.max(0.5, Math.min(100, storagePct))}%` }}
+              />
+            </div>
+          )}
           <p className="tnum mt-1.5 text-[11px] text-muted-foreground" aria-live="polite">
             {storageLabel}
           </p>

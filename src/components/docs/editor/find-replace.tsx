@@ -19,6 +19,8 @@ export interface FindReplacePanelProps {
   activeIndex: number
   /** comments sidebar is open — slide left so the page text stays visible */
   commentsOpen: boolean
+  /** insights rail is open (same right column) — mirror the comments offset */
+  insightsOpen?: boolean
   onQueryChange: (q: string) => void
   onCaseToggle: () => void
   onToggleReplaceMode: () => void
@@ -37,6 +39,7 @@ export function FindReplacePanel({
   matchCount,
   activeIndex,
   commentsOpen,
+  insightsOpen = false,
   onQueryChange,
   onCaseToggle,
   onToggleReplaceMode,
@@ -76,8 +79,15 @@ export function FindReplacePanel({
       className={cn(
         "no-print elev-2 animate-fade-in absolute top-2 z-20 w-[320px] rounded-lg border bg-background/95 p-2.5 backdrop-blur-md",
         "transition-[right] duration-200",
-        "max-lg:left-2 max-lg:w-[calc(100%-1rem)]",
-        commentsOpen ? "hidden lg:block lg:right-[352px]" : "right-2"
+        // <lg the rails are overlays — keep the find panel usable ON TOP of
+        // them (previously it was hidden entirely while comments was open,
+        // making search unreachable on mobile/tablet).
+        "max-lg:left-2 max-lg:z-40 max-lg:w-[calc(100%-1rem)]",
+        commentsOpen
+          ? "lg:right-[352px]"
+          : insightsOpen
+            ? "lg:right-[304px]"
+            : "right-2"
       )}
     >
       <div className="flex items-center gap-1">

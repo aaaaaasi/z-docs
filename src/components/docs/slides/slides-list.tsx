@@ -120,7 +120,7 @@ export function SlidesList({
             <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary shadow-xs">
               <Presentation className="h-3.5 w-3.5 text-primary-foreground" />
             </span>
-            <span className="hidden text-[16px] font-medium tracking-tight min-[400px]:inline">
+            <span className="hidden text-[16px] font-medium tracking-tight sm:inline">
               Z-Slides
             </span>
           </div>
@@ -142,14 +142,14 @@ export function SlidesList({
                 className="h-7 gap-1.5 rounded-full px-3 text-[13px] sm:h-8 sm:px-4"
               >
                 <Star className="h-3.5 w-3.5" />
-                <span className="hidden min-[480px]:inline">{t("Starred")}</span>
+                <span className="hidden sm:inline">{t("Starred")}</span>
               </TabsTrigger>
               <TabsTrigger
                 value="trashed"
                 className="h-7 rounded-full px-3 text-[13px] sm:h-8 sm:px-4"
               >
-                <span className="hidden min-[480px]:inline">{t("Trash")}</span>
-                <Trash2 className="h-3.5 w-3.5 min-[480px]:hidden" />
+                <span className="hidden sm:inline">{t("Trash")}</span>
+                <Trash2 className="h-3.5 w-3.5 sm:hidden" />
               </TabsTrigger>
             </TabsList>
           </Tabs>

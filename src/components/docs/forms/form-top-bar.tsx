@@ -130,28 +130,54 @@ export function FormTopBar({
       </Tooltip>
 
       <div className="ml-auto flex items-center gap-2">
-        {/* Autosave status pill */}
+        {/* Autosave status — textual pill ≥1024, 6px status dot below */}
         {shown !== "idle" && (
-          <span
-            aria-live="polite"
-            className="hidden items-center gap-1.5 text-[13px] text-muted-foreground lg:flex"
-          >
-            {(shown === "pending" || shown === "saving") && (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("Saving…")}
-              </>
-            )}
-            {shown === "saved" && (
-              <>
-                <Check className="h-3.5 w-3.5 text-primary" /> {t("All changes saved")}
-              </>
-            )}
-            {shown === "error" && (
-              <>
-                <AlertCircle className="h-3.5 w-3.5 text-destructive" /> {t("Save failed")}
-              </>
-            )}
-          </span>
+          <>
+            <span
+              aria-live="polite"
+              className="hidden items-center gap-1.5 text-[13px] text-muted-foreground lg:flex"
+            >
+              {(shown === "pending" || shown === "saving") && (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("Saving…")}
+                </>
+              )}
+              {shown === "saved" && (
+                <>
+                  <Check className="h-3.5 w-3.5 text-primary" /> {t("All changes saved")}
+                </>
+              )}
+              {shown === "error" && (
+                <>
+                  <AlertCircle className="h-3.5 w-3.5 text-destructive" /> {t("Save failed")}
+                </>
+              )}
+            </span>
+            <span
+              role="status"
+              aria-live="polite"
+              className="flex items-center justify-center lg:hidden"
+              aria-label={
+                shown === "saved"
+                  ? t("All changes saved")
+                  : shown === "error"
+                    ? t("Save failed")
+                    : t("Saving…")
+              }
+            >
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  shown === "saved"
+                    ? "bg-primary"
+                    : shown === "error"
+                      ? "bg-destructive"
+                      : "animate-pulse bg-amber-500"
+                )}
+              />
+            </span>
+          </>
         )}
 
         {/* Segmented Questions / Responses tabs */}
@@ -203,6 +229,11 @@ export function FormTopBar({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
+            {/* phones: star lives here (the bar button is ≥sm only) */}
+            <DropdownMenuItem className="sm:hidden" onClick={onToggleStar}>
+              <Star className={cn("h-4 w-4", form.starred && "fill-primary")} />
+              {form.starred ? t("Unstar form") : t("Star form")}
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={onDuplicate}>
               <Copy className="h-4 w-4" /> {t("Duplicate form")}
             </DropdownMenuItem>

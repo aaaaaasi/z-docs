@@ -25,13 +25,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useToast } from "@/hooks/use-toast"
 import type { DocumentMeta, FolderDTO, TagDTO } from "@/lib/docs-types"
-import { relativeTime } from "@/lib/doc-utils"
+import { relativeTime, splitByTerms } from "@/lib/doc-utils"
 import { DocPreview } from "@/components/docs/doc-preview"
 import { docDragId } from "./doc-dnd"
 import { DEFAULT_TAG_COLOR, TagChip, TagColorPalette, TagDot, TagFilterChip, TagOverflowChip } from "./tag-ui"
 import { useI18n } from "@/lib/i18n"
 import {
-  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder, Tag, Plus, Check, Loader2, X, Home, CheckCheck, ArrowRight
+  FileText, MoreVertical, Star, StarOff, Pencil, Copy, Trash2, RotateCcw, Trash, LayoutGrid, List, FolderOpen, SearchX, FolderInput, Folder, Tag, Plus, Check, Loader2, X, Home, CheckCheck, ArrowRight, Search
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -306,8 +306,9 @@ export function DocsGrid() {
                 folders={folders}
                 selected={selection.includes(doc.id)}
                 selectionActive={selectionActive}
+                searchQuery={searchQuery}
                 onToggleSelect={() => toggleSelect(doc.id)}
-                onOpen={() => openDoc(doc.id)}
+                onOpen={() => openDoc(doc.id, { search: searchQuery.trim() || undefined })}
                 onStar={() => toggleStar(doc.id)}
                 onRename={() => { setRenaming(doc); setRenameValue(doc.title) }}
                 onTrash={() => { void setTrashed(doc.id, true); toast({ title: t("Moved to trash"), description: doc.title }) }}
@@ -333,8 +334,9 @@ export function DocsGrid() {
                 folders={folders}
                 selected={selection.includes(doc.id)}
                 selectionActive={selectionActive}
+                searchQuery={searchQuery}
                 onToggleSelect={() => toggleSelect(doc.id)}
-                onOpen={() => openDoc(doc.id)}
+                onOpen={() => openDoc(doc.id, { search: searchQuery.trim() || undefined })}
                 onStar={() => toggleStar(doc.id)}
                 onRename={() => { setRenaming(doc); setRenameValue(doc.title) }}
                 onTrash={() => { void setTrashed(doc.id, true); toast({ title: t("Moved to trash"), description: doc.title }) }}
@@ -667,6 +669,37 @@ function CardMenu({
   )
 }
 
+/** Search-result match context: total hit badge + paragraph snippets with
+ *  every matched term highlighted (researched: Meilisearch-style match totals
+ *  + context snippets — show WHY a document matched, at a glance). */
+function MatchSnippets({ doc, query, compact = false }: { doc: DocumentMeta; query: string; compact?: boolean }) {
+  const { t } = useI18n()
+  const matches = doc.matches
+  if (!query.trim() || !matches || matches.count === 0 || matches.snippets.length === 0) return null
+  const snippets = compact ? matches.snippets.slice(0, 2) : matches.snippets
+  return (
+    <div className="mt-1.5 space-y-1">
+      <span className="inline-flex items-center gap-1 rounded-[4px] bg-primary/10 px-1.5 py-0.5 text-[10.5px] font-medium text-primary">
+        <Search className="h-3 w-3" strokeWidth={2.25} aria-hidden />
+        {t("{n} matches", { n: matches.count })}
+      </span>
+      {snippets.map((s, i) => (
+        <p key={i} className={cn("text-[11.5px] leading-snug text-muted-foreground", compact && "line-clamp-2")}>
+          {splitByTerms(s, query).map((part, j) =>
+            part.hit ? (
+              <mark key={j} className="rounded-[2px] bg-amber-200/90 px-0.5 text-foreground dark:bg-amber-500/35 dark:text-amber-100">
+                {part.text}
+              </mark>
+            ) : (
+              <React.Fragment key={j}>{part.text}</React.Fragment>
+            )
+          )}
+        </p>
+      ))}
+    </div>
+  )
+}
+
 function DocCard({
   doc,
   index,
@@ -675,6 +708,7 @@ function DocCard({
   selected,
   selectionActive,
   onToggleSelect,
+  searchQuery,
   ...actions
 }: DocActions & {
   doc: DocumentMeta
@@ -683,6 +717,7 @@ function DocCard({
   folders: FolderDTO[]
   selected: boolean
   selectionActive: boolean
+  searchQuery?: string
   onToggleSelect: () => void
 }) {
   const { t, lang } = useI18n()
@@ -774,6 +809,7 @@ function DocCard({
               )}
             </div>
           )}
+          {searchQuery && <MatchSnippets doc={doc} query={searchQuery} compact />}
         </div>
         <CardMenu doc={doc} inTrash={inTrash} folders={folders} {...actions} />
       </div>
@@ -789,6 +825,7 @@ function DocRow({
   selected,
   selectionActive,
   onToggleSelect,
+  searchQuery,
   ...actions
 }: DocActions & {
   doc: DocumentMeta
@@ -797,6 +834,7 @@ function DocRow({
   folders: FolderDTO[]
   selected: boolean
   selectionActive: boolean
+  searchQuery?: string
   onToggleSelect: () => void
 }) {
   const { t, lang } = useI18n()
@@ -868,6 +906,7 @@ function DocRow({
           )}
           {doc.snippet || t("Empty document")}
         </p>
+        {searchQuery && <MatchSnippets doc={doc} query={searchQuery} />}
         {docTags.length > 0 && !inTrash && (
           <div className="mt-1 flex flex-wrap gap-1">
             {docTags.slice(0, 3).map((tg) => (

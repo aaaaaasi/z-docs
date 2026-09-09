@@ -4,8 +4,13 @@ import { guardRoute } from "@/lib/server-auth"
 
 export const dynamic = "force-dynamic"
 
-/** QUOTA is the workspace plan limit — usage below is always REAL measured bytes. */
-export const STORAGE_QUOTA_BYTES = 15 * 1024 * 1024 * 1024 // 15 GB
+/** Workspace plan limit, ONLY if the operator sets STORAGE_QUOTA_GB.
+ * Zero (default) = unknown — the UI shows the real measured usage and never
+ * fabricates a "total". Usage below is always REAL bytes from the database. */
+export const STORAGE_QUOTA_BYTES = (() => {
+  const gb = Number(process.env.STORAGE_QUOTA_GB ?? 0)
+  return Number.isFinite(gb) && gb > 0 ? Math.floor(gb * 1024 ** 3) : 0
+})()
 
 function len(...vals: (string | null | undefined)[]): number {
   return vals.reduce((n, v) => n + (v ? v.length : 0), 0)

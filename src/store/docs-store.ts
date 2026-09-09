@@ -89,6 +89,8 @@ interface DocsState {
   tagFilter: string | null
   layout: "grid" | "list"
   openAiOnEditor: boolean
+  /** search terms to pre-fill the editor's find panel when the doc opens (search result click) */
+  searchOnOpen: string | null
 
   /* multi-select + bulk actions (home grid) */
   /** ids of documents currently selected in the home grid */
@@ -157,7 +159,7 @@ interface DocsState {
   refresh: (opts?: { silent?: boolean }) => Promise<void>
   refreshFolders: () => Promise<void>
   createDoc: (opts?: CreateDocOptions) => Promise<string | null>
-  openDoc: (id: string, opts?: { ai?: boolean }) => void
+  openDoc: (id: string, opts?: { ai?: boolean; search?: string }) => void
   goHome: () => void
 
   /* tags */
@@ -220,6 +222,7 @@ export const useDocsStore = create<DocsState>((set, get) => ({
   tagFilter: null,
   layout: "grid",
   openAiOnEditor: false,
+  searchOnOpen: null,
   selection: [],
   authUser: null,
   authLoaded: false,
@@ -588,14 +591,19 @@ export const useDocsStore = create<DocsState>((set, get) => ({
     if (typeof window !== "undefined") {
       window.history.pushState({}, "", `/?doc=${encodeURIComponent(id)}`)
     }
-    set({ view: "editor", currentDocId: id, openAiOnEditor: !!opts?.ai })
+    set({
+      view: "editor",
+      currentDocId: id,
+      openAiOnEditor: !!opts?.ai,
+      searchOnOpen: opts?.search?.trim() ? opts.search.trim() : null,
+    })
   },
 
   goHome: () => {
     if (typeof window !== "undefined") {
       window.history.pushState({}, "", "/")
     }
-    set({ view: "home", currentDocId: null, openAiOnEditor: false, appTarget: null })
+    set({ view: "home", currentDocId: null, openAiOnEditor: false, searchOnOpen: null, appTarget: null })
     void get().refresh({ silent: true })
     void get().refreshFolders()
     void get().loadTags()

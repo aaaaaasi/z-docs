@@ -9,12 +9,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
   ArrowLeft,
+  Check,
   Download,
   FileSpreadsheet,
+  Languages,
   Loader2,
   Star,
   Trash2,
@@ -28,8 +33,14 @@ import { trackedDownload } from "@/store/export-progress-store"
 import { Toolbar } from "./sheet-toolbar"
 import { useSheetStore } from "./sheet-store"
 import { SheetGrid } from "./grid"
-import { useI18n } from "@/lib/i18n"
+import { useI18n, type Lang } from "@/lib/i18n"
 import { LangToggle } from "@/components/docs/lang-toggle"
+
+/** Language options for the mobile “More” menu submenu (mirrors LangToggle). */
+const LANG_OPTIONS: { value: Lang; label: string }[] = [
+  { value: "zh", label: "中文" },
+  { value: "en", label: "English" },
+]
 
 /* ------------------------------- title bar ------------------------------- */
 
@@ -223,7 +234,7 @@ export function SheetEditor() {
   const undo = useSheetStore((s) => s.undo)
   const redo = useSheetStore((s) => s.redo)
   const gridRef = React.useRef<HTMLDivElement>(null)
-  const { t } = useI18n()
+  const { t, lang, setLang } = useI18n()
   const { toast } = useToast()
 
   /** Export the current sheet's used range as CSV — computed formula values,
@@ -352,7 +363,7 @@ export function SheetEditor() {
         </Tooltip>
         <div className="ml-auto flex items-center gap-2">
           <SaveStatus />
-          <span className="hidden min-[420px]:inline-flex">
+          <span className="hidden sm:inline-flex">
             <LangToggle />
           </span>
           <DropdownMenu>
@@ -367,6 +378,24 @@ export function SheetEditor() {
               <TooltipContent side="bottom" className="text-xs">{t("More")}</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end" className="w-56">
+              {/* phones: language switch lives here (the bar toggle is ≥sm only) */}
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="sm:hidden">
+                  <Languages className="h-4 w-4" /> {t("Switch language")}
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-40">
+                  {LANG_OPTIONS.map((opt) => (
+                    <DropdownMenuItem
+                      key={opt.value}
+                      onClick={() => setLang(opt.value)}
+                      className="justify-between"
+                    >
+                      <span>{opt.label}</span>
+                      {lang === opt.value && <Check className="h-4 w-4 text-primary" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuItem onClick={backToList}>
                 <FileSpreadsheet className="h-4 w-4" /> {t("Find spreadsheet in list")}
               </DropdownMenuItem>

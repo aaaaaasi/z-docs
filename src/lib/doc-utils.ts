@@ -97,6 +97,101 @@ export function getSnippet(html: string, len = 130): string {
   return text.slice(0, len).trimEnd() + "…"
 }
 
+/* ---------------- search matching (shared by API + guest local mode + UI) ---------------- */
+
+export interface SearchMatchInfo {
+  /** total term occurrences across title + body */
+  count: number
+  /** up to N paragraph-level context snippets containing the hits */
+  snippets: string[]
+}
+
+/** Split a raw query into individual terms — whitespace-separated, Latin
+ *  lowercased for case-insensitive matching, CJK runs kept whole. */
+export function searchTerms(query: string): string[] {
+  return query
+    .split(/\s+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function countOccurrences(haystack: string, needle: string): number {
+  let n = 0
+  let at = haystack.indexOf(needle)
+  while (at !== -1) {
+    n++
+    at = haystack.indexOf(needle, at + needle.length)
+  }
+  return n
+}
+
+/** Multi-term AND search (researched pattern: Meilisearch-style match totals +
+ *  context snippets). Returns null unless EVERY term occurs in title or body;
+ *  otherwise returns the total hit count and up to `max` paragraph snippets
+ *  (window around the first hit, ellipsized, ready for term highlighting). */
+export function buildSearchMatches(
+  title: string,
+  contentHtml: string,
+  query: string,
+  max = 3
+): SearchMatchInfo | null {
+  const terms = searchTerms(query)
+  if (terms.length === 0) return null
+  const hayTitle = title.toLowerCase()
+  const text = htmlToText(contentHtml)
+  const hay = text.toLowerCase()
+
+  let count = 0
+  for (const term of terms) {
+    const hits = countOccurrences(hay, term) + countOccurrences(hayTitle, term)
+    if (hits === 0) return null // AND semantics: every term must match somewhere
+    count += hits
+  }
+
+  const snippets: string[] = []
+  for (const para of text.split(/\n+/)) {
+    if (snippets.length >= max) break
+    const p = para.trim()
+    if (!p) continue
+    const lp = p.toLowerCase()
+    let at = -1
+    for (const term of terms) {
+      at = lp.indexOf(term)
+      if (at !== -1) break
+    }
+    if (at === -1) continue
+    const start = Math.max(0, at - 32)
+    const end = Math.min(p.length, at + 72)
+    const prefix = start > 0 ? "…" : ""
+    const suffix = end < p.length ? "…" : ""
+    snippets.push(prefix + p.slice(start, end).trim() + suffix)
+  }
+  // title-only match: fall back to the title itself so the hit stays visible
+  if (snippets.length === 0 && title) snippets.push(title.slice(0, 90))
+  return { count, snippets }
+}
+
+/** Split `text` into segments so the UI can wrap matched terms in <mark>. */
+export function splitByTerms(text: string, query: string): { text: string; hit: boolean }[] {
+  const terms = searchTerms(query)
+  if (terms.length === 0 || !text) return [{ text, hit: false }]
+  const re = new RegExp(`(${terms.map(escapeRegExp).join("|")})`, "gi")
+  const parts: { text: string; hit: boolean }[] = []
+  let last = 0
+  for (const m of text.matchAll(re)) {
+    const i = m.index ?? 0
+    if (i > last) parts.push({ text: text.slice(last, i), hit: false })
+    parts.push({ text: m[0] ?? "", hit: true })
+    last = i + (m[0]?.length ?? 0)
+  }
+  if (last < text.length) parts.push({ text: text.slice(last), hit: false })
+  return parts.length ? parts : [{ text, hit: false }]
+}
+
 export function relativeTime(iso: string, lang: Lang = "zh"): string {
   try {
     return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: dateLocale(lang) })
@@ -117,17 +212,35 @@ export function fullTime(iso: string, lang: Lang = "zh"): string {
 
 export const FONT_SIZES = [8, 9, 10, 11, 12, 14, 18, 24, 30, 36, 48, 60, 72]
 
-export const FONT_FAMILIES = [
-  "Arial",
-  "Cambria",
-  "Comic Sans MS",
-  "Courier New",
-  "Georgia",
-  "Impact",
-  "Palatino Linotype",
-  "Times New Roman",
-  "Trebuchet MS",
-  "Verdana",
+/** One picker entry: what the user sees vs the CSS stack actually applied.
+ *  CJK entries use cross-platform stacks (researched standard order:
+ *  macOS PingFang SC → Windows Microsoft YaHei → Linux/general Noto Sans CJK)
+ *  so a document authored on one OS renders with the local equivalent elsewhere. */
+export interface FontFamilyOption {
+  label: string
+  stack: string
+  /** tiny sample text rendered in the entry itself */
+  sample: string
+}
+
+export const FONT_FAMILIES: FontFamilyOption[] = [
+  { label: "Arial", stack: "Arial, sans-serif", sample: "Aa 永字" },
+  { label: "Cambria", stack: "Cambria, serif", sample: "Aa 永字" },
+  { label: "Comic Sans MS", stack: "\"Comic Sans MS\", cursive", sample: "Aa 永字" },
+  { label: "Courier New", stack: "\"Courier New\", monospace", sample: "Aa 永字" },
+  { label: "Georgia", stack: "Georgia, serif", sample: "Aa 永字" },
+  { label: "Impact", stack: "Impact, sans-serif", sample: "Aa 永字" },
+  { label: "Palatino Linotype", stack: "\"Palatino Linotype\", serif", sample: "Aa 永字" },
+  { label: "Times New Roman", stack: "\"Times New Roman\", serif", sample: "Aa 永字" },
+  { label: "Trebuchet MS", stack: "\"Trebuchet MS\", sans-serif", sample: "Aa 永字" },
+  { label: "Verdana", stack: "Verdana, sans-serif", sample: "Aa 永字" },
+  // ---- Chinese fonts (system stacks, zero-download) ----
+  { label: "苹方 PingFang SC", stack: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif', sample: "字体预览" },
+  { label: "微软雅黑 YaHei", stack: '"Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif', sample: "字体预览" },
+  { label: "思源黑体 Noto", stack: '"Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif', sample: "字体预览" },
+  { label: "宋体 SimSun", stack: 'SimSun, "Songti SC", "Noto Serif SC", serif', sample: "字体预览" },
+  { label: "楷体 KaiTi", stack: 'KaiTi, Kaiti SC, STKaiti, "PingFang SC", serif', sample: "字体预览" },
+  { label: "黑体 SimHei", stack: 'SimHei, "Heiti SC", "Microsoft YaHei", sans-serif', sample: "字体预览" },
 ]
 
 export const PRESENCE_COLORS = [

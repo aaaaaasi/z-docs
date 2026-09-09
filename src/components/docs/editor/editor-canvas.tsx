@@ -258,11 +258,12 @@ export function EditorCanvas({
   }, [comments, activeCommentId, zoom, contentTick, remoteContent])
 
   // Horizontal shadow gutters around the page. Desktop keeps generous 40px
-  // margins; below 900px the page itself shrinks to 92vw so the gutters must
-  // collapse too, otherwise the canvas gets a horizontal scrollbar.
+  // margins; below the lg breakpoint (1024px) the page itself shrinks to 92vw
+  // so the gutters must collapse too, otherwise the canvas gets a horizontal
+  // scrollbar.
   const [padX, setPadX] = React.useState(40)
   React.useEffect(() => {
-    const update = () => setPadX(window.innerWidth < 900 ? 4 : 40)
+    const update = () => setPadX(window.innerWidth < 1024 ? 4 : 40)
     update()
     window.addEventListener("resize", update)
     return () => window.removeEventListener("resize", update)
@@ -287,7 +288,7 @@ export function EditorCanvas({
           data-doc-zoom-wrap=""
           style={{ width: dims.w + padX * 2, transform: `scale(${zoom})`, transformOrigin: "top left" }}
         >
-          <div className="px-10 pt-10 max-[900px]:px-1 max-[900px]:pt-4">
+          <div className="px-1 pt-4 lg:px-10 lg:pt-10">
             <DocRuler
               pageWidth={dims.w}
               margins={margins}
