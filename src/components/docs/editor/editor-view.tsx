@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useDocsStore } from "@/store/docs-store"
 import { useLocalUser } from "@/lib/identity"
 import { useCollab, type DocChangePayload, type CommentsChangedPayload } from "@/hooks/use-collab"
-import { docStats, escapeHtml, getSnippet, htmlToText, countWords } from "@/lib/doc-utils"
+import { docStats, escapeHtml, getSnippet, htmlToText, countWords, type DocStats } from "@/lib/doc-utils"
 import { buildPrintDocument, exportSafeName } from "@/lib/print-html"
 import { api as apiFetch } from "@/lib/api-client"
 import { freezeRemoteImages } from "@/lib/image-freeze"
@@ -190,7 +190,7 @@ export function EditorView() {
   const [starred, setStarred] = React.useState(false)
   const [saveStatus, setSaveStatus] = React.useState<"saved" | "saving" | "unsaved" | "error">("saved")
   const [lastSavedAt, setLastSavedAt] = React.useState<Date | null>(null)
-  const [stats, setStats] = React.useState({ words: 0, chars: 0, paragraphs: 0, pages: 1, readingMinutes: 1 })
+  const [stats, setStats] = React.useState<DocStats>({ words: 0, chars: 0, cjkChars: 0, latinWords: 0, isCJK: true, paragraphs: 0, pages: 1, readingMinutes: 1 })
   const [zoom, setZoomState] = React.useState(1)
   const [spellCheck, setSpellCheck] = React.useState(true)
   const [fmt, setFmt] = React.useState<FormatState>(DEFAULT_FORMAT)

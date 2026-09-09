@@ -19,26 +19,38 @@ export const dictInsights: Record<string, string> = {
   // ——— overview ———
   "Overview": "总览",
   "Sentences": "句子",
-  "Words": "字词",
-  "Paragraphs": "段落",
+  "Words": "字数",
+  "Paragraphs": "段落数",
   "Avg. sentence length": "平均句长",
   "{n} words": "{n} 词",
+  "{n} chars": "{n} 字",
 
   // ——— 1. text complexity ———
   "Text complexity": "文本复杂性",
   "Chinese": "中文",
   "Flesch–Kincaid": "弗莱士-金凯德",
   "Suitable for grade {grade}": "适合 {grade} 年级",
+  "/ 100 · {band}": "/ 100 · {band}",
+  "Beginner": "入门",
+  "Easy": "偏易",
+  "Moderate": "适中",
+  "Challenging": "偏难",
+  "Very challenging": "高难",
   "Reading-level estimate — scores have no good or bad, they only hint at how complex the text is. (Flesch–Kincaid readability test.)":
     "阅读难度估计——分数没有优劣，仅提示文章的复杂程度。（弗莱士-金凯德可读性测试。）",
-  "Chinese text uses a weighted sentence-length estimate.":
-    "中文文本采用句长加权估算。",
+  "Chinese difficulty estimate — scores have no good or bad, they only hint at how complex the text is. Weighted from average sentence length, rare-character rate and the share of very long sentences.":
+    "中文难度估计——分数没有优劣，仅提示文章的复杂程度。（由平均句长、生僻字率与超长句占比加权得出。）",
+  "Chinese difficulty is driven mainly by sentence length — past 30 chars per sentence it rises sharply, past 40 it is almost always hard.":
+    "中文难度主要由句长决定——句长超过 30 字难度明显上升，超过 40 字几乎必然偏难。",
 
   // ——— 2. vocabulary diversity ———
   "Vocabulary diversity": "词汇多样性",
   "{pct}% unique words": "{pct}% 独特词",
+  "{pct}% unique word forms": "独特词形 {pct}%",
   "Unique words as a share of all words (type-token ratio).":
     "独特词占全部词的比例（类符形符比）。",
+  "Unique word forms as a share of all word forms — Chinese is approximated with character-pair (bigram) types, a type-token ratio.":
+    "独特词形占全部词形的比例（中文以相邻二字组合近似计算，即类符形符比）。",
 
   // ——— 3. sentence lengths ———
   "Sentence lengths": "句子长度",
@@ -47,12 +59,17 @@ export const dictInsights: Record<string, string> = {
   "Medium (6–14 words)": "中句（6–14 词）",
   "Long (15–25 words)": "长句（15–25 词）",
   "Very long (>25 words)": "超长句（>25 词）",
+  "Short (≤15 chars)": "短句（≤15 字）",
+  "Medium (16–30 chars)": "中句（16–30 字）",
+  "Long (31–40 chars)": "长句（31–40 字）",
+  "Very long (>40 chars)": "超长句（>40 字）",
 
   // ——— 4. sentence rhythm ———
   "Sentence rhythm": "句子节奏",
   "One bar per sentence — height is word count. Hover or click a bar to locate the sentence in the document.":
     "每句一根柱，高度为词数。悬停或点击柱条可在文档中定位该句。",
   "Sentence {n} · {w} words": "第 {n} 句 · {w} 词",
+  "Sentence {n} · {w} chars": "第 {n} 句 · {w} 字",
   "Showing first 120 sentences": "已显示前 120 句",
 
   // ——— 5. paragraph density ———
@@ -77,6 +94,8 @@ export const dictInsights: Record<string, string> = {
   "Passive voice": "被动语态",
   "Be-verb + past participle. Fine in moderation — worth a look if it piles up.":
     "be 动词 + 过去分词。适度使用没有问题，堆积时值得留意。",
+  "Chinese passive markers (被 / 受到 / 遭到 / 为…所…). Fine in moderation — worth a look if it piles up.":
+    "中文被动式（被、受到、遭到、为…所 等标志）。适度使用没有问题，堆积时值得留意。",
   "{n} sentences": "{n} 句",
   "{pct}% of sentences": "{pct}% 的句子",
   "No passive constructions detected": "未检测到被动结构",
@@ -86,11 +105,15 @@ export const dictInsights: Record<string, string> = {
   "{n} per 1,000 words": "每千词 {n} 次",
   "-ly adverbs and 地-adverbials. Great for nuance, easy to overuse.":
     "以 -ly 结尾的副词与「地」字短语。擅长细微差别，也容易被滥用。",
+  "Chinese adverbs (非常、十分、特别… and 地-adverbials). Great for nuance, easy to overuse.":
+    "中文高频副词（非常、十分、特别 等）与「地」字短语。擅长细微差别，也容易被滥用。",
   "No adverbs detected": "未检测到副词",
 
   // ——— 9. word frequency ———
   "Word frequency": "词频",
   "Most repeated content words (stopwords excluded).": "重复最多的内容词（已排除停用词）。",
+  "Most repeated content word groups — Chinese pairs adjacent characters into word-like groups (stopwords excluded).":
+    "重复最多的内容词与高频二字词组（已排除停用词）。",
   "Not enough repeated words yet": "重复的词还不够多",
 
   // ——— 10. word echo ———

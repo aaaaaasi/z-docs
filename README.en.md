@@ -51,7 +51,7 @@ Try it instantly in **guest mode** (data stays on your device); sign up to unloc
 - **Version history**: automatic snapshots, previews, version diffing, one-click restore
 - **Document outline**: heading sidebar with jump-to navigation
 - **Find & replace**, **spell check** (AI suggestions, one-click apply), **AI write / polish**, **voice typing**
-- **Writing insights (Ellipsus-parity)**: live insights rail in the editor (debounced real-time recompute, "Analyzing…" state on long docs, click-to-locate) + writing studio deep-dive (8 journey + 15 insight metrics, bilingual)
+- **Writing insights (Ellipsus-parity)**: live insights rail in the editor (debounced real-time recompute, "Analyzing…" state on long docs, click-to-locate) + writing studio deep-dive (8 journey + 15 insight metrics) — **Chinese-native analysis**: 0–100 readability difficulty score (weighted sentence length / rare chars / very-long-sentence share, 30/40-char research anchors), 被字句 passive-voice detection, Chinese adverbs and 地-adverbials, character-bigram word frequency, Word-style word counting (CJK characters + non-Chinese words)
 - **Remote image auto-embedding**: URL images are frozen to data-URLs via the built-in proxy (with SSRF guards) — self-contained documents, untainted export canvases, no dead-link rot
 - **Multi-format export**: PDF (server-side vector rendering), DOCX (true OOXML), HTML, TXT, print view; export progress center (Google-Drive-style download cards, byte/page-level progress)
 - **Template gallery**: blank / meeting notes / project proposal / letter / résumé — with real content

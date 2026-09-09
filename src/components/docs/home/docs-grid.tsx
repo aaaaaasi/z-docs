@@ -750,7 +750,7 @@ function DocCard({
       </div>
       <div className="mt-2 flex items-start gap-1">
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium leading-tight">{doc.title}</p>
+          <p className="truncate text-sm font-medium leading-tight" title={doc.title}>{doc.title}</p>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {folder && (
               <span className="mr-1 inline-flex items-center gap-0.5 align-baseline text-[11px]" style={{ color: folder.color }}>
@@ -856,7 +856,7 @@ function DocRow({
         </div>
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
+        <p className="truncate text-sm font-medium" title={doc.title}>
           {doc.title}
           {doc.starred && !inTrash && <Star className="ml-1.5 inline h-3.5 w-3.5 fill-amber-400 text-amber-400" />}
         </p>

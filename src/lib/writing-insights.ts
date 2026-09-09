@@ -3,12 +3,21 @@
  * No React, no i18n: every user-facing string the engine returns is an
  * ENGLISH SOURCE KEY that the UI translates with t().
  *
- * Mixed zh/en handling:
+ * Mixed zh/en handling — Chinese-aware (researched):
  * - Sentences end at 。！？!? … and "." (guarded against decimals like 3.14 and
  *   common abbreviations like Dr./e.g.), plus newlines; runs of terminators
  *   ("?!", "...", "……") and glued closers (”」』）) are swallowed into one break.
  * - Tokenization: maximal Latin letter runs (incl. apostrophe/hyphen words)
- *   are words; every CJK char ([\u4e00-\u9fff]) counts as one word.
+ *   are words; every CJK char ([\u4e00-\u9fff]) counts as one word (the
+ *   Microsoft Word 字数 convention: 中文字符数 + 非中文单词数).
+ * - zh sentence-length bands are in CHARACTERS (≤15 / 16–30 / 31–40 / >40),
+ *   anchored on Chinese readability research: difficulty rises sharply past
+ *   30 chars/sentence and is almost always hard past 40.
+ * - zh difficulty is a 0–100 weighted score (avg sentence length + rare-char
+ *   rate + very-long-sentence share) instead of an English grade formula.
+ * - zh passive voice detects 被字句 markers (被 / 受到 / 遭到 / 为…所 …).
+ * - zh adverbs match a high-confidence standalone-adverb word list + “地”
+ *   adverbials; zh word frequency uses character bigrams (unsegmented 词 proxy).
  */
 
 // ---------------------------------------------------------------------------
@@ -16,10 +25,18 @@
 // ---------------------------------------------------------------------------
 
 export interface TextComplexity {
-  /** Flesch–Kincaid grade (en) or weighted sentence-length estimate (zh). */
+  /** Flesch–Kincaid grade (en). 0 when isCJK. */
   grade: number
+  /** zh: 0–100 difficulty score — weighted from average sentence length,
+   *  rare-character rate and the share of very long sentences. Research
+   *  anchors: score drops sharply past 30 chars/sentence, almost always
+   *  hard past 40. 0 when not isCJK. */
+  score: number
   /** English source key: "Suitable for grade {grade}" (translated by the UI). */
   label: string
+  /** zh band label source key ("Beginner" | "Easy" | "Moderate" |
+   *  "Challenging" | "Very challenging") — translated by the UI. */
+  band: string
   isCJK: boolean
 }
 
@@ -306,29 +323,71 @@ function countSyllables(word: string): number {
   return Math.max(1, groups ? groups.length : 1)
 }
 
+/**
+ * zh difficulty bands (researched anchors: 句长一过 30 字难度明显上升，超过
+ * 40 字几乎必然偏难 — Chinese readability studies / practical tool corpora).
+ * 0–100 weighted score:
+ *   score = 1.375 × avgSentenceLen(chars) + 35 × rareCharRate + 30 × veryLongRatio
+ *   ·  avgLen 15 / rare 3% / vl 0%  → ~22 (easy)
+ *   ·  avgLen 25 / rare 8% / vl 5%  → ~39 (moderate)
+ *   ·  avgLen 48 / rare 25% / vl 40% → ~87 (very challenging)
+ */
 function computeTextComplexity(tokens: string[], sentences: string[]): TextComplexity {
-  if (tokens.length === 0) return { grade: 0, label: LABEL_SUITABLE_GRADE, isCJK: true }
+  if (tokens.length === 0) {
+    return { grade: 0, score: 0, label: LABEL_SUITABLE_GRADE, band: "", isCJK: true }
+  }
   const latinTokens = tokens.filter(isLatinToken)
   const isCJK = latinTokens.length / tokens.length <= 0.5
   if (isCJK) {
-    // weighted estimate: avg sentence length (chars count as words) + rare-char rate
     const avgLen = sentences.length > 0 ? tokens.length / sentences.length : tokens.length
-    const grade = avgLen * 1.0 + zhRareRate(tokens) * 15
-    return { grade: r1(clamp(grade, 1, 16)), label: LABEL_SUITABLE_GRADE, isCJK: true }
+    const rare = zhRareRate(tokens)
+    const veryLong = sentences.filter((s) => tokenize(s).length > 40).length
+    const vlRatio = sentences.length > 0 ? veryLong / sentences.length : 0
+    const score = clamp(1.375 * avgLen + 35 * rare + 30 * vlRatio, 0, 100)
+    const shown = Math.round(score)
+    const band =
+      shown < 20 ? "Beginner"
+      : shown < 35 ? "Easy"
+      : shown < 50 ? "Moderate"
+      : shown < 70 ? "Challenging"
+      : "Very challenging"
+    return { grade: 0, score: shown, label: LABEL_SUITABLE_GRADE, band, isCJK: true }
   }
   // Flesch–Kincaid grade level
   const wps = sentences.length > 0 ? latinTokens.length / sentences.length : latinTokens.length
   const syllables = latinTokens.reduce((s, w) => s + countSyllables(w), 0)
   const spw = latinTokens.length > 0 ? syllables / latinTokens.length : 1
   const grade = 0.39 * wps + 11.8 * spw - 15.59
-  return { grade: r1(clamp(grade, 1, 20)), label: LABEL_SUITABLE_GRADE, isCJK: false }
+  return { grade: r1(clamp(grade, 1, 20)), score: 0, label: LABEL_SUITABLE_GRADE, band: "", isCJK: false }
 }
 
 // ---------------------------------------------------------------------------
 // 2. Vocabulary diversity
 // ---------------------------------------------------------------------------
 
-function computeVocabDiversity(tokens: string[]): number {
+/**
+ * Adjacent character bigrams over CJK runs — the unsegmented-词 proxy used by
+ * the zh metrics (frequency, diversity). Only bigrams where BOTH chars are
+ * content chars (not stopwords) count — 的了之 etc. never reach the stats.
+ */
+function zhBigrams(text: string): string[] {
+  const out: string[] = []
+  for (const run of text.match(/[\u4e00-\u9fff]+/g) ?? []) {
+    for (let i = 0; i + 1 < run.length; i++) {
+      const g = run.slice(i, i + 2)
+      if (![...g].some((c) => ZH_STOPWORDS.has(c))) out.push(g)
+    }
+  }
+  return out
+}
+
+function computeVocabDiversity(text: string, tokens: string[], isCJK: boolean): number {
+  if (isCJK) {
+    // bigram type-token ratio (chars would systematically understate zh)
+    const grams = zhBigrams(text)
+    if (grams.length === 0) return 0
+    return r1((new Set(grams).size / grams.length) * 100)
+  }
   if (tokens.length === 0) return 0
   const uniq = new Set(tokens.map((t) => t.toLowerCase()))
   return r1((uniq.size / tokens.length) * 100)
@@ -338,13 +397,21 @@ function computeVocabDiversity(tokens: string[]): number {
 // 3. Sentence lengths / 4. sentence rhythm
 // ---------------------------------------------------------------------------
 
-function computeSentenceLengths(sentences: string[]): SentenceLengths {
+/**
+ * zh bands are in CHARACTERS (≤15 / 16–30 / 31–40 / >40 — research: score
+ * drops sharply past 30 chars, almost always hard past 40). en bands in
+ * WORDS (≤5 / 6–14 / 15–25 / >25).
+ */
+function computeSentenceLengths(sentences: string[], isCJK: boolean): SentenceLengths {
+  const shortMax = isCJK ? 15 : 5
+  const mediumMax = isCJK ? 30 : 14
+  const longMax = isCJK ? 40 : 25
   const counts = { short: 0, medium: 0, long: 0, veryLong: 0 }
   for (const s of sentences) {
     const wc = tokenize(s).length
-    if (wc <= 5) counts.short++
-    else if (wc <= 14) counts.medium++
-    else if (wc <= 25) counts.long++
+    if (wc <= shortMax) counts.short++
+    else if (wc <= mediumMax) counts.medium++
+    else if (wc <= longMax) counts.long++
     else counts.veryLong++
   }
   const total = sentences.length
@@ -361,24 +428,24 @@ function computeSentenceLengths(sentences: string[]): SentenceLengths {
 // 5. Paragraph density
 // ---------------------------------------------------------------------------
 
-function computeParagraphDensity(text: string): ParagraphDensityItem[] {
+function computeParagraphDensity(text: string, isCJK: boolean): ParagraphDensityItem[] {
   const out: ParagraphDensityItem[] = []
   for (const para of splitParagraphs(text)) {
     const sentences = splitSentences(para)
     const tokens = tokenize(para)
     if (sentences.length === 0 || tokens.length === 0) continue
     const avgSentenceLen = tokens.length / sentences.length
-    const latinTokens = tokens.filter(isLatinToken)
-    const latinRatio = latinTokens.length / tokens.length
     let weight: number
-    if (latinRatio > 0.5) {
+    if (isCJK) {
+      // zh: avgSentenceLen is in characters — rescale (≈2 chars carry one
+      // word's worth of load) + rare-char complexity
+      weight = 0.33 * (1 + zhRareRate(tokens) * 2.2)
+    } else {
       // long latin words raise the load
+      const latinTokens = tokens.filter(isLatinToken)
       const avgWordLen =
         latinTokens.reduce((s, t) => s + t.length, 0) / Math.max(1, latinTokens.length)
       weight = clamp(avgWordLen / 4.7, 0.6, 1.8)
-    } else {
-      // rescale CJK chars (≈1.8 chars/word) + rare-char complexity
-      weight = 0.55 * (1 + zhRareRate(tokens) * 2)
     }
     const load = avgSentenceLen * weight
     const score: DensityScore =
@@ -432,7 +499,7 @@ function computeSentenceOpeners(sentences: string[]): SentenceOpeners {
 }
 
 // ---------------------------------------------------------------------------
-// 7. Passive voice (English)
+// 7. Passive voice (English be-verb + participle · Chinese 被字句 markers)
 // ---------------------------------------------------------------------------
 
 const BE_VERBS = new Set(["is", "are", "was", "were", "been", "being", "am", "be"])
@@ -465,24 +532,63 @@ function isPassiveParticiple(word: string): boolean {
   return /ed$/.test(word) && word.length >= 4
 }
 
+/**
+ * Chinese 被字句 markers — researched:
+ * · 被: the canonical passive marker (王力: N + 被 + (施事) + VP)
+ * · 遭受义动词紧跟及物动词可视为被动标记 (王一平 1994): 受到/遭到/遭受/
+ *   经受/蒙受/深受/备受
+ * · 文言遗留: 为…所 / 由…所
+ * · 使令/给予义弱标记 叫/让/给 deliberately NOT counted — they stay
+ *   ambiguous with causatives (让我看看 is not passive), so we only
+ *   flag the high-precision markers (宁缺毋滥).
+ * · bedding-noun guards for 被: 被子/被单/被褥/被罩/被套/棉被.
+ */
+const ZH_PASSIVE_COMPOUNDS = ["受到", "遭到", "遭受", "经受", "蒙受", "深受", "备受"]
+const ZH_PASSIVE_SO_RE = /[为由][\u4e00-\u9fff]{1,8}所/g
+/** chars that make a following 被 a bedding noun, not a passive marker */
+const ZH_BEI_NOUN_NEXT = new Set("子单褥罩套".split(""))
+
+function countZhPassive(sentence: string): number {
+  let n = 0
+  for (const c of ZH_PASSIVE_COMPOUNDS) {
+    let idx = sentence.indexOf(c)
+    while (idx !== -1) {
+      n++
+      idx = sentence.indexOf(c, idx + c.length)
+    }
+  }
+  for (const _m of sentence.matchAll(ZH_PASSIVE_SO_RE)) n++
+  for (let i = sentence.indexOf("被"); i !== -1; i = sentence.indexOf("被", i + 1)) {
+    const next = sentence[i + 1] ?? ""
+    if (ZH_BEI_NOUN_NEXT.has(next)) continue // 被子/被单/被套…
+    if (sentence[i - 1] === "棉") continue // 棉被
+    n++
+  }
+  return n
+}
+
 function computePassiveVoice(sentences: string[]): PassiveVoiceResult {
   let count = 0
   const hits: string[] = []
   for (const sentence of sentences) {
+    let found = 0
+    // English: be-verb + past participle
     const tokens = tokenize(sentence).filter(isLatinToken).map((t) => t.toLowerCase())
-    if (tokens.length < 2) continue
-    let found = false
-    for (let i = 0; i < tokens.length - 1; i++) {
-      if (!BE_VERBS.has(tokens[i])) continue
-      // allow one skip word: "was not finished" / "is often praised"
-      let j = i + 1
-      if (j + 1 < tokens.length && PASSIVE_SKIPS.has(tokens[j])) j++
-      if (isPassiveParticiple(tokens[j])) {
-        count++
-        found = true
+    if (tokens.length >= 2) {
+      for (let i = 0; i < tokens.length - 1; i++) {
+        if (!BE_VERBS.has(tokens[i])) continue
+        // allow one skip word: "was not finished" / "is often praised"
+        let j = i + 1
+        if (j + 1 < tokens.length && PASSIVE_SKIPS.has(tokens[j])) j++
+        if (isPassiveParticiple(tokens[j])) found++
       }
     }
-    if (found) hits.push(sentence)
+    // Chinese: 被字句 markers
+    if (CJK_RE.test(sentence)) found += countZhPassive(sentence)
+    if (found > 0) {
+      count += found
+      hits.push(sentence)
+    }
   }
   return { count, sentences: hits }
 }
@@ -515,6 +621,87 @@ const ZH_AFTER_DI_BLOCK = new Set(
   "图方球址区铁上下面板步位带壳狱道雷窖毯契租瓜砖摊基界矿产形势理利籍名点类样色貌".split("")
 )
 const ZH_DE_RE = /([\u4e00-\u9fff]{1,2}\u5730)(?=[\u4e00-\u9fffA-Za-z])/g
+
+/**
+ * High-confidence standalone zh adverbs — matched longest-first as whole
+ * words with noun-substring guards (被子、最后、太太、迁就、归还、再见、
+ * 成就、都市、非常规、原来的… never count). “地”-adverbials are handled by
+ * ZH_DE_RE; a word-list adverb directly followed by 地 is skipped to avoid
+ * double counting (渐渐地 counts once, as a 地-adverbial).
+ */
+const ZH_ADVERB_WORDS = [
+  "非常", "十分", "特别", "极其", "极为", "格外", "相当", "颇为", "更加",
+  "稍微", "稍稍", "略微", "几乎", "简直", "居然", "竟然", "确实", "真的",
+  "的确", "也许", "大概", "恐怕", "显然", "当然", "其实", "原来", "已经",
+  "曾经", "正在", "刚刚", "立刻", "马上", "顿时", "终于", "始终", "一直",
+  "总是", "经常", "常常", "往往", "通常", "渐渐", "逐渐", "缓缓", "慢慢",
+  "突然", "忽然", "赶紧", "连忙", "急忙", "依然", "仍然", "还是",
+  "很", "挺", "太", "更", "最", "比较", "又", "再", "也", "还", "只",
+  "仅", "都", "就", "才",
+].sort((a, b) => b.length - a.length)
+
+/** next-char guards: adverb + char forms a non-adverbial compound */
+const ZH_ADV_NEXT_BLOCK: Record<string, string> = {
+  "非常": "规", // 非常规
+  "原来": "的", // 原来的（形容词性）
+  "太": "太平阳后子空", // 太太/太平/太阳/太后/太子/太空
+  "最": "后", // 最后
+  "再": "见", // 再见
+  "都": "市", // 都市/都会
+  "更": "改换新正衣迭替名", // 更改/更换… (gēng verbs)
+}
+/** prev-char guards: char + adverb is a longer non-adverbial word */
+const ZH_ADV_PREV_BLOCK: Record<string, string> = {
+  "就": "成迁", // 成就/迁就
+  "还": "归偿退发交派", // huán 归还/偿还…
+  "都": "首成", // 首都/成都
+  "才": "人刚", // 人才/刚才
+  "全": "安", // 安全
+}
+/** next-char guards for single-char 才: 才华/才能/才干… are nouns */
+const CAI_NEXT_BLOCK = "能华干智女思疏艺"
+
+function matchZhAdverbWords(text: string): string[] {
+  const out: string[] = []
+  let i = 0
+  const n = text.length
+  while (i < n) {
+    const ch = text[i]
+    if (!CJK_RE.test(ch)) {
+      i++
+      continue
+    }
+    let matched = ""
+    for (const w of ZH_ADVERB_WORDS) {
+      if (text.startsWith(w, i)) {
+        matched = w
+        break
+      }
+    }
+    if (!matched) {
+      i++
+      continue
+    }
+    const after = text[i + matched.length] ?? ""
+    const prev = text[i - 1] ?? ""
+    // 地-adverbial already counted by ZH_DE_RE (渐渐地 → 地-count only)
+    if (after === "地") {
+      i += matched.length
+      continue
+    }
+    let blocked = false
+    if (matched.length === 1 || ZH_ADV_NEXT_BLOCK[matched] !== undefined) {
+      const nb = ZH_ADV_NEXT_BLOCK[matched] ?? ""
+      if (nb.includes(after)) blocked = true
+    }
+    if (matched === "才" && CAI_NEXT_BLOCK.includes(after)) blocked = true
+    const pb = ZH_ADV_PREV_BLOCK[matched] ?? ""
+    if (pb.includes(prev)) blocked = true
+    if (!blocked) out.push(matched)
+    i += matched.length
+  }
+  return out
+}
 
 function matchZhDeAdverbs(text: string): string[] {
   const out: string[] = []
@@ -554,6 +741,10 @@ function computeAdverbs(text: string, tokens: string[]): AdverbsResult {
     count++
     seen.add(phrase)
   }
+  for (const w of matchZhAdverbWords(text)) {
+    count++
+    seen.add(w)
+  }
   const per1000 = tokens.length > 0 ? r1((count / tokens.length) * 1000) : 0
   return { count, per1000, words: [...seen].slice(0, 60) }
 }
@@ -562,8 +753,20 @@ function computeAdverbs(text: string, tokens: string[]): AdverbsResult {
 // 9. Word frequency
 // ---------------------------------------------------------------------------
 
-function computeWordFrequency(tokens: string[]): FrequencyWord[] {
+function computeWordFrequency(text: string, tokens: string[], isCJK: boolean): FrequencyWord[] {
   const counts = new Map<string, number>()
+  if (isCJK) {
+    // zh: unsegmented text → adjacent character bigrams stand in for 词
+    // (both chars content, count ≥ 2 to filter one-off noise)
+    for (const g of zhBigrams(text)) {
+      counts.set(g, (counts.get(g) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .filter(([, c]) => c >= 2)
+      .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+      .slice(0, 10)
+      .map(([word, c]) => ({ word, count: c }))
+  }
   for (const tk of tokens) {
     if (isLatinToken(tk) && tk.length < 2) continue
     const key = tk.toLowerCase()
@@ -905,6 +1108,8 @@ export function computeInsights(text: string): InsightsResult {
   const tokens = tokenize(text)
   const totalWords = tokens.length
   const paragraphs = splitParagraphs(text)
+  const latinTokens = tokens.filter(isLatinToken)
+  const isCJK = tokens.length > 0 && latinTokens.length / tokens.length <= 0.5
 
   const summary: SummaryResult = {
     sentences: sentences.length,
@@ -919,14 +1124,14 @@ export function computeInsights(text: string): InsightsResult {
   return {
     summary,
     textComplexity: computeTextComplexity(tokens, sentences),
-    vocabDiversity: computeVocabDiversity(tokens),
-    sentenceLengths: computeSentenceLengths(sentences),
+    vocabDiversity: computeVocabDiversity(text, tokens, isCJK),
+    sentenceLengths: computeSentenceLengths(sentences, isCJK),
     sentenceRhythm: sentences.map((s) => ({ sentence: s, wordCount: tokenize(s).length })),
-    paragraphDensity: computeParagraphDensity(text),
+    paragraphDensity: computeParagraphDensity(text, isCJK),
     sentenceOpeners: computeSentenceOpeners(sentences),
     passiveVoice: computePassiveVoice(sentences),
     adverbs: computeAdverbs(text, tokens),
-    wordFrequency: computeWordFrequency(tokens),
+    wordFrequency: computeWordFrequency(text, tokens, isCJK),
     wordEcho: computeWordEcho(sentences),
     repeatedPhrases: computeRepeatedPhrases(sentences),
     dialogueBalance: computeDialogueBalance(text, sentences),

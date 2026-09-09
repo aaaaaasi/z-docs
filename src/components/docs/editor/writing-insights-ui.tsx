@@ -149,14 +149,22 @@ export function WritingInsightsTab(props: WritingStudioProps) {
   // 1. text complexity
   const cx = ins.textComplexity
   const grade = Math.round(cx.grade)
+  const zh = cx.isCJK
 
-  // 3. sentence lengths
-  const lenRows: Array<{ label: string; bucket: LengthBucket; color: string }> = [
-    { label: t("Short (≤5 words)"), bucket: ins.sentenceLengths.short, color: "bg-emerald-500" },
-    { label: t("Medium (6–14 words)"), bucket: ins.sentenceLengths.medium, color: "bg-amber-500" },
-    { label: t("Long (15–25 words)"), bucket: ins.sentenceLengths.long, color: "bg-orange-500" },
-    { label: t("Very long (>25 words)"), bucket: ins.sentenceLengths.veryLong, color: "bg-rose-500" },
-  ]
+  // 3. sentence lengths — zh bands are in characters, en in words
+  const lenRows: Array<{ label: string; bucket: LengthBucket; color: string }> = zh
+    ? [
+        { label: t("Short (≤15 chars)"), bucket: ins.sentenceLengths.short, color: "bg-emerald-500" },
+        { label: t("Medium (16–30 chars)"), bucket: ins.sentenceLengths.medium, color: "bg-amber-500" },
+        { label: t("Long (31–40 chars)"), bucket: ins.sentenceLengths.long, color: "bg-orange-500" },
+        { label: t("Very long (>40 chars)"), bucket: ins.sentenceLengths.veryLong, color: "bg-rose-500" },
+      ]
+    : [
+        { label: t("Short (≤5 words)"), bucket: ins.sentenceLengths.short, color: "bg-emerald-500" },
+        { label: t("Medium (6–14 words)"), bucket: ins.sentenceLengths.medium, color: "bg-amber-500" },
+        { label: t("Long (15–25 words)"), bucket: ins.sentenceLengths.long, color: "bg-orange-500" },
+        { label: t("Very long (>25 words)"), bucket: ins.sentenceLengths.veryLong, color: "bg-rose-500" },
+      ]
 
   // 4. sentence rhythm
   const bars = ins.sentenceRhythm.slice(0, 120)
@@ -165,13 +173,13 @@ export function WritingInsightsTab(props: WritingStudioProps) {
   // 6. paragraph density
   const dots = ins.paragraphDensity.slice(0, 150)
 
-  // 7. sentence openers
+  // 7. sentence openers — 冠词 is an English concept, hidden for zh docs
   const openerRows = [
     { label: t("Pronoun"), value: ins.sentenceOpeners.pronoun, color: "bg-primary" },
-    { label: t("Article"), value: ins.sentenceOpeners.article, color: "bg-emerald-500" },
+    { label: t("Article"), value: ins.sentenceOpeners.article, color: "bg-emerald-500", hide: zh },
     { label: t("Conjunction"), value: ins.sentenceOpeners.conjunction, color: "bg-amber-500" },
     { label: t("Other"), value: ins.sentenceOpeners.other, color: "bg-violet-400" },
-  ]
+  ].filter((r) => !r.hide)
 
   // 8. passive voice
   const pv = ins.passiveVoice
@@ -201,7 +209,7 @@ export function WritingInsightsTab(props: WritingStudioProps) {
             <StatCell label={t("Paragraphs")} value={ins.summary.paragraphs} />
             <StatCell
               label={t("Avg. sentence length")}
-              value={t("{n} words", { n: ins.summary.avgSentenceLen })}
+              value={t(zh ? "{n} chars" : "{n} words", { n: ins.summary.avgSentenceLen })}
             />
           </div>
         </SectionCard>
@@ -209,29 +217,58 @@ export function WritingInsightsTab(props: WritingStudioProps) {
         {/* 文本复杂性 */}
         <SectionCard
           title={t("Text complexity")}
-          badge={cx.isCJK ? t("Chinese") : t("Flesch–Kincaid")}
-          desc={t(
-            "Reading-level estimate — scores have no good or bad, they only hint at how complex the text is. (Flesch–Kincaid readability test.)"
-          )}
+          badge={zh ? t("Chinese") : t("Flesch–Kincaid")}
+          desc={
+            zh
+              ? t(
+                  "Chinese difficulty estimate — scores have no good or bad, they only hint at how complex the text is. Weighted from average sentence length, rare-character rate and the share of very long sentences."
+                )
+              : t(
+                  "Reading-level estimate — scores have no good or bad, they only hint at how complex the text is. (Flesch–Kincaid readability test.)"
+                )
+          }
         >
-          <div className="flex items-baseline gap-3">
-            <span className="text-4xl font-bold tabular-nums text-primary">{grade}</span>
-            <span className="text-[13px] font-medium text-foreground">
-              {t(cx.label, { grade })}
-            </span>
-          </div>
-          {cx.isCJK ? (
-            <p className="mt-1.5 text-[11px] text-muted-foreground">
-              {t("Chinese text uses a weighted sentence-length estimate.")}
-            </p>
-          ) : null}
+          {zh ? (
+            <>
+              <div className="flex items-baseline gap-3">
+                <span className="text-4xl font-bold tabular-nums text-primary">{cx.score}</span>
+                <span className="text-[13px] font-medium text-foreground">
+                  {t("/ 100 · {band}", { band: t(cx.band) })}
+                </span>
+              </div>
+              <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-muted">
+                <div
+                  className="h-full rounded-full bg-primary transition-[width] duration-500"
+                  style={{ width: `${Math.min(100, cx.score)}%` }}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                {t(
+                  "Chinese difficulty is driven mainly by sentence length — past 30 chars per sentence it rises sharply, past 40 it is almost always hard."
+                )}
+              </p>
+            </>
+          ) : (
+            <div className="flex items-baseline gap-3">
+              <span className="text-4xl font-bold tabular-nums text-primary">{grade}</span>
+              <span className="text-[13px] font-medium text-foreground">
+                {t(cx.label, { grade })}
+              </span>
+            </div>
+          )}
         </SectionCard>
 
         {/* 词汇多样性 */}
         <SectionCard
           title={t("Vocabulary diversity")}
-          badge={t("{pct}% unique words", { pct: ins.vocabDiversity })}
-          desc={t("Unique words as a share of all words (type-token ratio).")}
+          badge={t(zh ? "{pct}% unique word forms" : "{pct}% unique words", { pct: ins.vocabDiversity })}
+          desc={
+            zh
+              ? t(
+                  "Unique word forms as a share of all word forms — Chinese is approximated with character-pair (bigram) types, a type-token ratio."
+                )
+              : t("Unique words as a share of all words (type-token ratio).")
+          }
         >
           <div className="h-2 overflow-hidden rounded-full bg-muted">
             <div
@@ -271,8 +308,8 @@ export function WritingInsightsTab(props: WritingStudioProps) {
               <button
                 key={idx}
                 type="button"
-                title={t("Sentence {n} · {w} words", { n: idx + 1, w: b.wordCount })}
-                aria-label={t("Sentence {n} · {w} words", { n: idx + 1, w: b.wordCount })}
+                title={t(zh ? "Sentence {n} · {w} chars" : "Sentence {n} · {w} words", { n: idx + 1, w: b.wordCount })}
+                aria-label={t(zh ? "Sentence {n} · {w} chars" : "Sentence {n} · {w} words", { n: idx + 1, w: b.wordCount })}
                 onMouseEnter={() => locate(b.sentence)}
                 onClick={() => locate(b.sentence)}
                 className="w-1.5 shrink-0 rounded-sm bg-primary/70 transition-colors hover:bg-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -349,7 +386,13 @@ export function WritingInsightsTab(props: WritingStudioProps) {
         <SectionCard
           title={t("Passive voice")}
           badge={t("{n} sentences", { n: pv.sentences.length })}
-          desc={t("Be-verb + past participle. Fine in moderation — worth a look if it piles up.")}
+          desc={
+            zh
+              ? t(
+                  "Chinese passive markers (被 / 受到 / 遭到 / 为…所…). Fine in moderation — worth a look if it piles up."
+                )
+              : t("Be-verb + past participle. Fine in moderation — worth a look if it piles up.")
+          }
         >
           <div className="flex items-baseline gap-2">
             <span className="text-3xl font-bold tabular-nums text-primary">{pv.count}</span>
@@ -374,7 +417,11 @@ export function WritingInsightsTab(props: WritingStudioProps) {
         <SectionCard
           title={t("Adverbs")}
           badge={t("{n} per 1,000 words", { n: ins.adverbs.per1000 })}
-          desc={t("-ly adverbs and 地-adverbials. Great for nuance, easy to overuse.")}
+          desc={
+            zh
+              ? t("Chinese adverbs (非常、十分、特别… and 地-adverbials). Great for nuance, easy to overuse.")
+              : t("-ly adverbs and 地-adverbials. Great for nuance, easy to overuse.")
+          }
         >
           {ins.adverbs.words.length > 0 ? (
             <div className="flex flex-wrap gap-1">
@@ -395,7 +442,11 @@ export function WritingInsightsTab(props: WritingStudioProps) {
         {/* 词频 */}
         <SectionCard
           title={t("Word frequency")}
-          desc={t("Most repeated content words (stopwords excluded).")}
+          desc={
+            zh
+              ? t("Most repeated content word groups — Chinese pairs adjacent characters into word-like groups (stopwords excluded).")
+              : t("Most repeated content words (stopwords excluded).")
+          }
         >
           {ins.wordFrequency.length > 0 ? (
             <div className="space-y-1.5">

@@ -41,16 +41,23 @@ function SaveState({ api }: { api: EditorApi }) {
 export function EditorHeader({ api }: { api: EditorApi }) {
   const { t } = useI18n()
   const titleRef = React.useRef<HTMLInputElement>(null)
+  const sizerRef = React.useRef<HTMLSpanElement>(null)
 
-  React.useEffect(() => {
-    // keep the input wide enough for its content
+  React.useLayoutEffect(() => {
+    // keep the input exactly wide enough for its content — measured with a
+    // hidden sizer span (a `ch`-based width under-measures CJK ~2× and cut
+    // long Chinese titles off)
     const el = titleRef.current
-    if (!el) return
-    el.style.width = `${Math.max(api.title.length, 1)}ch`
+    const sizer = sizerRef.current
+    if (!el || !sizer) return
+    sizer.textContent = api.title || " "
+    const w = sizer.getBoundingClientRect().width
+    // + 12px input padding + 2px caret room, floor at 8ch for comfortable typing
+    el.style.width = `calc(max(8ch, ${Math.ceil(w) + 14}px))`
   }, [api.title])
 
   return (
-    <header className="no-print z-40 flex min-h-14 flex-wrap items-center gap-2 border-b bg-background px-2 py-1.5 sm:px-3">
+    <header className="no-print relative z-40 flex min-h-14 flex-wrap items-center gap-2 border-b bg-background px-2 py-1.5 sm:px-3">
       <Tooltip>
         <TooltipTrigger asChild>
           <button
@@ -67,7 +74,14 @@ export function EditorHeader({ api }: { api: EditorApi }) {
       <DocsLogo size="sm" />
 
       <div className="ml-1 flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
-        <div className="flex items-center">
+        {/* hidden sizer — mirrors the input's exact typography to measure
+            CJK-accurate title width */}
+        <span
+          ref={sizerRef}
+          aria-hidden="true"
+          className="pointer-events-none invisible absolute -z-10 whitespace-pre text-lg font-medium"
+        />
+        <div className="flex min-w-0 items-center">
           <input
             ref={titleRef}
             value={api.title}
@@ -79,8 +93,9 @@ export function EditorHeader({ api }: { api: EditorApi }) {
               }
             }}
             aria-label={t("Document title")}
+            title={api.title}
             maxLength={150}
-            className="min-w-[4ch] max-w-full truncate rounded px-1.5 py-0.5 text-lg font-medium outline-none hover:bg-muted/60 focus:bg-muted"
+            className="min-w-[8ch] max-w-full rounded px-1.5 py-0.5 text-lg font-medium outline-none hover:bg-muted/60 focus:bg-muted"
           />
           <Tooltip>
             <TooltipTrigger asChild>

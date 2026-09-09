@@ -2,6 +2,7 @@ import type { CollabUser } from "@/lib/docs-types"
 import type { TableInfo } from "@/lib/editor-dom"
 import type { SuggestionInfo } from "@/lib/suggest-dom"
 import type { PageMargins } from "@/components/docs/editor/ruler"
+import type { DocStats } from "@/lib/doc-utils"
 
 export type { SuggestionInfo, PageMargins }
 
@@ -75,7 +76,7 @@ export interface EditorApi {
   starred: boolean
   saveStatus: SaveStatus
   lastSavedAt: Date | null
-  stats: { words: number; chars: number; paragraphs: number; pages: number; readingMinutes: number }
+  stats: DocStats
   zoom: number
   setZoom: (z: number) => void
   spellCheck: boolean

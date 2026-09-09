@@ -4,19 +4,22 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Separator } from "@/components/ui/separator"
 import { FileText, Sparkles } from "lucide-react"
 import { useI18n } from "@/lib/i18n"
+import type { DocStats } from "@/lib/doc-utils"
 
 export function WordCountDialog({
   open, onOpenChange, stats,
 }: {
   open: boolean
   onOpenChange: (o: boolean) => void
-  stats: { words: number; chars: number; paragraphs: number; pages: number; readingMinutes: number }
+  stats: DocStats
 }) {
   const { t } = useI18n()
   const rows: [string, string | number][] = [
     [t("Pages"), stats.pages],
     [t("Words"), stats.words.toLocaleString()],
     [t("Characters"), stats.chars.toLocaleString()],
+    [t("Non-Chinese words"), stats.latinWords.toLocaleString()],
+    [t("Chinese characters"), stats.cjkChars.toLocaleString()],
     [t("Paragraphs"), stats.paragraphs.toLocaleString()],
     [t("Reading time"), t("~{n} min", { n: stats.readingMinutes })],
   ]

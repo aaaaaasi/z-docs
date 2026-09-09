@@ -27,18 +27,68 @@ export function htmlToText(html: string): string {
     .trim()
 }
 
+/**
+ * 字数 per the Microsoft Word convention: every CJK ideograph/kana counts
+ * as 1, plus each maximal Latin/alphanumeric word run counts as 1 — so a
+ * pure-Chinese paragraph is no longer “1 word” (the old whitespace-split
+ * bug that reported 42 words for a 1,987-char document).
+ */
+const CJK_COUNT_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3040-\u30ff]/
+const WORD_RUN_RE = /[A-Za-z0-9]+(?:['\u2019-][A-Za-z0-9]+)*/
+const ANY_TOKEN_RE = new RegExp(
+  CJK_COUNT_RE.source + "|" + WORD_RUN_RE.source,
+  "g"
+)
+
 export function countWords(text: string): number {
   if (!text) return 0
-  return text.split(/\s+/).filter(Boolean).length
+  let n = 0
+  for (const _m of text.matchAll(ANY_TOKEN_RE)) n++
+  return n
 }
 
-export function docStats(html: string) {
+export function countCjkChars(text: string): number {
+  let n = 0
+  for (const ch of text) if (CJK_COUNT_RE.test(ch)) n++
+  return n
+}
+
+export function countLatinWords(text: string): number {
+  let n = 0
+  for (const _m of text.matchAll(new RegExp(WORD_RUN_RE.source, "g"))) n++
+  return n
+}
+
+export interface DocStats {
+  words: number
+  chars: number
+  cjkChars: number
+  latinWords: number
+  isCJK: boolean
+  paragraphs: number
+  pages: number
+  readingMinutes: number
+}
+
+/**
+ * Word-style document statistics.
+ * · 阅读时间: zh 成人平均默读 ~300 字/分钟 + en 200 wpm，加权兼容混排。
+ * · 页数: zh ~900 字/页（A4 编辑器版式），en 400 词/页。
+ */
+export function docStats(html: string): DocStats {
   const text = htmlToText(html)
-  const words = countWords(text)
+  const cjkChars = countCjkChars(text)
+  const latinWords = countLatinWords(text)
+  const words = cjkChars + latinWords
   const chars = text.replace(/\s/g, "").length
   const paragraphs = text.split(/\n+/).filter((l) => l.trim()).length
-  const pages = Math.max(1, Math.ceil(words / 400))
-  return { words, chars, paragraphs, pages, readingMinutes: Math.max(1, Math.round(words / 200)) }
+  const isCJK = words > 0 && cjkChars / words >= 0.5
+  const pages = Math.max(1, Math.ceil(Math.max(cjkChars / 900, latinWords / 400)))
+  const readingMinutes = Math.max(
+    1,
+    Math.round(cjkChars / 300 + latinWords / 200)
+  )
+  return { words, chars, cjkChars, latinWords, isCJK, paragraphs, pages, readingMinutes }
 }
 
 export function getSnippet(html: string, len = 130): string {

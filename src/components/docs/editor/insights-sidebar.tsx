@@ -161,19 +161,28 @@ function InsightsBody({
 }) {
   const total = ins.summary.sentences
   const pctOf = (n: number): number => (total > 0 ? (n / total) * 100 : 0)
-  const grade = Math.round(ins.textComplexity.grade)
+  const cx = ins.textComplexity
+  const zh = cx.isCJK
+  const grade = Math.round(cx.grade)
   const rhythm = ins.sentenceRhythm.slice(-64)
   const maxWc = rhythm.reduce((m, b) => Math.max(m, b.wordCount), 1)
   const dialogue = ins.dialogueBalance
   const pv = ins.passiveVoice
   const len = ins.sentenceLengths
 
-  const lenRows = [
-    { key: "Short (≤5 words)", bucket: len.short, color: "bg-emerald-500" },
-    { key: "Medium (6–14 words)", bucket: len.medium, color: "bg-amber-500" },
-    { key: "Long (15–25 words)", bucket: len.long, color: "bg-orange-500" },
-    { key: "Very long (>25 words)", bucket: len.veryLong, color: "bg-rose-500" },
-  ]
+  const lenRows = zh
+    ? [
+        { key: "Short (≤15 chars)", bucket: len.short, color: "bg-emerald-500" },
+        { key: "Medium (16–30 chars)", bucket: len.medium, color: "bg-amber-500" },
+        { key: "Long (31–40 chars)", bucket: len.long, color: "bg-orange-500" },
+        { key: "Very long (>40 chars)", bucket: len.veryLong, color: "bg-rose-500" },
+      ]
+    : [
+        { key: "Short (≤5 words)", bucket: len.short, color: "bg-emerald-500" },
+        { key: "Medium (6–14 words)", bucket: len.medium, color: "bg-amber-500" },
+        { key: "Long (15–25 words)", bucket: len.long, color: "bg-orange-500" },
+        { key: "Very long (>25 words)", bucket: len.veryLong, color: "bg-rose-500" },
+      ]
   const povRows = [
     { key: "First person", value: ins.pointOfView.first, color: "bg-primary" },
     { key: "Second person", value: ins.pointOfView.second, color: "bg-emerald-500" },
@@ -194,13 +203,33 @@ function InsightsBody({
 
       {/* complexity + diversity */}
       <Block title={t("Text complexity")}>
-        <div className="flex items-baseline gap-2">
-          <span className="text-2xl font-bold tabular-nums text-primary">{grade}</span>
-          <span className="text-[12px] font-medium text-foreground">{t(ins.textComplexity.label, { grade })}</span>
-        </div>
+        {zh ? (
+          <>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold tabular-nums text-primary">{cx.score}</span>
+              <span className="text-[12px] font-medium text-foreground">
+                {t("/ 100 · {band}", { band: t(cx.band) })}
+              </span>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-500"
+                style={{ width: `${Math.min(100, cx.score)}%` }}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="flex items-baseline gap-2">
+            <span className="text-2xl font-bold tabular-nums text-primary">{grade}</span>
+            <span className="text-[12px] font-medium text-foreground">{t(ins.textComplexity.label, { grade })}</span>
+          </div>
+        )}
       </Block>
 
-      <Block title={t("Vocabulary diversity")} right={t("{pct}% unique words", { pct: ins.vocabDiversity })}>
+      <Block
+        title={t("Vocabulary diversity")}
+        right={t(zh ? "{pct}% unique word forms" : "{pct}% unique words", { pct: ins.vocabDiversity })}
+      >
         <div className="h-1.5 overflow-hidden rounded-full bg-muted">
           <div
             className="h-full rounded-full bg-primary transition-[width] duration-500"
@@ -228,8 +257,8 @@ function InsightsBody({
           ))}
         </div>
         <div className="mt-1 flex justify-between text-[9px] text-muted-foreground">
-          <span>{t("Short (≤5 words)")}</span>
-          <span>{t("Very long (>25 words)")}</span>
+          <span>{t(zh ? "Short (≤15 chars)" : "Short (≤5 words)")}</span>
+          <span>{t(zh ? "Very long (>40 chars)" : "Very long (>25 words)")}</span>
         </div>
       </Block>
 
@@ -240,11 +269,11 @@ function InsightsBody({
             <button
               key={i}
               type="button"
-              title={t("Sentence {n} · {w} words", {
+              title={t(zh ? "Sentence {n} · {w} chars" : "Sentence {n} · {w} words", {
                 n: ins.sentenceRhythm.length - rhythm.length + i + 1,
                 w: b.wordCount,
               })}
-              aria-label={t("Sentence {n} · {w} words", {
+              aria-label={t(zh ? "Sentence {n} · {w} chars" : "Sentence {n} · {w} words", {
                 n: ins.sentenceRhythm.length - rhythm.length + i + 1,
                 w: b.wordCount,
               })}

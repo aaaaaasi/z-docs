@@ -923,3 +923,29 @@ Stage Summary:
 - **远程图片 data-URL 预转完成**：插入冻结 + 导出预转（恢复式）+ SSRF 加固代理 + 游客 shim 透传修复。
 - Unreleased 待办核对：PPTX 导出（Task 24）✓ 导出进度（ac89a91+本轮修复）✓ 批量标签/重命名（Task 25+ac89a91）✓ 游客数据管理（ac89a91 settings-view）✓ 远程图片（本轮）✓ —— **全部完成**。
 - 本轮提交推送后本地与远端同步；后续巡检继续用 worklog 交接（Task 27 起）。
+
+---
+Task ID: 27
+Agent: main (Z.ai Code)
+Task: 用户反馈修复——写作洞察全面中文化（联网研究）、字数统计 Word 口径、文档标题输入框测宽、npm audit 安全专项、截图更新、提交推送
+
+Work Log:
+- 【联网研究（5 组查询）】①中文可读性：学术（宋曜廷 2013 多维模型、AlphaReadabilityChinese 9 指标——过重不适合实时侧栏）+ 实测工具（upliftorch：**平均句长是最具鉴别力指标，句长一过 30 字分数明显下滑、超过 40 字几乎必然偏难**）→ 定 30/40 字双锚点。②中文被动句：核心标记 被（王力 N+被+(施事)+VP）；遭受义动词紧跟及物动词可视为被动标记（王一平 1994：受到/遭到/遭受/经受/蒙受/深受/备受）；文言 为…所/由…所；使令弱标记 叫/让/给 与使役无法可靠区分→刻意不计（宁缺毋滥）。③Word 字数口径（知乎/tmxmall 确认）：字数 = 中文字符数 + 非中文单词数。④阅读速度：成人平均默读 ~300 字/分（36kr 调研；知乎群体 592 偏高、朗读 309）+ 英语 200 wpm 惯例 → 加权混排。⑤句长阈值：学术建议 20-25 字/句。
+- 【引擎中文化 writing-insights.ts】①TextComplexity 拆双轨：en 保留 Flesch–Kincaid；zh 新 0–100 难度分（1.375×平均句长 + 35×生僻字率 + 30×超长句占比）+ 五档 band（入门/偏易/适中/偏难/高难）+ 舍入一致性修正；不再对中文显示「适合 16 年级」。②computePassiveVoice 增 countZhPassive（7 个遭受义复合词 + 被 + 为/由…所；被后跟 子/单/褥/罩/套 或前邻 棉 时跳过寝具名词；英文分支回归无损）。③副词加 60+ 词高置信词表（最长优先非重叠匹配）+ 前后字护栏（非常规/原来的/太太/最后/再见/都市/成就/迁就/归还/人才/刚才/安全 + 才字专项）+ 紧跟「地」跳过防双计。④wordFrequency/词汇多样性 zh 走 bigram（CJK 连续串滑窗、双内容字过滤、词频 ≥2 去噪）→「市场 ×3」真词频直觉。⑤句长分档 zh 按字（15/30/40），en 按词（5/14/25）。⑥段落密度 zh 权重 0.33 重校准（25 字/句不再误判 complex）。
+- 【字数统计 doc-utils.ts】countWords 重写为 Word 口径（CJK 字符逐个 + 拉丁/数字词组）——一次修复传播 9 个调用点（编辑器 stats、docs-store/local-mode/API wordCount、写作历程总字数、AI 工具字数）；docStats 返回 {words,chars,cjkChars,latinWords,isCJK,paragraphs,pages,readingMinutes}，阅读时间 = ceil(cjk/300 + latin/200)，页数 = ceil(max(cjk/900, latin/400))。
+- 【UI 层】info-dialogs WordCountDialog 升级 Word 式 7 行（新增 非中文单词/中文字符，字符数→字符数（不计空格））；writing-insights-ui + insights-sidebar 双端 isCJK 感知（难度分+进度条+band、字/词双标签、被动/副词/词频/多样性中文描述、冠词行隐藏、节奏 tooltip 按字）；editor-types stats: DocStats；StatusPill「275 字」。
+- 【标题输入框 editor-header.tsx】ch 单位对 CJK 低估 ~2×（17 字标题截 8px）→ 隐形 sizer span 同字体实测宽度 + 12px padding + 2px 光标余量，calc(max(8ch, Npx))，min-w 提升 8ch，title 属性悬停完整名；首页卡片/列表行补 title 提示。
+- 【i18n】dict-insights +30 词条（band 五档/字数分档/中文描述四组）、dict-editor +2 词条并修正 字数/字符数/段落数/状态栏词条。
+- 【npm audit 安全专项】32 漏洞（critical 2）→ **6 漏洞（critical 0，low/moderate 全清）**：bun update（next 16.1.3→16.3.4 修 critical postcss/sharp 链、next-auth→4.24.15 修 critical、prisma 6.19.3、react 19.2.8 等 170 包）；移除未使用依赖 @mdxeditor/editor + react-syntax-highlighter（各断一条漏洞链）；sharp→0.35.4；overrides 强制 14 个传递依赖修复版（brace-expansion 1.1.18/2.1.4、browserslist 4.28.7、minimatch 3.1.5、picomatch、lodash 4.18.1、defu、flatted、js-cookie、@humanfs/node、@babel/core）；剩 6 项高危均为无前向修复的开发链（prisma CLI @prisma/config、pptxgenjs 内嵌 image-size、eslint 插件嵌套 minimatch ReDoS）——仅开发期运行、服务端运行时不受影响，评估接受并写入 CHANGELOG。package-lock.json 仅审计用完即删 + .git/info/exclude 兜底。
+- 【运维事件】bun install --force 替换 node_modules 时运行中的 dev server 崩溃（Turbopack "Next.js package not found"）→ kill 僵尸进程、:3000（next 16.3.4）+:3003（collab）双服务重启恢复，游客 localStorage 数据无损。
+- 【E2E 实测（agent-browser 游客模式）】17 字中文标题 fitsFull=true（输入框 320px ≥ 内容 320px）；中文测试文（被字句×3 标志/副词/对话/90 字长句）→ 侧栏：字数 275、文本复杂性 60/100·偏难、被动语态 1 句（受到+被+为…所 全中、被子无误报）、副词 chips（认真地/渐渐地/非常/十分/突然/立刻/确实/最）、词频 市场×3、独特词形 92.8%、短句(≤15 字)标签、对话 9.2%；字数统计对话框 7 行（字数 275=中文字符 275+非中文单词 0）；写作工作室全卡片中文（含难度进度条+研究说明、冠词行隐藏）；英文 UI 回归无损（中文文档在英文界面显示 chars 标签 + 英文 band）；一次引擎脚本验证（被/受到/为…所/被子、误报护栏、混排计数、en Flesch 回归）全过；VLM 审图三问全过（标题完整/侧栏中文/无错位）；重启后重开文档数据持久+重算正确（隐藏关闭态残影为常驻 DOM，交互打开即正确，非 bug）。
+- 【截图】docs/screenshots/editor.png 重摄（1440×900@2x → 2880×1800）：长中文标题完整 + 中文洞察侧栏全开，VLM 视觉审查通过；其余 6 张无视觉变化保留。
+- 【文档】CHANGELOG 新增 1.1.1（中文原生洞察/Word 口径/标题测宽/安全专项 32→6）；README 中英双语写作洞察条目升级。
+- 质量门：tsc 应用 src 0 错误（仅 skills 历史遗留）、eslint 0、dev.log 无业务错误。
+
+Stage Summary:
+- **写作洞察已全面中文原生**：可读性（0–100 分+五档）、被字句被动、中文副词、bigram 词频/多样性、按字句长分档、段落密度重校准——全部锚定联网研究结论；英文路径回归无损。
+- **字数口径根治**：countWords Word 规则一次修复 9 处调用点；对话框 Word 式 7 行；阅读时间/页数按语言加权。
+- **标题输入框**：sizer 精确测宽，长中文标题完整显示。
+- **安全**：npm audit 32→6（critical 清零），next 16.3.4；剩余 6 项开发链已评估接受并文档化。
+- 本轮提交推送后与远端同步；后续巡检 Task 28 起交接。
